@@ -1,0 +1,74 @@
+= ComboCtl
+
+This is code for controlling and communicating with the Accu-Chek Spirit Combo, written in Kotlin.
+
+IMPORTANT: This is in the pre-alpha state, and far from being usable.
+
+
+
+== Disclaimer and warning
+
+IMPORTANT: This documentation is intended purely for research. Any attempts
+at using this documentation for accessing and operating medical equipment
+in a non certified way are _NOT_ supported. This document comes without
+warranty or formal support of *ANY* kind. **USE AT YOUR OWN RISK**.
+
+IMPORTANT: All product and company names, trademarks, servicemarks, registered
+trademarks, and registered servicemarks are the property of their respective
+holders. Their use is for information purposes and does not imply any affiliation
+with or endorsement by them.
+
+
+
+== Overview
+
+ComboCtl implements functionality for generating and parsing data sent to and
+received from the Combo. It is organized as follows:
+
+* *base* - The basic building blocks: CRC checksums, packet structure etc.
+* *display* - Code for interpreting / parsing display blocks sent by the Combo
+
+#TODO# More coming for Android support
+
+ComboCtl is mainly implemented in Kotlin. Platform specific bits may be written
+in other languages.
+
+It is divided into platform independent and platform specific parts, the former
+implementing the protocols and display parsing, the latter dealing with platform
+specific bits such as how Bluetooth connections are set up and controlled. The
+intent is to keep the platform independent parts as portable as possible. This
+allows for reusing them also on platforms where Kotlin isn't a first class citizen.
+In particular, Android specific APIs and features must not be used by these
+platform independent bits. Ultimately, ComboCtl is intended to eventually be used
+in projects such as AndroidAPS and OpenAPS, which is why portability is important.
+
+
+=== Communication specification
+
+The reverse engineered communication protocols and procedures are documented in
+<<docs/combo-comm-spec.adoc#,the Combo communication specification document>>.
+
+
+
+== Building
+
+ComboCtl is built using Gradle.
+
+To build with the command line and run the unit tests, run:
+
+  ./gradlew build test
+
+The project can also be imported into Android Studio and Intellij IDEA. Simply
+open/import this project's root directory.
+
+
+
+== TODO
+
+* Thorough code review, also to make sure the code is abit more "kotlin-esque"
+* Application layer code
+* Base session management code ("session" here being the code that handles the
+  correct sequence of packets for pairing, regular communcation etc.)
+* Display parser code
+* Platform specific code for Android
+* Try to figure out the remaining TODOs in combo-comm-spec.adoc

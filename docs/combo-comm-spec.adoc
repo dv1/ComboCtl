@@ -1,0 +1,1560 @@
+= Accu-Chek Spirit Combo communication specification
+
+This documents how the communication between the Accu-Chek Spirit Combo insulin
+pump and other devices works. **The information here has been reverse engineered,
+and is not guaranteed to be 100% correct or complete.**
+
+
+
+== Disclaimer and warning
+
+IMPORTANT: This documentation is intended purely for research. Any attempts
+at using this documentation for accessing and operating medical equipment
+in a non certified way are _NOT_ supported. This document comes without
+warranty or formal support of *ANY* kind. **USE AT YOUR OWN RISK**.
+
+IMPORTANT: All product and company names, trademarks, servicemarks, registered
+trademarks, and registered servicemarks are the property of their respective
+holders. Their use is for information purposes and does not imply any affiliation
+with or endorsement by them.
+
+
+
+== Overview
+
+The Accu-Chek Spirit Combo communicates with other devices over Bluetooth.
+
+In the rest of the document, the Accu-Chek Spirit Combo is referred to as the
+_pump_ or the _Combo_. The device that communicates with the Combo over Bluetooth
+is referred to as the _client_.
+
+NOTE: Ruffy refers to the client as the _device_ instead.
+
+This document establishes various concepts such as Bluetooth discovery, the
+pairing process, regular mode of operation, and then specifies the list of
+available transport layer and application layer commands.
+
+The following components are involved in the communication:
+
+* Bluetooth Service Discovery Protocol (SDP) for allowing the Combo to detect
+  the client (used in a standards compliant but uncommon manner)
+* Bluetooth RFCOMM transport protocol
+* Custom Combo protocol for second-stage pairing (first-stage pairing is the
+  regular Bluetooth pairing)
+* Custom Combo data packet framing protocol
+* Two custom Combo protocol layers
+* Two-Fish cipher and RFC 3610 CCM mode based packet authentication
+  (with non-standard modifications to CCM)
+* Integrity checks using CRC-16-MCRF4XX (only used in a few packets)
+
+All communication with the Combo is based on _packets_. Packets represent
+_commands_ and contain data pertaining to these commands.
+
+Commands are associated with one of two layers:
+
+* *Transport layer*: In this layer, the packets are transmitted over Bluetooth.
+  The packets contain _transport layer commands_ One packet equals exactly one
+  transport layer command. Commands in this layer concern themselves with lower
+  level activities such as pairing setup or encryption key transmission. Packets
+  contain metadata such as a command ID, and also a command specific payload. In
+  a later section, the list of available transport layer commands as well as the
+  structure of a packet are documented. The names of commands from this layer
+  have a `TL_` prefix. Example: `TL_REQUEST_PAIRING_CONNECTION`.
+
+* *Application layer*: This layer contains commands that concern themselves
+  with higher level operations, such as display updates, button press updates
+  etc. These commands are passed to the Combo through the transport layer
+  `TL_DATA` command. (This is the connection between the two layers.) This is
+  the layer where the distinction between "command mode" and "RT mode" is made
+  (more on that in the Services section below).
+  The names of commands from this layer have an `AL_` prefix. Additionally,
+  there is a `CTRL_`, `RT_` or `CMD_` prefix, depending on the service ID the
+  application layer command is associated with (more on the service IDs later).
+  Example: `AL_RT_KEEPALIVE`.
+
+In this document, when a packet contains a specific command, it is referred
+to as a "<cmd> packet". For example, a packet containing a `TL_DATA` command
+is simply referred to as "a `TL_DATA` packet".
+
+As mentioned above, application layer commands are contained in `TL_DATA` packets
+as payload. These packets with application layer commands inside `TL_DATA` payload
+too are referred to as "<cmd> packet". For example, an `AL_RT_KEEPALIVE` is a
+`TL_DATA` packet with the payload being the `AL_RT_KEEPALIVE` command.
+
+
+
+== Bluetooth
+
+The Combo was released in May 2009. This implies that this pump uses a Bluetooth
+version older than the still (at time of writing, the 03.09.2020) ubiquituous
+version 4.0. In particular, the subset called _Bluetooth Low Energy_ (BTLE),
+specifically created for devices that need to conserve as much power as possible
+and don't need high bandwidth, did not exist yet when the Combo was released.
+
+All communication happens over an RFCOMM channel.
+
+
+=== Discovery
+
+Initially, the client has to set up an SDP service record. This service record
+must contain certain SDP service attributes. These are specified with their
+names and designated numbers, which are taken from:
+
+https://www.bluetooth.com/specifications/assigned-numbers/service-discovery/
+
+In some attributes, the _Serial Port Profile_ (SPP) UUID is used. There are
+two forms of this UUID, a long and a short one. The short UUID form is 0x1101 ,
+while the long form is 00001101-0000-1000-8000-00805f9b34fb .
+
+These are the service attributes that must be present in the SDP record:
+
+* ServiceClassIDList (0x0001) : Must contain one sequence with one entry - the
+  SPP UUID. Short form is typically used here. Long form hasn't been tested
+  here yet.
+* ServiceID (0x0003) : Must be set to the SPP UUID (either long or short form).
+* ServiceName (0x0100) : Must be the 10 characters "SerialLink", exactly as
+  written (minus the double quotes). Upper/lowercase must be preserved.
+  NOTE: This is essential, since the Combo will ignore any SDP service records
+  whose name isn't "SerialLink".
+* ServiceAvailability (0x0008) : Must be the uint8 0xFF which specifies that
+  the service is fully available.
+* ProtocolDescriptorList (0x0004) : Must contain one sequence with two entries -
+  a pair of values. The first value is a UUID 0x0003 . This short-form UUID
+  specifies that the RFCOMM protocol is supported. The second value is a
+  uint8 set to an RFCOMM channel number (more on that later). Only this
+  value pair is needed, since only RFCOMM is used (L2CAP is not required).
+* BluetoothProfileDescriptorList (0x0009) : Must contain one sequence, whose
+  single entry again is a sequence, which has two entries - a pair of values.
+  The first one is the SPP UUID (only short form has been tested here so far).
+  The second one is the version of the profile and must be set to 0x0100 .
+* BrowseGroupList (0x0005) : Must contain one sequence, whose single entry
+  is a UUID 0x1002 , which is the UUID of the PublicBrowseRoot group.
+
+The following attributes are optional:
+
+* ServiceDescription (0x0101)
+* ServiceProvider (0x0102)
+
+Here is an example SDP service record in XML form:
+
+[source,xml]
+----
+<?xml version="1.0" encoding="UTF-8" ?>
+<record>
+    <attribute id='0x0001'> <!-- ServiceClassIDList -->
+        <sequence>
+            <uuid value='0x1101' /> <!-- 0x1101 = Serial Port Profile UUID -->
+        </sequence>
+    </attribute>
+    <attribute id='0x0003'> <!-- ServiceID -->
+        <uuid value='0x1101' /> <!-- 0x1101 = Serial Port Profile UUID -->
+    </attribute>
+    <attribute id='0x0100'> <!-- ServiceName -->
+        <text value='SerialLink' />
+    </attribute>
+    <attribute id='0x0101'> <!-- ServiceDescription -->
+        <text value='Custom service description' />
+    </attribute>
+    <attribute id='0x0102'> <!-- ServiceProvider -->
+        <text value='Custom service provider' />
+    </attribute>
+    <attribute id='0x0008'> <!-- ServiceAvailability -->
+        <uint8 value='0xff' /> <!-- 0xff = service is fully available -->
+    </attribute>
+    <attribute id='0x0004'> <!-- ProtocolDescriptorList -->
+        <sequence>
+            <sequence>
+                <uuid value='0x0003' /> <!-- 0x0003 = RFCOMM -->
+                <uint8 value='11' />    <!-- RFCOMM channel 11 -->
+            </sequence>
+        </sequence>
+    </attribute>
+    <attribute id='0x0009'> <!-- BluetoothProfileDescriptorList -->
+        <sequence>
+            <sequence>
+                <uuid value='0x1101' />   <!-- 0x1101 = Serial Port Profile UUID -->
+                <uint16 value='0x0100' /> <!-- Version -->
+            </sequence>
+        </sequence>
+    </attribute>
+    <attribute id='0x0005'> <!-- BrowseGroupList -->
+        <sequence>
+            <uuid value='0x1002' /> <!-- PublicBrowseRoot -->
+        </sequence>
+    </attribute>
+</record>
+----
+
+Using this SDP service record, the Combo can discover the client, and
+attempt to pair with it. It is recommended to always keep the service
+record up for as long as the client is running so that the Combo can
+always find the client.
+
+
+=== RFCOMM operation
+
+RFCOMM is used in two ways.
+
+First, an RFCOMM server socket is set up as part of the discovery
+(see the "Discovery" section above). Nothing is actually transmitted
+over that socket - it only exists for purposes of discovery. Once
+the Bluetooth pairing is done (see below), the RFCOMM server socket
+can be closed. The Combo's Bluetooth address found during the
+discovery process must be placed in persistent storage to be able
+to establish BT connections to the Combo in the future.
+
+#TODO: It is currently unclear if the channel number that was used
+by the server socket needs to be reused for subsequent connections,
+or if the channel number doesn't matter, and connections can pick
+any channel number.#
+
+Afterwards, insecure RFCOMM connections need to be established in
+order to communicate with the Combo.
+
+
+== Pairing process
+
+Pairing is a three-stage process:
+
+
+=== Bluetooth pairing
+
+The first stage is the regular Bluetooth pairing via a fixed, hard-coded
+PIN code. The fixed hard-coded PIN code is the following 16-character
+sequence:
+
+  }gZ='GD?gj2r|B}>
+
+After this first stage, the Bluetooth stack considers the Combo and the
+client paired. But for proper communication, additional steps are needed,
+explained in the next section.
+
+Also, at this point, the RFCOMM server socket (see the "RFCOMM operation"
+section above) must be closed at this point, followed by opening an
+insecure RFCOMM connection to the pump.
+
+
+=== Transport layer pairing
+
+Once the Bluetooth pairing is complete, pairing continues at the transport
+layer. The following sequence of packets are transmitted:
+
+1. The client sends `TL_REQUEST_PAIRING_CONNECTION` to the Combo.
+
+2. The Combo responds with `TL_PAIRING_CONNECTION_REQUEST_ACCEPTED`.
+
+3. The client sends `TL_REQUEST_KEYS`, and prompts the user to enter
+   the 10-digit PIN that now shows up on the Combo's display.
+
+4. Once the user has entered the 10-digit PIN, the client sends
+   `TL_GET_AVAILABLE_KEYS`.
+
+5. The Combo responds with `TL_KEY_RESPONSE`. This command contains
+   the PC and CP keys, encrypted with the _weak key_ (explained later below).
+   This command also contains the two 4-bit source and destination addresses,
+   in reversed form (explained in the Packet structure section).
+
+6. The client sends `TL_REQUEST_ID` to the Combo. This command contains
+   details about the client like the software version and a _Bluetooth friendly
+   name_ (see the Bluetooth specification, Vol. 3 part C section 3.2.2).
+   It is UTF-8 encoded, as per that specification. For the Combo, this name
+   is limited to 13 characters.
+   The current tx nonce is reset to 1 here (more on that below).
+
+7. The Combo responds with `TL_ID_RESPONSE`. This command contains details
+   about the Combo itself.
+
+8. The client sends `TL_REQUEST_REGULAR_CONNECTION` to the Combo.
+
+9. The Combo responds with `TL_REGULAR_CONNECTION_REQUEST_ACCEPTED`.
+   The client clears its sequence flag is once this is received (more on this
+   in the Sequence and data reliability bits section).
+
+Pairing continues at the application layer.
+
+
+=== Application layer pairing
+
+Here, the pairing continues with a sequence of application layer commands
+that establish an application layer binding between client and Combo.
+
+1. The client sends `AL_CTRL_CONNECT`.
+
+2. The Combo responds with `AL_CTRL_CONNECT_RESPONSE`.
+
+3. The client sends `AL_CTRL_GET_SERVICE_VERSION`, the payload being
+   0xB7 (that's the command mode service ID; more on that later).
+
+4. The Combo responds with `AL_CTRL_SERVICE_VERSION_RESPONSE`.
+
+5. The client sends `AL_CTRL_GET_SERVICE_VERSION` again, the payload being
+   0x48 this time (that's the RT mode service ID; more on that later).
+
+6. The Combo responds with `AL_CTRL_SERVICE_VERSION_RESPONSE`.
+
+7. The client sends `AL_CTRL_BIND`.
+
+8. The Combo responds with `AL_CTRL_BIND_RESPONSE`.
+
+9. The client sends `TL_REQUEST_REGULAR_CONNECTION` to the Combo. Note
+   that this is a transport layer command. The Combo responds with
+   `TL_REGULAR_CONNECTION_REQUEST_ACCEPTED`. Just like in step 9 in the transport
+   layer pairing phase earlier, the client clears its sequence flag once
+   this response is received by the client.
+
+10. The client sends `AL_CTRL_DISCONNECT`.
+
+This completes the overall pairing process.
+
+The pairing is persistent. Once it has been completed, it does not have
+to be repeated until the client is un-paired in the Combo.
+
+
+
+== Transport layer structures and protocols
+
+
+=== Framing
+
+Transport layer packets are transferred over the RFCOMM channel. Since
+this is a reliable, streaming protocol, it does not have any built-in
+framing, so the Combo protocol has to add extra information to know where
+packets start and end in the data stream.
+
+This is accomplished by inserting the frame delimiter, the byte 0xCC .
+There is always one frame delimiter before and one after the actual
+packet.
+
+However, since packet data is binary data, the byte 0xCC may actually
+be valid data from the packet itself, and not a frame delimiter.
+To deal with this ambiguity, the packet data is "escaped", just like
+how for example characters get "escaped" in terminals. Here's an
+example from a Unix shell:
+
+  cp My\ Test\ File.txt copy.txt
+
+This command line attempts to make a copy the file "My Test File.txt"
+and name the copy "copy.txt". The command line separates arguments
+with whitespaces. But the source file name itself contains whitespaces.
+To disambiguate the meaning of the whitespace, the whitespaces that are
+part of the filename are "escaped" using the backslash character.
+
+Escaping in the frame is done similarly. If the byte 0xCC is present in
+the packet data, this byte is replaced with the two bytes 0x77 and 0xDD.
+The byte 0x77 is the _escape character_, analogous to the backslash
+in the Unix shell example above.
+
+Of course, 0x77 itself can _also_ be part of the packet data. So, this
+too needs escaping. If 0x77 is found in the packet data, it is replaced
+with the two bytes 0x77 and 0xEE.
+
+To summarize with pseudo code:
+
+  for byte in packet_bytes
+    if byte == 0xCC
+      replace byte in packet_bytes with bytes 0x77 0xDD
+    else if byte == 0x77
+      replace byte in packet_bytes with bytes 0x77 0xEE
+    else
+      keep byte as it is
+    end if
+  end for
+
+Then the client can transmit the framed packet to the Combo over RFCOMM.
+
+When the client receives data, it can detect the packet boundaries with
+the frame delimiters. Then the client has to "un-escape" the packet data
+within these delimiters. Un-escaping is the escaping process described
+above, but in reverse. For example, the two-byte sequence 0x77 0xDD is
+replaced by the single byte 0xCC.
+
+
+=== Transport layer packet structure
+
+Packets contain raw binary payload and are structured like this:
+
+ 1. 4 bits    : Packet major version (always set to 0x01)
+ 2. 4 bits    : Packet minor version (always set to 0x00)
+ 3. 1 bit     : Sequence bit
+ 4. 1 bit     : Unused (referred to as "Res1")
+ 5. 1 bit     : Data reliability bit
+ 6. 5 bits    : Command ID
+ 7. 16 bits   : Payload length (in bytes), stored as a 16-bit little endian integer
+ 8. 4 bits    : Source address
+ 9. 4 bits    : Destination address
+10. 13 bytes  : Nonce
+11. n bytes   : Payload
+12. 8 bytes   : Message authentication code
+
+Parts 1 to 10 constitute the _packet header_.
+
+The sequence and data reliability bits are explained in a section below.
+
+
+=== Nonce
+
+Packets contain a _nonce_. This is a 13-byte code that is unique within
+each communication session. This has to be treated like a 104-bit
+(= 13*8bit) little-endian unsigned integer. Every time a command is sent
+to the Combo, the nonce is incremented.
+
+NOTE: As an exception to this rule, some commands used during the initial
+pairing procedure do not increment the tx nonce, and instead set it to
+zero. More on that in the list of transport layer commands below.
+
+Initially, the nonce has the value 1. So, its bytes initially are set to:
+
+  01 00 00 00 00 00 00 00 00 00 00 00 00
+
+After incrementing the nonce, it looks like this:
+
+  02 00 00 00 00 00 00 00 00 00 00 00 00
+
+Later on, assuming that we are at a time where the nonce has the value
+255, incrementing it shows how a carry is transferred:
+
+  FF 00 00 00 00 00 00 00 00 00 00 00 00
+
+becomes
+
+  00 01 00 00 00 00 00 00 00 00 00 00 00
+
+etc.
+
+If the nonce's bytes are all set to FF, then incrementing it will wrap
+the nonce around back to the value 0, just like a regular unsigned integer.
+
+In the rest of this document, the nonce is treated as described here -
+a 104-bit little endian unsigned integer.
+
+The nonce is reset to one when the `TL_REQUEST_ID` command is sent to the
+Combo (that is, that packet contains a nonce with the value 1). In all other
+commands, it is incremented.
+
+The nonce is used during packet authentication. More on that below.
+
+Received command packets also contain a nonce. However, this one is
+not incremented by the client, but by the Combo. The client merely uses
+the nonce as part of the data that is needed for verifying a packet's MAC.
+
+In this document, the nonce that gets incremented by the client and placed
+in packets which are sent to the Combo is referred to as the "tx nonce",
+while the nonce that gets incremented internally by the Combo and placed
+in packets which are sent by the Combo to the client is referred to as
+the "rx nonce".
+
+
+=== Packet authentication
+
+Packets are authenticated using the symmetric Two-Fish block cipher
+and the CCM (Counter with CBC-MAC) mode of operation, specified in
+RFC 3610, with minor modifications. Packets are not actually encrypted
+with Two-Fish, only authenticated with an 8-byte message authentication
+code (MAC). The MAC is generated by the combination of Two-Fish and CCM.
+
+Authentication is done via CCM (documented in RFC 3610). A 128-bit key,
+the packet header, and the payload are the input for authentication.
+
+The combination of packet header and payload for authentication purposes
+is referred to as the _auth data_. MAC bytes are not part of the auth data
+(since they are to be computed).
+
+The total size of the auth data must be an integer multiple of 16 bytes.
+If it isn't, the data must be padded. In RFC 3610, padding is done by
+appending as many nullbytes to the packet as needed to round up its
+length to an integer multiple of 16. For example, auth data with 13
+bytes gets 16-13 = 3 nullbytes appended:
+
+Original example 13-byte auth data (bytes are picked arbitrarily and do
+not resemble real packets):
+
+  0F A0 44 F7 BB C0 AE 11 E9 DA 3B 78 23
+
+Padded version:
+
+  0F A0 44 F7 BB C0 AE 11 E9 DA 3B 78 23 00 00 00
+
+For the Combo however, padding seems to be done differently. Padding
+bytes still get appended just as in RFC 3160, but these are not nullbytes.
+Instead, the number of padding bytes required is used as the value of
+the padding bytes. Example: Given the 13-byte auth data, 16-13 = 3 padding
+bytes are needed. So, the byte 03 is added three times:
+
+Original example 13-byte auth data:
+
+  0F A0 44 F7 BB C0 AE 11 E9 DA 3B 78 23
+
+Padded version:
+
+  0F A0 44 F7 BB C0 AE 11 E9 DA 3B 78 23 03 03 03
+
+Another example, this time with 8-byte auth data:
+
+  57 AA B4 CE 2D 56 4A 11
+
+This requires 16-8 = 8 padding bytes, so we add the byte 08 eight times:
+
+  57 AA B4 CE 2D 56 4A 11 08 08 08 08 08 08 08 08
+
+The padded version of the auth data (the "padded auth data") is used for
+authentication, that is, for generating the MAC. The padded auth data
+is then thrown away. It is _not_ transmitted to the Combo; the original
+packet is (with its computed MAC).
+
+A more high-level example:
+
+1. Packet with its 18-byte packet header and 26 payload bytes.
+   This makes for a total of 44 bytes of auth data. As said above,
+   for authentication, no MAC bytes are included in this -
+2. 44 is not an integer multiple of 16. 44 mod 16 = 12. So, 16-12 = 4
+   padding bytes are needed to expand the auth data to 48 bytes, which
+   _is_ an integer multiple of 16. These four padding bytes are 0x04
+   (= the number of padding bytes), as explained above.
+3. The resulting 48 bytes are fed into the CCM processing.
+4. Once the MAC is calculated, it is set in the _original_,
+   non-padded packet as its MAC.
+
+Once the padded auth data is constructed, CCM processing begins. CCM operates
+with 16-byte blocks. The first block is named `B_0`, the second block is
+named `B_1` etc. Using RFC 3610 terminology, L (number of octets in length
+field) is set to 2, and M (number of octets in authentication field) is set
+to 16. The first block `B_0` has its flags byte set to 0x79. In detail,
+this means that the flags contents (taken from RFC 3610 section 2.2.):
+
+      Bit Number   Contents
+      ----------   ----------------------
+      7            Reserved (always zero)
+      6            Adata
+      5 ... 3      M'
+      2 ... 0      L'
+
+are set to:
+
+* Adata = 1
+* M' = 7
+* L' = 1
+
+The overall structure of `B_0` (taken from RFC 3610 section 2.2.):
+
+      Octet Number   Contents
+      ------------   ---------
+      0              Flags
+      1 ... 15-L     Nonce N
+      16-L ... 15    l(m)
+
+Since L is set to 2 for the communication with the Combo, this is
+how it looks like for the Combo:
+
+      Octet Number   Contents
+      ------------   ---------
+      0              Flags
+      1 ... 13       Nonce N
+      13 ... 15      l(m)
+
+For communication with the Combo, the two l(m) bytes are set to 0,
+since we only care about the generated MAC - we do not actually
+transmit any encrypted auth data. As for the nonce N: this is
+precisely the tx nonce discussed in the Nonce section above.
+
+Just as documented in RFC 3610 section 2.2., `B_0` is encrypted
+to generate `X_1`:
+
+  X_1 := E( K, B_0 )
+
+E is the encryption cipher, which for the Combo is the Two-Fish
+cipher. K is the 128-bit key.
+
+The next block, `B_1`, contains the first 16 bytes of the auth data.
+(Confusingly, no actual "additional data" seems to exist, even
+though the Adata bit in the `B_0` flags is set.) `B_2` contains
+the second 16 bytes etc.
+
+Just as documented in the RFC, `B_1` is XORed with `X_1` and then
+encrypted to generate `X_2`, and then `B_2` is XORed with `X_2`
+to generate `X_3` etc:
+
+   X_i+1 := E( K, X_i XOR B_i )  for i=1, ..., n
+
+The RFC section 2.2. mentions: "If needed, the ciphertext is
+truncated to give T." T is not used here.
+
+Here, CCM begins to be used in an uncommon way for the Combo.
+The authentication & encryption process is repeated - sort of.
+
+The first 8 bytes of the last computed `X_i` value are stored
+in a value called `U`. `X_i` is then thrown away. A new `B_0`
+is then constructed. Just as the first time, its 13 nonce bytes
+are set to the tx nonce discussed in the Nonce section above. Also,
+again just like before, the two l(m) bytes are set to 0. The flags
+byte however is a bit different. Its contents now are set to:
+
+* Adata = 1
+* M' = 0
+* L' = 1
+
+In other words, it is set to the value 0x41 (instead of 0x79),
+since M' is 0 here.
+
+Furthermore, unlike before, the contents of the padded auth data
+are _not_ used. Instead, only `X_1` is generated:
+
+  X_1 := E( K, B_0 )
+
+No `X_2` etc. are generated.
+
+The first 8 bytes of this `X_1` are then XORed with the 8 bytes
+previously stored in `U`, and the XORed results stored in `U`:
+
+  for byte_idx = 1 to 8
+    U[byte_idx] = U[byte_idx] XOR X_1[byte_idx]
+  end for
+
+This `U` is the MAC we want for authentication. This MAC is
+appended to the original, un-padded packet. The result is the
+_authenticated packet_. This authenticated packet now can be framed
+(see the Framing section above) and transmitted to the Combo.
+
+Verifying incoming packets works similarly, but in reverse. The
+8 bytes at the end of the incoming packet are the MAC computed
+by the Combo. The incoming packet's header and payload are used
+for computing a MAC just as explained above (except that for
+generating the MAC, the received packet's rx nonce is used instead
+of the current tx nonce). That computed MAC is compared with the
+MAC that were computed by the Combo. If the two MACs match, then the
+packet passes the verification, otherwise it doesn't, and the packet
+must not be used.
+
+#TODO: Define what to do if verification fails.#
+
+
+=== Weak key ===
+
+This key is a 128-bit key that is directly derived from the 10-digit
+PIN entered by the user during the pairing process. It is referred to
+as "weak key", since it is generated out of the PIN using a very
+simple algorithm. It is only needed during the pairing process,
+to decrypt the contents of the `TL_KEY_RESPONSE` packet payload.
+
+To derive the key out of the PIN, the following steps are taken:
+
+The first 10 of the 16 bytes (128 bit -> 16 bytes) of the key equal
+the ASCII index of the 10 entered digits. The remaining 6 bytes are
+the bitwise inverted versions of the first 6 bytes.
+
+Example:
+
+Entered 10-digit PIN: 334-133-9900
+
+Generated 16-byte key (written in hex notation):
+
+33 33 34 31 33 33 39 39 30 30 DE DE DD E0 DE DE
+
+In here, the 3rd digit is "4". The character 4 is at ASCII index 52,
+or 0x34 in hexadecimal. The 4th digit is "1", the character's ASCII
+index is 0x31 etc. The last 6 bytes are the inverted versions of the
+first 6 bytes. The 12th byte is the inverted version of the 3rd byte,
+whose value is 0x34. Inverting it bitwise yields the value 0xDD. The
+same goes for the other last 6 bytes.
+
+
+=== Client-to-pump and pump-to-client keys
+
+Communication from and to the Combo is performed using two keys,
+the client-to-pump key (CP key) and the pump-to-client key (PC key).
+For example, when transmitting a command to the Combo, the client has
+to use the CP key to verify the packet's MAC. And when a packet is
+parsed out of the frames (see above), the client has to use the PC key
+to authenticate the packet and add a MAC to it. As mentioned above,
+the packets themselves are not encrypted; the keys are only used for
+producing / verifying the MAC. Both keys are 128-bit (16 bytes) keys.
+
+The CP and PC keys are sent by the Combo to the client, via the
+`TL_KEY_RESPONSE` command. The Combo encrypts them using the Two-Fish
+cipher and the weak key (see the Weak key section above), so the client
+has to decrypt them with the weak key before it can actually use them.
+The client should then store these decrypted keys in persistent private
+storage (see below).
+
+(Since, as described in the Pairing section, the Combo generates
+the 10-digit PIN that the user has to enter into the client, the
+Combo also knows what the weak key is, so the weak key is not
+transmitted from the client to the Combo.)
+
+NOTE: Since Ruffy refers to _devices_ instead of _clients_, it
+deals with "PD" and "DP" keys instead of "PC" and "CP" ones.
+
+
+=== Sequence and data reliability bits
+
+Each packet has two bits: the reliability bit and the sequence bit.
+They are relevant in packets sent both by the client and by the
+Combo.
+
+For packets coming from the Combo, the following applies: If the
+data reliability bit is 0, then so is the sequence bit (and the client
+does not have to do anything special). Otherwise, if the data
+reliability bit is 1, then the sequence bit may be 0 or 1. If the
+reliability bit is set to 1, the client must immediately respond
+with an `TL_ACK_RESPONSE` command. That command's sequence bit must
+be set to the same value as the received packet's sequence bit.
+Only after this was done can the client proceed with parsing the
+received packet.
+
+For packets going to the Combo, the client must keep a separate
+sequence flag around (for example, as a boolean in some structure).
+This flag is cleared when receiving the `TL_REGULAR_CONNECTION_REQUEST_ACCEPTED`
+command from the Combo. When the client sends a `TL_DATA` command to
+the Combo, and that command's reliability bit is set to 1, its
+sequence bit is set to match the separate sequence flag. That is,
+if the flag is set, the bit is set to 1, and if it is not set, the
+bit is set to 0. After the `TL_DATA` command got sent, the client
+then has to invert the separate sequence flag. If however the command's
+reliability bit is 0, the sequence bit is always set to 0, and
+the separate sequence flag is left unmodified.
+
+
+== What data to persistently store
+
+Some data has to be placed in persistent storage that can only
+be accessed by the client. This storage has to be wiped when the
+client is unpaired from the Combo.
+
+The following data has to be stored in a persistent manner:
+
+* PC key
+* CP key
+* Current tx nonce
+* Bluetooth MAC address (not to be confused with the MAC for
+  authentication) of the paired Combo
+* Address byte (not to be confused with the Bluetooth address);
+  This is the combination of source and destination address from
+  the `TL_KEY_RESPONSE` packet
+
+
+
+== Application layer structures and protocols
+
+
+=== Application layer packet structure
+
+Just like transport layer packets, each application layer packet
+contains exactly one application layer command. The packet structure
+goes as follows:
+
+1. 4 bits  : Application layer major version (always set to 0x01)
+2. 4 bits  : Application layer minor version (always set to 0x00)
+3. 8 bits  : Service ID; can be one of these values:
+             0x00 : control service ID
+             0x48 : RT mode service ID
+             0xB7 : command mode service ID
+4. 16 bits : Command ID, stored as a 16-bit little endian integer
+5. n bytes : Payload
+
+To reiterate the explanation from the overview: "Application layer
+packets" are essentially transport-layer `TL_DATA` packets with
+application layer data as their payload. The "n bytes payload" from
+the application layer packet plus the packet's header therefore
+make up the payload of the `TL_DATA` packet.
+
+Here the entire contents of a `TL_DATA` packet with application
+packet contents:
+
+ 1. 4 bits    : Packet major version - set to 0x01
+ 2. 4 bits    : Packet minor version - set to 0x00
+ 3. 1 bit     : Sequence bit
+ 4. 1 bit     : Unused (referred to as "Res1")
+ 5. 1 bit     : Data reliability bit
+ 6. 5 bits    : Transport layer command ID - set to 0x03
+ 7. 16 bits   : Transport layer payload length (in bytes), stored
+                as a 16-bit little endian integer; set here to
+                (4 + size-of-application-layer-packet-payload)
+ 8. 4 bits    : Source address
+ 9. 4 bits    : Destination address
+10. 13 bytes  : Nonce
+11. 4 bits    : Application layer major version (always set to 0x01)
+12. 4 bits    : Application layer minor version (always set to 0x00)
+13. 8 bits    : Service ID
+14. 16 bits   : Application layer command ID, stored as a
+                16-bit little endian integer
+15. n bytes   : Payload
+16. 8 bytes   : Message authentication code
+
+Parts 11-15 are the actual application layer data, while the rest
+forms the transport layer `TL_DATA` packet.
+
+In other words, given a payload of N bytes in an application layer
+packet, the total number of bytes transmitted over Bluetooth are
+18 (transport layer header) + 4 (application layer header) + N
++ 8 (MAC) = 30 + N.
+
+
+=== Services
+
+In the application layer, there is the notion of _services_. These
+essentially group application layer commands logically. Each service
+has an 8-bit service ID (specified in hexadecimal).
+
+There are three services available:
+
+1. Control service: This service is used for finalizing the pairing
+   process, for establishing a connection, and for switching between
+   the remote terminal (RT) and command modes.
+   Its ID is 0x00.
+
+2. Remote terminal (RT) service: This service covers commands for
+   controlling the pump in the remote terminal (RT) mode.
+   Its ID is 0x48.
+
+3. Command service: This service covers commands for
+   controlling the pump in the command mode.
+   Its ID is 0xB7.
+
+More on the modes follows below.
+
+RT and command mode specific commands can only be used after
+the corresponding service has been "activated". This is done with
+the `AL_CTRL_ACTIVATE_SERVICE` command.
+
+
+=== Command and remote terminal (RT) modes
+
+Excluding the pairing process and the connection setup, the
+Combo can operate in two modes: the command mode and the remote
+terminal (abbr. "RT").
+
+In the command mode, certain operations like administering
+a bolus are encoded directly as an application layer command.
+This is what the Combo's remote control uses when the user
+selects the option to administer a bolus.
+
+In the remote terminal mode, the Combo behaves as if the user
+were pressing the physical buttons and looking at the display.
+To that end, the Combo generates a secondary 96x32 pixels
+display content and transmits this to the Combo, split up into
+four 96x8 pixels subsets. This content is _not_ shown on the
+physical display. In fact, both this "emulated" secondary
+display and the physical display can show entirely different
+content at the same time.
+
+In the RT mode, communication from the client to the Combo
+is limited to regularly sending ping / keepalive commands,
+sending emulated button presses, and switching between the
+RT mode and the command mode.
+
+
+
+== List of available transport layer commands
+
+This contains all known transport layer commands that are sent
+to and received from the Combo.
+
+Each command documentation begins with a list of attributes,
+which are:
+
+* *Sent by*: Who sends out the packet. Can be either "Client"
+  or "Combo". (Some commands specify both, because it can come
+  from both sides.)
+* *Command ID*: The 5-bit command ID (see the packet structure
+  section), specified in hexadecimal
+* *Payload length*: The length of the packet's actual data.
+  If the packet contains a CRC-16-MCRF4XX checksum, its two bytes
+  are considered part of the payload. The 8 bytes of the MAC
+  that follows the payload is not part of this length.
+* *Key for CCM-auth*: What key to use for authenticating or
+  verifying packets. Not all packets are CCM-authenticated;
+  some commands during pairing don't have their packets
+  authenticated, simply because at that point, no keys are
+  available yet. Possible values here can be "none", "weak key",
+  "CP key", "PC key". For the meaning of the latter three, check
+  out the "Weak key" and "Client-to-pump and pump-to-client keys"
+  sections above.
+* *Tx nonce*: How the tx nonce is processed _before_ the packet
+  with the specified command inside is sent out. This can be either
+  "set to zero" (used in initial pairing commands which don't
+  make use of the tx nonce, so they set it to zero), "set to one"
+  (only used in the `TL_REQUEST_ID` command, which starts the tx
+  nonce increments; tx nonce is set to 1), and "incremented" (what
+  most packets use; tx nonce is incremented before placing it in
+  the packet and sending the packet out).
+* *Addresses*: What the 4-bit source and destination address in
+  the packet's header are set to. This can be either two fixed
+  values (specific to each command), or can be the source and
+  destination addresses gathered from the `TL_KEY_RESPONSE` packet.
+
+If a packet's paylad contains a CRC-16-MCRF4XX checksum, the
+seed for the checksum computation is 0xFFFF.
+
+The *Tx nonce* and *Addresses* attributes are not specified in
+commands that are sent by the Combo to the client. If a command
+can be sent by both the Combo and the client, these attributes
+are specified, but that specification only applies when the client
+is the sender.
+
+By default, packets are CCM-authenticated and get a MAC appended.
+If they don't, this is explicitely mentioned in the command's
+documentation. If no MAC is used, the 8 bytes that normally make
+up the MAC are set to zero.
+
+Also, by default, the packet's data reliability bit is not set.
+
+IMPORTANT: The following commands must not be used if pairing
+has already been completed, unless the client was unpaired
+from the Combo (= the user removed the client in the Combo's
+Bluetooth menu):
+
+* `TL_REQUEST_PAIRING_CONNECTION`
+* `TL_REQUEST_KEYS`
+* `TL_GET_AVAILABLE_KEYS`
+* `TL_KEY_RESPONSE`
+
+(See the Pairing section above for details.)
+
+TODO: Check the seq bit usage in Transport.java
+
+
+=== `TL_REQUEST_PAIRING_CONNECTION` :
+
+* Sent by: Client
+* Command ID: 0x09
+* Payload length: 2
+* Key for CCM-auth: none
+* Tx nonce: Set to zero
+* Addresses: Source set to 0xF, destination set to 0x0
+
+This command initiates the pairing process at the transport
+layer. (See the Pairing section above for details.)
+
+The payload is a CRC-16-MCRF4XX checksum of the packet header.
+
+This packet's MAC is set to 8 nullbytes.
+
+The Combo responds with `TL_PAIRING_CONNECTION_REQUEST_ACCEPTED`.
+
+
+=== `TL_PAIRING_CONNECTION_REQUEST_ACCEPTED` :
+
+* Sent by: Combo
+* Command ID: 0x0A
+* Payload length: 3
+* Key for CCM-auth: none
+
+The Combo sends this after the client sent the command
+`TL_REQUEST_PAIRING_CONNECTION`.
+
+TODO: Its payload is not entirely clear. The first byte is 0x00,
+and has an unknown meaning. The next two bytes appear to be
+the CRC-16-MCRF4XX checksum of the packet header plus that
+one payload byte.
+
+Upon receiving this, the client sends `TL_REQUEST_KEYS`.
+
+This packet's MAC is set to 8 nullbytes.
+
+
+=== `TL_REQUEST_KEYS` :
+
+* Sent by: Client
+* Command ID: 0x0C
+* Payload length: 2
+* Key for CCM-auth: none
+* Tx nonce: Set to zero
+* Addresses: Source set to 0xF, destination set to 0x0
+
+The client sends this after it received `TL_PAIRING_CONNECTION_REQUEST_ACCEPTED`
+from the Combo. This command will cause the Combo to generate a 10-digit
+PIN and show it on its LCD screen. The user now has to read and enter
+this 10-digit PIN in the client. The client generates a weak key out
+of this pin, as described in the "Weak key" section above.
+
+Just like in the `TL_REQUEST_PAIRING_CONNECTION` command, this
+command's payload is the CRC-16-MCRF4XX checksum of the packet's
+first 18 bytes, and its MAC is set to 8 nullbytes.
+
+Right after this command was sent and the weak key was generated,
+the client has to send `TL_GET_AVAILABLE_KEYS` to the Combo.
+(This implies that `TL_GET_AVAILABLE_KEYS` is sent _after_ the user
+has read and entered the 10-digit PIN.)
+
+
+=== `TL_GET_AVAILABLE_KEYS` :
+
+* Sent by: Client
+* Command ID: 0x0F
+* Payload length: 2
+* Key for CCM-auth: none
+* Tx nonce: Set to zero
+* Addresses: Source set to 0xF, destination set to 0x0
+
+This is sent by the client to the Combo immediately after sending
+`TL_REQUEST_KEYS`. Just like that other command, its only payload is
+the CRC-16-MCRF4XX checksum of the packet's first 18 bytes. The Combo
+responds with `TL_KEY_RESPONSE`.
+
+This packet's MAC is set to 8 nullbytes.
+
+
+=== `TL_KEY_RESPONSE` :
+
+* Sent by: Combo
+* Command ID: 0x11
+* Payload length: 32
+* Key for CCM-auth: weak key
+
+The Combo sends this command as a response to `TL_GET_AVAILABLE_KEYS`.
+It contains information about the PC/CP keys (see the Packet authentication
+section) which will be used for verifying subsequent commands sent to and
+received from the Combo.
+
+It also contains two 4-bit source and destination addresses (see the Packet
+structure section) that must be used in subsequent outgoing packets, unless
+other specific address need to be used. In other words, the client has to
+read out the two 4-bit addresses from this packet, store them, and put them
+in packets it will send out from now on.
+
+In packets coming from the Combo, the order of the two 4-bit addresses is
+reversed, since the packet was sent out from the Combo, so "send" and "receive"
+are placed from the Combo's perspective. The same applies here.
+
+If for example this packet's address byte is 0x3F, then the upper 4 bit,
+which normally make up the source address, need to be stored by the client
+as the destination address to use from now on. Same in reverse with the lower
+4 bit - these are to be used as the source address from now on. So, in this
+example, any packet whose "Addresses" attribute is specified as
+"from `TL_KEY_RESPONSE`" has its source address set to 0xF, and its
+destination address as 0x3.
+
+The payload consists of the 128-bit PC key, followed by the 128-bit CP key.
+These are present in encrypted form, and must be decrypted with the weak key
+(see the "Client-to-pump and pump-to-client keys" section).
+
+This is also the first packet whose MAC is not just set to 8 nullbytes.
+Rather, the CCM authentication is performed using the weak key. This is the
+only packet where the weak key is used for authentication. In all other
+packets, either no authentication is done (= MAC bytes are zero), or the
+CP or PC key are used.
+
+After receiving this command, the client has to send `TL_REQUEST_ID`.
+
+
+=== `TL_REQUEST_ID` :
+
+* Sent by: Client
+* Command ID: 0x12
+* Payload length: 17
+* Key for CCM-auth: CP key
+* Tx nonce: Set to one (tx nonce increments start from this point on)
+* Addresses: From `TL_KEY_RESPONSE`
+
+This transmits information about the client to the Combo. It is sent
+after the client received the `TL_KEY_RESPONSE` command from the Combo.
+
+The payload is made of two fields:
+
+- One 32-bit little endian unsigned integer with the software version.
+  Must be set to 10504 (meaning "version 5.04").
+- 13 byte character sequence with the client's Bluetooth friendly name.
+  The name is UTF-8 encoded. Unused bytes must be set to zero.
+
+After this command was sent, the client's tx nonce is incremented
+each time a command is sent to the Combo.
+
+The Combo responds with the `TL_ID_RESPONSE` command.
+
+
+=== `TL_ID_RESPONSE` :
+
+* Sent by: Combo
+* Command ID: 0x14
+* Payload length: 17
+* Key for CCM-auth: PC key
+
+This is the Combo's response to the client's `TL_REQUEST_ID` command.
+It contains two IDs:
+
+- One 32-bit little endian unsigned integer with the server's ID.
+  #TODO: It is unclear what "server" means here.#
+- 13 byte character sequence with the pump ID. Unused bytes are
+  set to zero. So far, this has always been the Combo's serial number,
+  with a "PUMP_" prefix. For example, if the Combo's serial number
+  is 12345678, then the "pump ID" here is `PUMP_12345678`.
+
+These IDs are not needed for operating the Combo and are purely
+informational.
+
+After this, pairing continues in the application layer.
+See the Pairing section above for details.
+
+
+=== `TL_REQUEST_REGULAR_CONNECTION` :
+
+* Sent by: Client
+* Command ID: 0x17
+* Payload length: 0
+* Key for CCM-auth: CP key
+* Tx nonce: Incremented
+* Addresses: From `TL_KEY_RESPONSE`
+
+Initiates a regular (that is, not for pairing at the transport layer
+level) connection between client and Combo. It contains no payload.
+
+The Combo responds with the `TL_REGULAR_CONNECTION_REQUEST_ACCEPTED` command.
+
+
+=== `TL_REGULAR_CONNECTION_REQUEST_ACCEPTED` :
+
+* Sent by: Combo
+* Command ID: 0x18
+* Payload length: 0
+* Key for CCM-auth: PC key
+
+The Combo sends this command as a response to `TL_REQUEST_REGULAR_CONNECTION`.
+Once the client receives this, the sequence flag mentioned in the
+Sequence and data reliability bits section above must be cleared.
+
+The client sends an `AL_CTRL_CONNECT` application layer command
+to the Combo after receiving this.
+
+
+=== `TL_DISCONNECT` :
+
+* Sent by: Combo
+* Command ID: 0x1B
+* Payload length:
+* Key for CCM-auth:
+
+#TODO: It is unclear if this is necessary. It seems that the client is
+supposed to transmit when finalizing the pairing process, right before
+`AL_CTRL_DISCONNECT`. Ruffy does not use it though.#
+
+
+=== `TL_ACK_RESPONSE` :
+
+* Sent by: Client, Combo
+* Command ID: 0x05
+* Payload length: 0
+* Key for CCM-auth: CP key (if sent by client), PC key (if sent by Combo)
+* Addresses: From `TL_KEY_RESPONSE`
+
+If this is sent to the Combo, this is done as a response to a
+received packet with its reliability bit set (see the Sequence
+and data reliability bits section).
+
+NOTE: This command is an exception to the rule about the flipping
+separate sequence flag if the command is sent from the client to
+the Combo. Even if the reliability bit is set here, that separate
+sequence flag is _not_ used or modified. Instead, the sequence bit
+of this command is the same as the sequence bit of the command that
+previously arrived. This is because this command is a response for
+the command that the Combo previously transmitted to the client.
+
+#TODO: Check what it means when the Combo sends this#
+
+
+=== `TL_DATA` :
+
+* Sent by: Client, Combo
+* Command ID: 0x03
+* Payload length: Depends on data
+* Key for CCM-auth: CP key (if sent by client), PC key (if sent by Combo)
+* Tx nonce: Incremented
+* Addresses: From `TL_KEY_RESPONSE`
+
+This transmits data packets. The data contains application layer
+packets (see the "Application layer structures and protocols" section).
+
+Data packets can be marked as reliable or unreliable. In the former
+case, their reliability bit is set to 1. Check out the Sequence and
+data reliability bits section for more.
+
+Once the pairing is done and the connection is set up, these will
+make up the majority of commands sent to and from the Combo.
+
+
+=== `TL_ERROR_RESPONSE` :
+
+* Sent by: Combo
+* Command ID: 0x06
+* Payload length: 1
+* Key for CCM-auth: PC key
+
+This informs the client that about an error that occurred. The
+single payload byte identifies the error.
+
+The following errors are known:
+
+* 0x0F : Combo is in the wrong state (command mode or remote terminal (RT) mode)
+* 0x33 : "Invalid service primitive" #TODO: What is this?#
+* 0x3C : Invalid payload length in previously transmitted packet
+* 0x55 : Invalid source address in previously transmitted packet
+* 0x66 : Invalid destination address in previously transmitted packet
+
+
+
+== List of available application layer commands
+
+This contains all known application layer commands that are sent
+to and received from the Combo.
+
+Each command documentation begins with a list of attributes,
+which are:
+
+* *Sent by*: Who sends out the application layer command. Can be
+  either "Client" or "Combo". (Some commands specify both, because
+  it can come from both sides.)
+* *Service ID*: What service ID the command uses
+  (specified both as number and as name)
+* *Command ID*: The ID of the particular command
+* *Reliable*:  If this is "yes", then the `TL_DATA` packet's
+  reliability bit it set to 1, otherwise to 0. See the `TL_DATA`
+  documentation and the Sequence and data reliability bits section
+  for more about this.
+* *Payload length*: The length of the command's actual data.
+
+
+=== `AL_CTRL_CONNECT` :
+
+* Sent by: Client
+* Service ID: 0x00 (control)
+* Command ID: 0x9055
+* Reliable: yes
+* Payload length: 4
+
+This starts a connection at the application level. It is sent
+after the application received a `TL_REGULAR_CONNECTION_REQUEST_ACCEPTED`
+transport layer command.
+
+The payload is the serial number 12345 as a 32-bit
+little-endian unsigned integer.
+
+The Combo responds with `AL_CTRL_CONNECT_RESPONSE`.
+
+
+=== `AL_CTRL_CONNECT_RESPONSE` :
+
+* Sent by: Combo
+* Service ID: 0x00 (control)
+* Command ID: 0xA055
+* Reliable: yes
+* Payload length: 2
+
+This is the Combo's response to `AL_CTRL_CONNECT`.
+
+The 2-byte payload is ignored.
+
+#TODO: It is currently unclear what these 2 bytes are for.#
+
+The client's reaction to this depends on whether the pairing
+process is finished or not. (See the "Pairing" section for more.)
+If the pairing process is finished, the client sends
+`AL_CTRL_GET_SERVICE_VERSION`. Otherwise, it sends
+`AL_CTRL_ACTIVATE_SERVICE`.
+
+
+=== `AL_CTRL_GET_SERVICE_VERSION` :
+
+* Sent by: Client
+* Service ID: 0x00 (control)
+* Command ID: 0x9065
+* Reliable: yes
+* Payload length: 1
+
+This is used during the pairing process. It queries the major
+and minor version number of a service from the Combo.
+
+The single payload byte is the ID of the service to select. See the
+"Services" section above for more. Only RT and command service IDs
+can be used here.
+
+The Combo responds to this with `AL_CTRL_SERVICE_VERSION_RESPONSE`.
+
+
+=== `AL_CTRL_SERVICE_VERSION_RESPONSE`:
+
+* Sent by: Combo
+* Service ID: 0x00 (control)
+* Command ID: 0xA065
+* Reliable: yes
+* Payload length: 4
+
+This is the Combo's response to `AL_CTRL_GET_SERVICE_VERSION`.
+
+#TODO: Currently, it is not known how to interpret the 4 payload bytes.
+They seem to indicate the service version, but it is unclear how exactly.#
+
+
+=== `AL_CTRL_BIND` :
+
+* Sent by: Client
+* Service ID: 0x00 (control)
+* Command ID: 0x9095
+* Reliable: yes
+* Payload length: 1
+
+This binds the client to the Combo at the application layer level.
+
+The single payload byte is set to 0x48.
+
+#TODO: It is currently unclear what this exactly is. It seems to be
+the RT mode service ID.#
+
+The Combo responds to this with `AL_CTRL_BIND_RESPONSE`.
+
+
+=== `AL_CTRL_BIND_RESPONSE` :
+
+* Sent by: Combo
+* Service ID: 0x00 (control)
+* Command ID: 0xA095
+* Reliable: yes
+* Payload length: 3
+
+This is the Combo's response to `AL_CTRL_BIND`.
+
+#TODO: Currently, it is not known how to interpret the 3 payload bytes.
+They seem to be related to the payload byte from `AL_CTRL_BIND`.#
+
+
+=== `AL_CTRL_DISCONNECT` :
+
+* Sent by: Client
+* Service ID: 0x00 (control)
+* Command ID: 0x005A
+* Reliable: yes
+* Payload length: 2
+
+This terminates the connection at the application layer level. To
+communicate with the Combo again, `AL_CTRL_CONNECT` must be sent
+first. Its two payload bytes contain a 16-bit little endian unsigned
+integer, set to 0x6003.
+
+#TODO: The integer actually seems to be set to 0x0003 by Ruffy instead.
+Clarify why.#
+
+NOTE: If a service was previously activated with `AL_CTRL_ACTIVATE_SERVICE`,
+then `AL_CTRL_DEACTIVATE_ALL_SERVICES` must be sent before this
+`AL_CTRL_DISCONNECT` is sent. Or, in other words, the service must be
+deactivated before disconnecting.
+
+
+=== `AL_CTRL_ACTIVATE_SERVICE` :
+
+* Sent by: Client
+* Service ID: 0x00 (control)
+* Command ID: 0x9066
+* Reliable: yes
+* Payload length: 3
+
+This activates the RT mode service or command mode service, depending
+on the payload, and puts the Combo into that mode.
+
+The first byte is the ID of the service to select. See the
+"Services" section above for more. Only RT and command service IDs
+can be used here.
+
+The next byte is the major version of the service to select. The
+byte after that is the minor version. The major version is set to
+1, the minor version is set to 0.
+
+The Combo responds to this with `AL_CTRL_ACTIVATE_SERVICE_RESPONSE`.
+
+#TODO: Can more than one service be active at the same time?#
+
+#TODO: Should these be set to the versions from
+`AL_CTRL_SERVICE_VERSION_RESPONSE` instead?#
+
+
+=== `AL_CTRL_ACTIVATE_SERVICE_RESPONSE` :
+
+* Sent by: Combo
+* Service ID: 0x00 (control)
+* Command ID: 0xA066
+* Reliable: yes
+* Payload length: 5
+
+This is the Combo's response to `AL_CTRL_ACTIVATE_SERVICE`.
+
+#TODO: Currently, it is not known how to interpret the 3 payload bytes.
+They seem to be related to the payload byte from `AL_CTRL_BIND`.#
+
+
+=== `AL_CTRL_DEACTIVATE_ALL_SERVICES` :
+
+* Sent by: Client
+* Service ID: 0x00 (control)
+* Command ID: 0x906A
+* Reliable: yes
+* Payload length: 0
+
+This deactivates any currently active service. To use a service
+again, `AL_CTRL_ACTIVATE_SERVICE` has to be sent first.
+
+#TODO: It may be possible that `AL_CTRL_ALL_SERVICES_DEACTIVATED`
+has to be waited for before sending anything to the Combo again
+after having sent `AL_CTRL_DEACTIVATE_ALL_SERVICES`.#
+
+The client must send this before sending `AL_CTRL_DISCONNECT`
+to ensure a correct shutdown.
+
+The Combo responds to this with `AL_CTRL_ALL_SERVICES_DEACTIVATED`.
+
+
+=== `AL_CTRL_ALL_SERVICES_DEACTIVATED` :
+
+* Sent by: Combo
+* Service ID: 0x00 (control)
+* Command ID: 0xA06A
+* Reliable: yes
+* Payload length: #TODO: Unknown#
+
+#TODO: This command has not been observed yet. It was only found
+in existing sources.#
+
+
+=== `AL_RT_BUTTON_STATUS` :
+
+* Sent by: Client
+* Service ID: 0x48
+* Command ID: 0x0565
+* Reliable: no
+* Payload length: 4
+
+Clients send this to the Combo to update the status of a virtual
+button. In RT mode, interaction occurs via virtualized Up, Down, Menu,
+Check buttons. There is also a special button, "NoButton",
+which is used to indicate that none of the buttons is pressed anymore.
+
+The first two bytes in the payload are the RT sequence, which is
+incremented.
+
+The next byte is the button code, which can be one of:
+
+* Up: 0x30
+* Down: 0xC0
+* Menu: 0x03
+* Check: 0x0C
+* NoButton: 0x00
+
+The final byte is a status byte whose meaning is not yet entirely
+clear. Currently, it seems to indicate whether or not the button
+status changed. This could be used by the Combo to recognize
+whether or not the user is holding down the button. Current findings
+point towards this meaning:
+
+* Button status did change: 0xB7
+* Button status did not change: 0x48
+
+#TODO: Clarify the meaning of this final byte.#
+
+To simulate a singular button press with a button code that is not
+NoButton, the following sequence needs to be performed:
+
+1. Send the `AL_RT_BUTTON_STATUS` command with the status byte
+   set to 0xB7 ("status did change") and the desired button code.
+2. Wait 100 ms.
+3. Send the `AL_RT_BUTTON_STATUS` command with the status byte
+   set to 0xB7 ("status did change") and the button code NoButton.
+
+To simulate a button that is being held down, the following
+sequence needs to be performed:
+
+1. Send the `AL_RT_BUTTON_STATUS` command with the status byte
+   set to 0xB7 ("status did change") and the desired button code.
+2. Wait 200 ms.
+3. If the simulated button has been "released", skip to step 5.
+4. Send the same command as in step 1, but use the status byte
+   0x48 ("status did not change") instead. Then go back to step 2.
+5. Send the `AL_RT_BUTTON_STATUS` command with the status byte
+   set to 0xB7 ("status did change") and the button code NoButton.
+
+
+=== `AL_RT_DISPLAY` :
+
+* Sent by: Combo
+* Service ID: 0x48
+* Command ID: 0x0555
+* Reliable: no
+* Payload length: 101
+
+This command is sent by the Combo to let the client show
+display contents. These contents mimic exactly what can
+be seen on the Combo's 96x32 pixels LCD. The current
+display frame is sent in four pieces to the client, over
+four `AL_RT_DISPLAY`, each with 96x8 pixels as payload.
+The client has to assemble the entire frame out of these
+pieces.
+
+The first 2 bytes are the RT sequence, incremented by
+the Combo.
+
+The next byte is marked as "reason". Two possible values
+are known: 0x48 ("pump") and 0xB7 ("DM").
+
+#TODO: It is unclear at this moment what this exactly means.#
+
+The next byte is the index. Clients use this byte to
+check if the piece they just got is associated with
+the frame that is currently being assembled or if this
+is a piece associated with a new frame. In the latter
+case, the client has to discard any existing partial
+frame data that may exist. The check is simply to see
+if the index has changed since the last `AL_RT_DISPLAY`
+command that was received.
+
+The next byte is row, which indicates the portion of
+the frame that is updated by this command. Row 0 is
+the top row, or in other words, the top 96x8 pixels.
+Row 1 is the second row from the top, etc. In terms of
+Y coordinates, row 0 covers Y coordinates 0-7, row
+1 covers Y coordinates 8-15 etc.
+
+The remaining 96 bytes contain the 96x8 pixels in
+this piece. This data is stored as a 1-bit bitmap.
+Bit 0 of the first of the 96 bytes is the top left
+pixel, or in other words, the pixel at coordinates
+(x 0, y 0). Bit 1 of the first byte is the pixel at
+the coordinates (x 1, y 0). Bit 7 of the first byte
+is the pixel at (x 7, y 0). Bit 0 of the second
+byte is the pixel at (x 8, y 0). Bit 0 of byte 12
+is the pixel at (x 0 y 1). Bit 1 of byte 12 is the
+pixel at (x 1 y 1) etc.
+
+Here is C-ish pseudo code for interpreting the
+payload's pixel data:
+
+```
+byte payload_pixel_data[96];
+boolean output_pixels[96*8];
+
+for (y = 0; y < 8; y = y + 1)
+{
+  for (x = 0; x < 12; x = x + 1)
+  {
+     byte current_byte = payload_pixel_data[x + y*12];
+     for (b = 0; b < 8; b = b + 1)
+     {
+       boolean current_pixel;
+       if ((current_byte & (1 << b)) != 0)
+         current_pixel = true;
+       else
+         current_pixel = false;
+
+       output_pixels[b + x*8 + y*96] = current_pixel;
+     }
+  }
+}
+```
+
+
+#TODO: Document these commands:#
+
+0x0556
+0x0559
+0x055a
+0x0566
+0x0569
+0x056a
+0x9069
+0xA069
+
+
+#TODO: Command mode commands#

@@ -1,0 +1,105 @@
+package info.nightscout.comboctl.base
+
+public const val CIPHER_KEY_SIZE = 16
+public const val CIPHER_BLOCK_SIZE = 16
+
+/**
+ * Class for en- and decrypting packets going to and coming from the Combo.
+ *
+ * The packets are encryptd using the Twofish symmetric block cipher.
+ * It en- and decrypts blocks of 128 bits (16 bytes). Key size too is 128 bits.
+ *
+ * @property key The 128-bit key for en- and decrypting. Initially set to null.
+ *           Callers must first set this to a valid non-null value before any
+ *           en- and decrypting can be performed.
+ */
+class Cipher {
+    var key: ByteArray? = ByteArray(CIPHER_KEY_SIZE)
+        set(value) {
+            require(value != null)
+            require(value.size == CIPHER_KEY_SIZE)
+            keyObject = Twofish.Twofish_Algorithm.makeKey(value)
+            field = value
+        }
+
+    /**
+     * Encrypts a 128-bit block of cleartext, producing a 128-bit ciphertext block.
+     *
+     * The key must have been set to a valid value before calling this function.
+     *
+     * @param cleartext Array of 16 bytes (128 bits) of cleartext to encrypt.
+     * @return Array of 16 bytes (128 bits) of ciphertext.
+     */
+    fun encrypt(cleartext: ByteArray): ByteArray {
+        require(key != null)
+        require(cleartext.size == CIPHER_BLOCK_SIZE)
+        return Twofish.Twofish_Algorithm.blockEncrypt(cleartext, 0, keyObject)
+    }
+
+    /**
+     * Decrypts a 128-bit block of ciphertext, producing a 128-bit cleartext block.
+     *
+     * The key must have been set to a valid value before calling this function.
+     *
+     * @param ciphertext Array of 16 bytes (128 bits) of ciphertext to decrypt.
+     * @return Array of 16 bytes (128 bits) of cleartext.
+     */
+    fun decrypt(ciphertext: ByteArray): ByteArray {
+        require(key != null)
+        require(ciphertext.size == CIPHER_BLOCK_SIZE)
+        return Twofish.Twofish_Algorithm.blockDecrypt(ciphertext, 0, keyObject)
+    }
+
+    private var keyObject = Any()
+}
+
+/**
+ * Generates a weak key out of a 10-digit PIN.
+ *
+ * The weak key is needed during the Combo pairing process. The
+ * 10-digit PIN is displayed on the Combo's LCD, and the user has
+ * to enter it into whatever program is being paired with the Combo.
+ * Out of that PIN, the "weak key" is generated. That key is used
+ * for decrypting a subsequently incoming packet that contains
+ * additional keys that are used for en- and decrypting followup
+ * packets coming from and going to the Combo.
+ *
+ * @param PIN Integer array with 10 digits. Each integer must be
+ *        in the range 0 to 9.
+ * @return 16 bytes containing the generated 128-bit weak key.
+ */
+fun generateWeakKeyFromPIN(PIN: IntArray): ByteArray {
+    require(PIN.size == 10)
+
+    var generatedKey = ByteArray(CIPHER_KEY_SIZE)
+
+    // The weak key generation algorithm computes the first
+    // 10 bytes simply by looking at the first 10 PIN
+    // digits, interpreting them as characters, and using the
+    // ASCII indices of these characters. For example, suppose
+    // that the first PIN digit is 2. It is interpreted as
+    // character "2". That character has ASCII index 50.
+    // Therefore, the first byte in the key is set to 50.
+    for (i in 0 until 10) {
+        val pinDigit = PIN[i]
+        require((pinDigit >= 0) && (pinDigit <= 9))
+
+        val pinAsciiIndex = pinDigit + '0'.toInt()
+        generatedKey[i] = pinAsciiIndex.toByte()
+    }
+
+    // The PIN has 10 digits, not 16, but the key has 16
+    // bytes. For the last 6 bytes, the first 6 digits are
+    // treated just like above, except that the ASCII index
+    // is XORed with 0xFF.
+    for (i in 0 until 6) {
+        // No need to perform require() checks here,
+        // since we did them above already.
+        val pinDigit = PIN[i]
+
+        val pinAsciiIndex = pinDigit + '0'.toInt()
+        generatedKey[i + 10] = (0xFF xor pinAsciiIndex).toByte()
+    }
+
+    return generatedKey
+}
