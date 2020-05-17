@@ -1,7 +1,7 @@
 package info.nightscout.comboctl.base
 
-public const val CIPHER_KEY_SIZE = 16
-public const val CIPHER_BLOCK_SIZE = 16
+const val CIPHER_KEY_SIZE = 16
+const val CIPHER_BLOCK_SIZE = 16
 
 /**
  * Class for en- and decrypting packets going to and coming from the Combo.
@@ -13,14 +13,13 @@ public const val CIPHER_BLOCK_SIZE = 16
  *           Callers must first set this to a valid non-null value before any
  *           en- and decrypting can be performed.
  */
-class Cipher {
-    var key: ByteArray? = ByteArray(CIPHER_KEY_SIZE)
-        set(value) {
-            require(value != null)
-            require(value.size == CIPHER_KEY_SIZE)
-            keyObject = Twofish.Twofish_Algorithm.makeKey(value)
-            field = value
-        }
+class Cipher (val key: ByteArray) {
+
+    private val keyObject = Twofish.Twofish_Algorithm.makeKey(key)
+
+    init {
+        require(key.size == CIPHER_KEY_SIZE)
+    }
 
     /**
      * Encrypts a 128-bit block of cleartext, producing a 128-bit ciphertext block.
@@ -31,7 +30,6 @@ class Cipher {
      * @return Array of 16 bytes (128 bits) of ciphertext.
      */
     fun encrypt(cleartext: ByteArray): ByteArray {
-        require(key != null)
         require(cleartext.size == CIPHER_BLOCK_SIZE)
         return Twofish.Twofish_Algorithm.blockEncrypt(cleartext, 0, keyObject)
     }
@@ -45,12 +43,9 @@ class Cipher {
      * @return Array of 16 bytes (128 bits) of cleartext.
      */
     fun decrypt(ciphertext: ByteArray): ByteArray {
-        require(key != null)
         require(ciphertext.size == CIPHER_BLOCK_SIZE)
         return Twofish.Twofish_Algorithm.blockDecrypt(ciphertext, 0, keyObject)
     }
-
-    private var keyObject = Any()
 }
 
 /**
@@ -71,7 +66,7 @@ class Cipher {
 fun generateWeakKeyFromPIN(PIN: IntArray): ByteArray {
     require(PIN.size == 10)
 
-    var generatedKey = ByteArray(CIPHER_KEY_SIZE)
+    val generatedKey = ByteArray(CIPHER_KEY_SIZE)
 
     // The weak key generation algorithm computes the first
     // 10 bytes simply by looking at the first 10 PIN

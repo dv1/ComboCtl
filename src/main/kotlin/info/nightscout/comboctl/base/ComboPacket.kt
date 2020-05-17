@@ -210,10 +210,7 @@ class ComboPacket {
         machineAuthenticationCode = calculateMAC(cipher)
     }
 
-    fun verifyAuthentication(cipher: Cipher): Boolean {
-        val calculatedMAC = calculateMAC(cipher)
-        return calculatedMAC.contentEquals(machineAuthenticationCode)
-    }
+    fun verifyAuthentication(cipher: Cipher): Boolean = calculateMAC(cipher).contentEquals(machineAuthenticationCode)
 
     // This computes the MAC using Two-Fish and a modified RFC3610 CCM authentication
     // process. See "Packet authentication" in combo-comm-spec.adoc for details.

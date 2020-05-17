@@ -110,10 +110,9 @@ class ComboPacketTest {
     fun verifyPacketDataIntegrityWithMAC() {
         // Create packet and verify that the MAC check detects data corruption.
 
-        var cipher = Cipher()
-        var key = ByteArray(CIPHER_KEY_SIZE)
-        key.fill('0'.toByte())
-        cipher.key = key
+
+        val key = ByteArray(CIPHER_KEY_SIZE).apply { fill('0'.toByte()) }
+        val cipher = Cipher(key)
 
         val packet = ComboPacket().apply {
             majorVersion = 4

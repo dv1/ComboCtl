@@ -1,5 +1,8 @@
 package info.nightscout.comboctl.base
 
+import java.lang.IllegalArgumentException
+import java.lang.IllegalStateException
+
 
 /**
  * Combo transport layer (TL) communication implementation.
@@ -28,8 +31,7 @@ class TransportLayer {
         // Weak key cipher, only used for authenticating the KEY_RESPONSE
         // message and for decrypting its payload (the client-pump and
         // pump-client keys).
-        var weakCipher = Cipher()
-            private set
+        var weakCipher: Cipher? = null
 
         /**
          * Client-pump cipher.
@@ -39,8 +41,7 @@ class TransportLayer {
          * Its 128-bit key is one of the values that must be stored persistently
          * and restored when the application is reloaded.
          */
-        var clientPumpCipher = Cipher()
-            private set
+        var clientPumpCipher: Cipher? = null
 
         /**
          * Pump-client cipher.
@@ -50,8 +51,7 @@ class TransportLayer {
          * Its 128-bit key is one of the values that must be stored persistently
          * and restored when the application is reloaded.
          */
-        var pumpClientCipher = Cipher()
-            private set
+        var pumpClientCipher: Cipher? = null
 
 
         /*********
@@ -193,7 +193,7 @@ class TransportLayer {
         require(state.keyResponseSourceAddress != null)
         require(state.keyResponseDestinationAddress != null)
 
-        var packet = ComboPacket().apply {
+        val packet = ComboPacket().apply {
             majorVersion = 1
             minorVersion = 0
             sourceAddress = state.keyResponseSourceAddress!!
@@ -208,7 +208,7 @@ class TransportLayer {
         packet.nonce = state.currentTxNonce.copyOf()
         incrementTxNonce(state)
 
-        packet.authenticate(state.clientPumpCipher)
+        state.clientPumpCipher?.let { packet.authenticate(it) } ?: throw IllegalStateException()
 
         return packet
     }
@@ -276,8 +276,8 @@ class TransportLayer {
 
         var payload = ArrayList<Byte>(17)
 
-        payload.add(((Constants.CLIENT_SOFTWARE_VERSION shr  0) and 0xFF).toByte())
-        payload.add(((Constants.CLIENT_SOFTWARE_VERSION shr  8) and 0xFF).toByte())
+        payload.add(((Constants.CLIENT_SOFTWARE_VERSION shr 0) and 0xFF).toByte())
+        payload.add(((Constants.CLIENT_SOFTWARE_VERSION shr 8) and 0xFF).toByte())
         payload.add(((Constants.CLIENT_SOFTWARE_VERSION shr 16) and 0xFF).toByte())
         payload.add(((Constants.CLIENT_SOFTWARE_VERSION shr 24) and 0xFF).toByte())
 
@@ -362,21 +362,23 @@ class TransportLayer {
      * @param packet The packet that came from the Combo.
      */
     fun parseKeyResponsePacket(state: State, packet: ComboPacket) {
+
+        val weakCipher = state.weakCipher ?: throw IllegalStateException()
+
         require(packet.commandID == CommandID.KEY_RESPONSE.id)
         require(packet.payload.size == (CIPHER_KEY_SIZE * 2))
-        require(state.weakCipher.key != null)
-        require(packet.verifyAuthentication(state.weakCipher))
+        require(packet.verifyAuthentication(weakCipher))
 
-        var encryptedPCKey = ByteArray(CIPHER_KEY_SIZE)
-        var encryptedCPKey = ByteArray(CIPHER_KEY_SIZE)
+        val encryptedPCKey = ByteArray(CIPHER_KEY_SIZE)
+        val encryptedCPKey = ByteArray(CIPHER_KEY_SIZE)
 
         for (i in 0 until CIPHER_KEY_SIZE) {
-            encryptedPCKey[i] = packet.payload[i +               0]
+            encryptedPCKey[i] = packet.payload[i + 0]
             encryptedCPKey[i] = packet.payload[i + CIPHER_KEY_SIZE]
         }
 
-        state.pumpClientCipher.key = state.weakCipher.decrypt(encryptedPCKey)
-        state.clientPumpCipher.key = state.weakCipher.decrypt(encryptedCPKey)
+        state.pumpClientCipher = Cipher(weakCipher.decrypt(encryptedPCKey))
+        state.clientPumpCipher = Cipher(weakCipher.decrypt(encryptedCPKey))
 
         // Note: Source and destination addresses are reversed,
         // since they are set from the perspective of the pump.
@@ -411,14 +413,15 @@ class TransportLayer {
     fun parseIDResponsePacket(state: State, packet: ComboPacket): ComboIDs {
         require(packet.commandID == CommandID.ID_RESPONSE.id)
         require(packet.payload.size == 17)
-        require(packet.verifyAuthentication(state.pumpClientCipher))
+        val pumpClientCipher = state.pumpClientCipher ?: throw IllegalStateException()
+        require(packet.verifyAuthentication(pumpClientCipher))
 
-        val serverID = ((packet.payload[0].toPosLong() shl  0)
-                     or (packet.payload[1].toPosLong() shl  8)
-                     or (packet.payload[2].toPosLong() shl 16)
-                   or (packet.payload[3].toPosLong() shl 24))
+        val serverID = ((packet.payload[0].toPosLong() shl 0)
+                or (packet.payload[1].toPosLong() shl 8)
+                or (packet.payload[2].toPosLong() shl 16)
+                or (packet.payload[3].toPosLong() shl 24))
 
-        var pumpIDStrBuilder = StringBuilder()
+        val pumpIDStrBuilder = StringBuilder()
         for (i in 0 until 13) {
             val pumpIDByte = packet.payload[4 + i]
             if (pumpIDByte == 0.toByte())
@@ -444,11 +447,12 @@ class TransportLayer {
      * @param packet The packet that came from the Combo.
      * @return The parsed error ID.
      */
-    private fun parseErrorResponsePacket(state: State, packet: ComboPacket): Int {
-        require(packet.commandID == CommandID.ERROR_RESPONSE.id)
-        require(packet.payload.size == 1)
-        require(packet.verifyAuthentication(state.pumpClientCipher))
+    private fun parseErrorResponsePacket(state: State, packet: ComboPacket): Int? =
+            state.pumpClientCipher?.let { cipher ->
+                require(packet.commandID == CommandID.ERROR_RESPONSE.id)
+                require(packet.payload.size == 1)
+                require(packet.verifyAuthentication(cipher))
 
-        return packet.payload[0].toInt()
-    }
+                packet.payload[0].toInt()
+            }
 }
