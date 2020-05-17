@@ -230,8 +230,8 @@ client paired. But for proper communication, additional steps are needed,
 explained in the next section.
 
 Also, at this point, the RFCOMM server socket (see the "RFCOMM operation"
-section above) must be closed at this point, followed by opening an
-insecure RFCOMM connection to the pump.
+section above) must be closed, followed by opening an insecure RFCOMM
+connection to the pump.
 
 
 === Transport layer pairing
@@ -505,7 +505,7 @@ A more high-level example:
 
 1. Packet with its 18-byte packet header and 26 payload bytes.
    This makes for a total of 44 bytes of auth data. As said above,
-   for authentication, no MAC bytes are included in this -
+   for authentication, no MAC bytes are included in this.
 2. 44 is not an integer multiple of 16. 44 mod 16 = 12. So, 16-12 = 4
    padding bytes are needed to expand the auth data to 48 bytes, which
    _is_ an integer multiple of 16. These four padding bytes are 0x04
@@ -578,7 +578,7 @@ to generate `X_3` etc:
 The RFC section 2.2. mentions: "If needed, the ciphertext is
 truncated to give T." T is not used here.
 
-Here, CCM begins to be used in an uncommon way for the Combo.
+Here, CCM begins to be used by the Combo in a non-standard way.
 The authentication & encryption process is repeated - sort of.
 
 The first 8 bytes of the last computed `X_i` value are stored
@@ -941,10 +941,10 @@ The Combo responds with `TL_PAIRING_CONNECTION_REQUEST_ACCEPTED`.
 The Combo sends this after the client sent the command
 `TL_REQUEST_PAIRING_CONNECTION`.
 
-TODO: Its payload is not entirely clear. The first byte is 0x00,
+#TODO: Its payload is not entirely clear. The first byte is 0x00,
 and has an unknown meaning. The next two bytes appear to be
 the CRC-16-MCRF4XX checksum of the packet header plus that
-one payload byte.
+one payload byte.#
 
 Upon receiving this, the client sends `TL_REQUEST_KEYS`.
 
@@ -1123,8 +1123,8 @@ to the Combo after receiving this.
 * Key for CCM-auth:
 
 #TODO: It is unclear if this is necessary. It seems that the client is
-supposed to transmit when finalizing the pairing process, right before
-`AL_CTRL_DISCONNECT`. Ruffy does not use it though.#
+supposed to transmit this when finalizing the pairing process, right
+before `AL_CTRL_DISCONNECT`. Ruffy does not use it though.#
 
 
 === `TL_ACK_RESPONSE` :
@@ -1245,7 +1245,7 @@ The 2-byte payload is ignored.
 
 The client's reaction to this depends on whether the pairing
 process is finished or not. (See the "Pairing" section for more.)
-If the pairing process is finished, the client sends
+If the pairing process is ongoing, the client sends
 `AL_CTRL_GET_SERVICE_VERSION`. Otherwise, it sends
 `AL_CTRL_ACTIVATE_SERVICE`.
 

@@ -215,58 +215,74 @@ class ComboPacket {
         return calculatedMAC.contentEquals(machineAuthenticationCode)
     }
 
+    // This computes the MAC using Two-Fish and a modified RFC3610 CCM authentication
+    // process. See "Packet authentication" in combo-comm-spec.adoc for details.
     private fun calculateMAC(cipher: Cipher): ByteArray {
         var MAC = ByteArray(NUM_MAC_BYTES)
         var block = ByteArray(CIPHER_BLOCK_SIZE)
 
+        // Set up B_0.
         block[0] = 0x79
         for (i in 0 until NUM_NONCE_BYTES) block[i + 1] = nonce[i]
         block[14] = 0x00
         block[15] = 0x00
 
+        // Produce X_1 out of B_0.
         block = cipher.encrypt(block)
 
         val packetData = toByteList(withMAC = false, withPayload = true)
         val numDataBlocks = packetData.size / CIPHER_BLOCK_SIZE
 
+        // Repeatedly produce X_i+1 out of X_i and B_i.
+        // X_i is the current block value, B_i is the
+        // data from packetData that is being accessed
+        // inside the loop.
         for (dataBlockNr in 0 until numDataBlocks) {
             for (i in 0 until CIPHER_BLOCK_SIZE) {
-                var a: Int = block[i].toInt() and 0xFF
-                var b: Int = packetData[dataBlockNr * CIPHER_BLOCK_SIZE + i].toInt() and 0xFF
+                var a: Int = block[i].toPosInt()
+                var b: Int = packetData[dataBlockNr * CIPHER_BLOCK_SIZE + i].toPosInt()
                 block[i] = (a xor b).toByte()
             }
 
             block = cipher.encrypt(block)
         }
 
+        // Handle the last block, and apply padding if needed.
         val remainingDataBytes = packetData.size - numDataBlocks * CIPHER_BLOCK_SIZE
         if (remainingDataBytes > 0) {
             for (i in 0 until remainingDataBytes) {
-                var a: Int = block[i].toInt() and 0xFF
-                var b: Int = packetData[packetData.size - remainingDataBytes + i].toInt() and 0xFF
+                var a: Int = block[i].toPosInt()
+                var b: Int = packetData[packetData.size - remainingDataBytes + i].toPosInt()
                 block[i] = (a xor b).toByte()
             }
 
             var paddingValue = 16 - remainingDataBytes
 
             for (i in remainingDataBytes until CIPHER_BLOCK_SIZE)
-                block[i] = ((block[i].toInt() and 0xFF) xor paddingValue).toByte()
+                block[i] = ((block[i].toPosInt()) xor paddingValue).toByte()
 
             block = cipher.encrypt(block)
         }
 
+        // Here, the non-standard portion of the authentication starts.
+
+        // Produce the "U" value.
         for (i in 0 until NUM_MAC_BYTES)
             MAC[i] = block[i]
 
+        // Produce the new B_0.
         block[0] = 0x41
         for (i in 0 until NUM_NONCE_BYTES) block[i + 1] = nonce[i]
         block[14] = 0x00
         block[15] = 0x00
 
+        // Produce X_1 out of the new B_0.
         block = cipher.encrypt(block)
 
+        // Compute the final MAC out of U and the
+        // first 8 bytes of X_1 XORed together.
         for (i in 0 until NUM_MAC_BYTES)
-            MAC[i] = ((MAC[i].toInt() and 0xFF) xor (block[i].toInt() and 0xFF)).toByte()
+            MAC[i] = ((MAC[i].toPosInt()) xor (block[i].toPosInt())).toByte()
 
         return MAC
     }
