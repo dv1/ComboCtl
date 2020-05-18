@@ -15,11 +15,11 @@ const val CIPHER_BLOCK_SIZE = 16
  */
 class Cipher (val key: ByteArray) {
 
-    private val keyObject = Twofish.Twofish_Algorithm.makeKey(key)
-
     init {
         require(key.size == CIPHER_KEY_SIZE)
     }
+
+    private val keyObject = Twofish.Twofish_Algorithm.makeKey(key)
 
     /**
      * Encrypts a 128-bit block of cleartext, producing a 128-bit ciphertext block.
