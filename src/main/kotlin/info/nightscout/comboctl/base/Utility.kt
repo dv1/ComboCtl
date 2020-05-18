@@ -81,7 +81,6 @@ fun List<Byte>.toHexStringWithContext(offset: Int, contextSize: Int = 10): Strin
     return "%s[%02X]%s".format(beforeByteContextStr, byte, afterByteContextStr)
 }
 
-
 /**
  * Byte to Int conversion that treats all 8 bits of the byte as a positive value.
  *

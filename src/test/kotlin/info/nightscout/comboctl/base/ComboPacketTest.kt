@@ -1,8 +1,7 @@
 package info.nightscout.comboctl.base
 
-import org.junit.Test
 import org.junit.Assert.*
-
+import org.junit.Test
 
 class ComboPacketTest {
     @Test
@@ -109,7 +108,6 @@ class ComboPacketTest {
     @Test
     fun verifyPacketDataIntegrityWithMAC() {
         // Create packet and verify that the MAC check detects data corruption.
-
 
         val key = ByteArray(CIPHER_KEY_SIZE).apply { fill('0'.toByte()) }
         val cipher = Cipher(key)

@@ -1,6 +1,5 @@
 package info.nightscout.comboctl.base
 
-
 // Packet structure:
 //
 //   1. 4 bits    : Packet major version (always set to 0x01)
@@ -69,7 +68,6 @@ class ComboPacket {
         for (i in 0 until NUM_MAC_BYTES) machineAuthenticationCode[i] = bytes[PAYLOAD_BYTES_OFFSET + payloadSize + i]
     }
 
-
     // Header
 
     /**
@@ -126,7 +124,6 @@ class ComboPacket {
             field = value
         }
 
-
     // Payload
 
     var payload: ArrayList<Byte> = ArrayList<Byte>(0)
@@ -134,7 +131,6 @@ class ComboPacket {
             require(value.size <= 65535)
             field = value
         }
-
 
     // MAC
 
@@ -144,23 +140,21 @@ class ComboPacket {
             field = value
         }
 
-
     // Implementing custom equals operator, since otherwise,
     // the nonce and machineAuthenticationCode arrays are
     // not compared correctly.
-    override fun equals(other: Any?)
-         = (other is ComboPacket)
-        && (majorVersion == other.majorVersion)
-        && (minorVersion == other.minorVersion)
-        && (sequenceBit == other.sequenceBit)
-        && (reliabilityBit == other.reliabilityBit)
-        && (commandID == other.commandID)
-        && (sourceAddress == other.sourceAddress)
-        && (destinationAddress == other.destinationAddress)
-        && (payload == other.payload)
-        && (nonce contentEquals other.nonce)
-        && (machineAuthenticationCode contentEquals other.machineAuthenticationCode)
-
+    override fun equals(other: Any?) =
+         (other is ComboPacket) &&
+        (majorVersion == other.majorVersion) &&
+        (minorVersion == other.minorVersion) &&
+        (sequenceBit == other.sequenceBit) &&
+        (reliabilityBit == other.reliabilityBit) &&
+        (commandID == other.commandID) &&
+        (sourceAddress == other.sourceAddress) &&
+        (destinationAddress == other.destinationAddress) &&
+        (payload == other.payload) &&
+        (nonce contentEquals other.nonce) &&
+        (machineAuthenticationCode contentEquals other.machineAuthenticationCode)
 
     fun toByteList(withMAC: Boolean = true, withPayload: Boolean = true): ArrayList<Byte> {
         var bytes = ArrayList<Byte>(PACKET_HEADER_SIZE)
@@ -184,7 +178,6 @@ class ComboPacket {
         return bytes
     }
 
-
     // CRC16
 
     fun computeCRC16Payload() {
@@ -199,10 +192,9 @@ class ComboPacket {
         require(payload.size == 2)
         val headerData = toByteList(false, false)
         val calculatedCRC16 = calculateCRC16MCRF4XX(headerData)
-        return (payload[0] == (calculatedCRC16 and 0xFF).toByte())
-            && (payload[1] == ((calculatedCRC16 shr 8) and 0xFF).toByte())
+        return (payload[0] == (calculatedCRC16 and 0xFF).toByte()) &&
+            (payload[1] == ((calculatedCRC16 shr 8) and 0xFF).toByte())
     }
-
 
     // Authentication
 
@@ -284,6 +276,5 @@ class ComboPacket {
         return MAC
     }
 }
-
 
 fun List<Byte>.toComboPacket(): ComboPacket { return ComboPacket(this) }

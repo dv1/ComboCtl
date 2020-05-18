@@ -1,8 +1,6 @@
 package info.nightscout.comboctl.base
 
-import java.lang.IllegalArgumentException
 import java.lang.IllegalStateException
-
 
 /**
  * Combo transport layer (TL) communication implementation.
@@ -53,7 +51,6 @@ class TransportLayer {
          */
         var pumpClientCipher: Cipher? = null
 
-
         /*********
          * Nonce *
          *********/
@@ -74,7 +71,6 @@ class TransportLayer {
                 require(value.size == NUM_NONCE_BYTES)
                 field = value
             }
-
 
         /**********************************
          * Source & destination addresses *
@@ -108,7 +104,6 @@ class TransportLayer {
                 field = value
             }
 
-
         /**
          * Current sequence flag, used in reliable data packets.
          *
@@ -116,7 +111,6 @@ class TransportLayer {
          */
         var currentSequenceFlag = false
     }
-
 
     /**
      * Valid command IDs for Combo packets.
@@ -139,7 +133,6 @@ class TransportLayer {
         DATA(0x03),
         ERROR_RESPONSE(0x06)
     }
-
 
     private fun incrementTxNonce(state: State) {
         var carry: Boolean = true
@@ -189,7 +182,13 @@ class TransportLayer {
     // been received, because only then will keyResponseSourceAddress,
     // keyResponseDestinationAddress, and clientPumpCipher.key be set
     // to valid values.
-    private fun createMACAuthenticatedPacket(state: State, commandID: CommandID, payload: ArrayList<Byte> = ArrayList<Byte>(0), sequenceBit: Boolean = false, reliabilityBit: Boolean = false): ComboPacket {
+    private fun createMACAuthenticatedPacket(
+        state: State,
+        commandID: CommandID,
+        payload: ArrayList<Byte> = ArrayList<Byte>(0),
+        sequenceBit: Boolean = false,
+        reliabilityBit: Boolean = false
+    ): ComboPacket {
         require(state.keyResponseSourceAddress != null)
         require(state.keyResponseDestinationAddress != null)
 
@@ -345,7 +344,6 @@ class TransportLayer {
 
         return createMACAuthenticatedPacket(state, CommandID.DATA, payload = payload, sequenceBit = sequenceBit, reliabilityBit = reliabilityBit)
     }
-
 
     /**
      * Parses a KEY_RESPONSE packet.

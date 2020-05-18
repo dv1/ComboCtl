@@ -1,8 +1,8 @@
 package info.nightscout.comboctl.base
 
-import org.junit.Test
-import org.junit.Assert.*
 import kotlin.text.Charsets
+import org.junit.Assert.*
+import org.junit.Test
 
 class CipherTest {
     @Test
@@ -20,7 +20,7 @@ class CipherTest {
             )
             val actualWeakKey = generateWeakKeyFromPIN(PIN)
             assertArrayEquals(expectedWeakKey, actualWeakKey)
-        } catch (ex : Exception) {
+        } catch (ex: Exception) {
             ex.printStackTrace()
             throw Error("Unexpected exception: $ex")
         }
@@ -37,12 +37,10 @@ class CipherTest {
 
         val inputData = "0123456789abcdef".toByteArray(Charsets.UTF_8)
 
-
         val key = ByteArray(CIPHER_KEY_SIZE)
         key.fill('0'.toByte())
 
         val cipher = Cipher(key)
-
 
         val expectedEncryptedData = byteArrayOfInts(
             0xb3, 0x58, 0x09, 0xd0,

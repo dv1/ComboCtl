@@ -13,7 +13,7 @@ const val CIPHER_BLOCK_SIZE = 16
  *           Callers must first set this to a valid non-null value before any
  *           en- and decrypting can be performed.
  */
-class Cipher (val key: ByteArray) {
+class Cipher(val key: ByteArray) {
 
     init {
         require(key.size == CIPHER_KEY_SIZE)
