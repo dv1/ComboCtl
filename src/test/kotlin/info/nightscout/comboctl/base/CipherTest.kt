@@ -22,7 +22,7 @@ class CipherTest {
             assertArrayEquals(expectedWeakKey, actualWeakKey)
         } catch (ex : Exception) {
             ex.printStackTrace()
-            throw Error("Unexpected exception: " + ex)
+            throw Error("Unexpected exception: $ex")
         }
     }
 
@@ -37,11 +37,12 @@ class CipherTest {
 
         val inputData = "0123456789abcdef".toByteArray(Charsets.UTF_8)
 
-        var cipher = Cipher()
 
-        var key = ByteArray(CIPHER_KEY_SIZE)
+        val key = ByteArray(CIPHER_KEY_SIZE)
         key.fill('0'.toByte())
-        cipher.key = key
+
+        val cipher = Cipher(key)
+
 
         val expectedEncryptedData = byteArrayOfInts(
             0xb3, 0x58, 0x09, 0xd0,
