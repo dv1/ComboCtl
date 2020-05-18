@@ -144,25 +144,25 @@ class ComboPacket {
     // the nonce and machineAuthenticationCode arrays are
     // not compared correctly.
     override fun equals(other: Any?) =
-         (other is ComboPacket) &&
-        (majorVersion == other.majorVersion) &&
-        (minorVersion == other.minorVersion) &&
-        (sequenceBit == other.sequenceBit) &&
-        (reliabilityBit == other.reliabilityBit) &&
-        (commandID == other.commandID) &&
-        (sourceAddress == other.sourceAddress) &&
-        (destinationAddress == other.destinationAddress) &&
-        (payload == other.payload) &&
-        (nonce contentEquals other.nonce) &&
-        (machineAuthenticationCode contentEquals other.machineAuthenticationCode)
+            (other is ComboPacket) &&
+                    (majorVersion == other.majorVersion) &&
+                    (minorVersion == other.minorVersion) &&
+                    (sequenceBit == other.sequenceBit) &&
+                    (reliabilityBit == other.reliabilityBit) &&
+                    (commandID == other.commandID) &&
+                    (sourceAddress == other.sourceAddress) &&
+                    (destinationAddress == other.destinationAddress) &&
+                    (payload == other.payload) &&
+                    (nonce contentEquals other.nonce) &&
+                    (machineAuthenticationCode contentEquals other.machineAuthenticationCode)
 
     fun toByteList(withMAC: Boolean = true, withPayload: Boolean = true): ArrayList<Byte> {
         var bytes = ArrayList<Byte>(PACKET_HEADER_SIZE)
 
         bytes.add(((majorVersion shl 4) or minorVersion).toByte())
         bytes.add(((if (sequenceBit) 0x80 else 0)
-                 or (if (reliabilityBit) 0x20 else 0)
-                 or commandID).toByte())
+                or (if (reliabilityBit) 0x20 else 0)
+                or commandID).toByte())
         bytes.add((payload.size and 0xFF).toByte())
         bytes.add(((payload.size shr 8) and 0xFF).toByte())
         bytes.add(((sourceAddress shl 4) or destinationAddress).toByte())
@@ -193,7 +193,7 @@ class ComboPacket {
         val headerData = toByteList(false, false)
         val calculatedCRC16 = calculateCRC16MCRF4XX(headerData)
         return (payload[0] == (calculatedCRC16 and 0xFF).toByte()) &&
-            (payload[1] == ((calculatedCRC16 shr 8) and 0xFF).toByte())
+                (payload[1] == ((calculatedCRC16 shr 8) and 0xFF).toByte())
     }
 
     // Authentication
@@ -277,4 +277,6 @@ class ComboPacket {
     }
 }
 
-fun List<Byte>.toComboPacket(): ComboPacket { return ComboPacket(this) }
+fun List<Byte>.toComboPacket(): ComboPacket {
+    return ComboPacket(this)
+}

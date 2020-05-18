@@ -117,21 +117,14 @@ class TransportLayer {
      */
     enum class CommandID(val id: Int) {
         // Pairing commands
-        REQUEST_PAIRING_CONNECTION(0x09),
-        PAIRING_CONNECTION_REQUEST_ACCEPTED(0x0A),
-        REQUEST_KEYS(0x0C),
-        GET_AVAILABLE_KEYS(0x0F),
-        KEY_RESPONSE(0x11),
-        REQUEST_ID(0x12),
-        ID_RESPONSE(0x14),
+        REQUEST_PAIRING_CONNECTION(0x09), PAIRING_CONNECTION_REQUEST_ACCEPTED(0x0A), REQUEST_KEYS(
+            0x0C),
+        GET_AVAILABLE_KEYS(0x0F), KEY_RESPONSE(0x11), REQUEST_ID(0x12), ID_RESPONSE(0x14),
 
         // Regular commands - these require that pairing was performed
-        REQUEST_REGULAR_CONNECTION(0x17),
-        REGULAR_CONNECTION_REQUEST_ACCEPTED(0x18),
-        DISCONNECT(0x1B),
-        ACK_RESPONSE(0x05),
-        DATA(0x03),
-        ERROR_RESPONSE(0x06)
+        REQUEST_REGULAR_CONNECTION(0x17), REGULAR_CONNECTION_REQUEST_ACCEPTED(0x18), DISCONNECT(0x1B), ACK_RESPONSE(
+            0x05),
+        DATA(0x03), ERROR_RESPONSE(0x06)
     }
 
     private fun incrementTxNonce(state: State) {
@@ -150,8 +143,7 @@ class TransportLayer {
                 }
             }
 
-            if (!carry)
-                break
+            if (!carry) break
         }
     }
 
@@ -159,7 +151,7 @@ class TransportLayer {
     // These packets only have the CRC itself as payload, and
     // are only used during the pairing process.
     private fun createCRCPacket(commandID: CommandID): ComboPacket {
-        var packet = ComboPacket().apply {
+        val packet = ComboPacket().apply {
             majorVersion = 1
             minorVersion = 0
             sequenceBit = false
@@ -185,7 +177,7 @@ class TransportLayer {
     private fun createMACAuthenticatedPacket(
         state: State,
         commandID: CommandID,
-        payload: ArrayList<Byte> = ArrayList<Byte>(0),
+        payload: ArrayList<Byte> = arrayListOf(),
         sequenceBit: Boolean = false,
         reliabilityBit: Boolean = false
     ): ComboPacket {
@@ -268,12 +260,13 @@ class TransportLayer {
     fun createRequestIDPacket(state: State, bluetoothFriendlyName: String): ComboPacket {
         // The nonce is set to 1 in the REQUEST_ID packet, and
         // get incremented from that moment onwards.
-        state.currentTxNonce = byteArrayOfInts(0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00)
+        state.currentTxNonce = byteArrayOfInts(0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00)
 
         val btFriendlyNameBytes = bluetoothFriendlyName.toByteArray(Charsets.UTF_8)
         val numBTFriendlyNameBytes = kotlin.math.min(btFriendlyNameBytes.size, 13)
 
-        var payload = ArrayList<Byte>(17)
+        val payload = ArrayList<Byte>(17)
 
         payload.add(((Constants.CLIENT_SOFTWARE_VERSION shr 0) and 0xFF).toByte())
         payload.add(((Constants.CLIENT_SOFTWARE_VERSION shr 8) and 0xFF).toByte())
@@ -282,10 +275,8 @@ class TransportLayer {
 
         // If the BT friendly name is shorter than 13 bytes,
         // the rest must be set to zero.
-        for (i in 0 until numBTFriendlyNameBytes)
-            payload.add(btFriendlyNameBytes[i])
-        for (i in numBTFriendlyNameBytes until 13)
-            payload.add(0.toByte())
+        for (i in 0 until numBTFriendlyNameBytes) payload.add(btFriendlyNameBytes[i])
+        for (i in numBTFriendlyNameBytes until 13) payload.add(0.toByte())
 
         return createMACAuthenticatedPacket(state, CommandID.REQUEST_ID, payload)
     }
@@ -314,7 +305,8 @@ class TransportLayer {
      * @return The produced packet.
      */
     fun createAckResponsePacket(state: State, sequenceBit: Boolean): ComboPacket {
-        return createMACAuthenticatedPacket(state, CommandID.ACK_RESPONSE, sequenceBit = sequenceBit, reliabilityBit = true)
+        return createMACAuthenticatedPacket(state, CommandID.ACK_RESPONSE, sequenceBit = sequenceBit,
+            reliabilityBit = true)
     }
 
     /**
@@ -334,15 +326,15 @@ class TransportLayer {
      * @return The produced packet.
      */
     fun createDataPacket(state: State, reliabilityBit: Boolean, payload: ArrayList<Byte>): ComboPacket {
-        var sequenceBit: Boolean
+        val sequenceBit: Boolean
 
         if (reliabilityBit) {
             sequenceBit = state.currentSequenceFlag
             state.currentSequenceFlag = !state.currentSequenceFlag
-        } else
-            sequenceBit = false
+        } else sequenceBit = false
 
-        return createMACAuthenticatedPacket(state, CommandID.DATA, payload = payload, sequenceBit = sequenceBit, reliabilityBit = reliabilityBit)
+        return createMACAuthenticatedPacket(state, CommandID.DATA, payload = payload, sequenceBit = sequenceBit,
+            reliabilityBit = reliabilityBit)
     }
 
     /**
@@ -414,18 +406,16 @@ class TransportLayer {
         val pumpClientCipher = state.pumpClientCipher ?: throw IllegalStateException()
         require(packet.verifyAuthentication(pumpClientCipher))
 
-        val serverID = ((packet.payload[0].toPosLong() shl 0)
-                or (packet.payload[1].toPosLong() shl 8)
-                or (packet.payload[2].toPosLong() shl 16)
-                or (packet.payload[3].toPosLong() shl 24))
+        val serverID = ((packet.payload[0].toPosLong() shl 0) or
+            (packet.payload[1].toPosLong() shl 8) or
+            (packet.payload[2].toPosLong() shl 16) or
+            (packet.payload[3].toPosLong() shl 24))
 
         val pumpIDStrBuilder = StringBuilder()
         for (i in 0 until 13) {
             val pumpIDByte = packet.payload[4 + i]
-            if (pumpIDByte == 0.toByte())
-                break
-            else
-                pumpIDStrBuilder.append(pumpIDByte.toChar())
+            if (pumpIDByte == 0.toByte()) break
+            else pumpIDStrBuilder.append(pumpIDByte.toChar())
         }
         val pumpID = pumpIDStrBuilder.toString()
 
@@ -446,11 +436,11 @@ class TransportLayer {
      * @return The parsed error ID.
      */
     private fun parseErrorResponsePacket(state: State, packet: ComboPacket): Int? =
-            state.pumpClientCipher?.let { cipher ->
-                require(packet.commandID == CommandID.ERROR_RESPONSE.id)
-                require(packet.payload.size == 1)
-                require(packet.verifyAuthentication(cipher))
+        state.pumpClientCipher?.let { cipher ->
+            require(packet.commandID == CommandID.ERROR_RESPONSE.id)
+            require(packet.payload.size == 1)
+            require(packet.verifyAuthentication(cipher))
 
-                packet.payload[0].toInt()
-            }
+            packet.payload[0].toInt()
+        }
 }

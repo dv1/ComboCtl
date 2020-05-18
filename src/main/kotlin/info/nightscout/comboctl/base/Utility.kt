@@ -1,6 +1,7 @@
 package info.nightscout.comboctl.base
 
-import kotlin.math.*
+import kotlin.math.max
+import kotlin.math.min
 
 /**
  * Produces a ByteArray out of a sequence of integers.

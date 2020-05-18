@@ -65,9 +65,9 @@ afterEvaluate {
 ktlint {
     debug.set(true)
     verbose.set(true)
-    android.set(true)
+    android.set(false)
     outputToConsole.set(true)
-    ignoreFailures.set(true)
+    ignoreFailures.set(false)
     filter {
         exclude("**/generated/**")
         include("**/kotlin/**")
