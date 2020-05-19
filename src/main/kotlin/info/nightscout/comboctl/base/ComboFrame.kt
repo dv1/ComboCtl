@@ -145,7 +145,8 @@ class ComboFrameParser {
                     frameStartOffset = currentReadOffset
                     continue
                 } else
-                    throw ParseException("Found non-delimiter byte %02X outside of frames (surrounding context: %s)".format(currentByte, accumulationBuffer.toHexStringWithContext(oldReadOffset)), 0)
+                    throw ParseException("Found non-delimiter byte %02X outside of frames (surrounding context: %s)"
+                            .format(currentByte, accumulationBuffer.toHexStringWithContext(oldReadOffset)), 0)
             }
         }
 
@@ -176,7 +177,7 @@ class ComboFrameParser {
         if (!frameStarted)
             return Triple(curByte, readOffset + 1, false)
 
-        if (curByte == ESCAPE_BYTE) {
+        return if (curByte == ESCAPE_BYTE) {
             // We found an escape byte. We need the next byte to see what
             // particular byte was escaped by it.
 
@@ -185,17 +186,23 @@ class ComboFrameParser {
                 // what the output should be, and currently we only have one byte;
                 // the escape byte. Return null as byte value to indicate to the
                 // caller that we need to accumulate more data.
-                return Triple(null, readOffset, false)
+                Triple(null, readOffset, false)
             } else {
                 when (accumulationBuffer[readOffset + 1]) {
-                    ESCAPED_FRAME_DELIMITER -> return Triple(FRAME_DELIMITER, readOffset + 2, true)
-                    ESCAPED_ESCAPE_BYTE -> return Triple(ESCAPE_BYTE, readOffset + 2, true)
-                    else -> throw ParseException("Found escape byte, but followup byte %02X is not a valid combination (surrounding context: %s)".format(accumulationBuffer[readOffset + 1], accumulationBuffer.toHexStringWithContext(readOffset + 1)), 0)
+                    ESCAPED_FRAME_DELIMITER -> Triple(FRAME_DELIMITER, readOffset + 2, true)
+                    ESCAPED_ESCAPE_BYTE -> Triple(ESCAPE_BYTE, readOffset + 2, true)
+                    else -> throw ParseException(
+                            "Found escape byte, but followup byte %02X is not a valid combination (surrounding context: %s)"
+                                    .format(
+                                            accumulationBuffer[readOffset + 1],
+                                            accumulationBuffer.toHexStringWithContext(readOffset + 1)
+                                    ),
+                            0)
                 }
             }
         } else {
             // This is not an escape byte, so just output it directly.
-            return Triple(curByte, readOffset + 1, false)
+            Triple(curByte, readOffset + 1, false)
         }
     }
 

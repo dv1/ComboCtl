@@ -12,6 +12,8 @@ plugins {
     `java-library`
 
     id("org.jetbrains.dokka") version "0.10.1"
+
+    id("org.jlleitschuh.gradle.ktlint") version "9.2.1"
 }
 
 repositories {
@@ -57,5 +59,17 @@ tasks.withType<Test> {
 afterEvaluate {
     tasks.withType(JavaCompile::class) {
         options.compilerArgs.add("-Xlint:deprecation")
+    }
+}
+
+ktlint {
+    debug.set(true)
+    verbose.set(true)
+    android.set(false)
+    outputToConsole.set(true)
+    ignoreFailures.set(false)
+    filter {
+        exclude("**/generated/**")
+        include("**/kotlin/**")
     }
 }

@@ -1,8 +1,9 @@
 package info.nightscout.comboctl.base
 
-import org.junit.Test
-import org.junit.Assert.*
 import kotlin.text.Charsets
+import org.junit.Test
+import org.junit.Assert.assertEquals
+
 
 class CRCTest {
     @Test

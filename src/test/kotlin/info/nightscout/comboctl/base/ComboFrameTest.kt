@@ -1,10 +1,8 @@
 package info.nightscout.comboctl.base
 
-import org.junit.Test
-import org.junit.Assert.*
-
 import java.text.ParseException
-
+import org.junit.Assert.*
+import org.junit.Test
 
 // Payload which contains some bytes that equal "special" or "reserved" bytes.
 // These bytes are 0xCC and 0x77.
@@ -35,7 +33,6 @@ val frameDataWithEscapedSpecialBytes = byteArrayListOfInts(
     0x55,
     0xCC
 )
-
 
 class ComboFrameTest {
     @Test

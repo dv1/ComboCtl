@@ -62,6 +62,16 @@ The project can also be imported into Android Studio and Intellij IDEA. Simply
 open/import this project's root directory.
 
 
+== Contributing
+
+Before opening a pull request please make sure to run
+
+  ./gradlew ktlintCheck
+
+Many issues like ordering imports alphabetically can be resolved automatically with:
+
+  ./gradlew ktlintCheck
+
 
 == TODO
 
