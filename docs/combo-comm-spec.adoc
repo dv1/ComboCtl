@@ -801,11 +801,11 @@ There are three services available:
    the remote terminal (RT) and command modes.
    Its ID is 0x00.
 
-2. Remote terminal (RT) service: This service covers commands for
-   controlling the pump in the remote terminal (RT) mode.
+2. Remote terminal (RT) mode service: This service covers commands
+   for controlling the pump in the remote terminal (RT) mode.
    Its ID is 0x48.
 
-3. Command service: This service covers commands for
+3. Command mode service: This service covers commands for
    controlling the pump in the command mode.
    Its ID is 0xB7.
 
