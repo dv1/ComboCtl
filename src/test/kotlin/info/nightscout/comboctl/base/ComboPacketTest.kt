@@ -1,6 +1,7 @@
 package info.nightscout.comboctl.base
 
-import org.junit.Assert.*
+import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ComboPacketTest {

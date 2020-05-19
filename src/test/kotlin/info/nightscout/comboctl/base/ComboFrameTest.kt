@@ -1,7 +1,8 @@
 package info.nightscout.comboctl.base
 
 import java.text.ParseException
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 // Payload which contains some bytes that equal "special" or "reserved" bytes.

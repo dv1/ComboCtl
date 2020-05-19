@@ -1,7 +1,7 @@
 package info.nightscout.comboctl.base
 
 import kotlin.text.Charsets
-import org.junit.Assert.*
+import org.junit.Assert.assertArrayEquals
 import org.junit.Test
 
 class CipherTest {
