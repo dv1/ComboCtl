@@ -123,7 +123,7 @@ class ApplicationLayer {
 
         incrementRTSequence(state)
 
-        return createAppLayerPacket(state, Command.CTRL_CONNECT, false, payload)
+        return createAppLayerPacket(state, Command.RT_BUTTON_STATUS, false, payload)
     }
 
     fun parseAppLayerPacketCommand(packet: ComboPacket): Command {
@@ -142,7 +142,7 @@ class ApplicationLayer {
         return command
     }
 
-    data class RTDisplayContent(val currentRTSequence: Int, val reason: Int, val index: Int, val row: Int, val pixels: ByteArray)
+    data class RTDisplayContent(val currentRTSequence: Int, val reason: Int, val index: Int, val row: Int, val pixels: List<Byte>)
 
     fun parseRTDisplayPacket(packet: ComboPacket): RTDisplayContent {
         val payload = packet.payload
@@ -155,7 +155,7 @@ class ApplicationLayer {
             reason = payload[6].toPosInt(),
             index = payload[7].toPosInt(),
             row = payload[8].toPosInt(),
-            pixels = payload.subList(9, 105).toByteArray()
+            pixels = payload.subList(9, 105)
         )
     }
 }
