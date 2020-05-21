@@ -142,7 +142,23 @@ class ApplicationLayer {
         return command
     }
 
-    data class RTDisplayContent(val currentRTSequence: Int, val reason: Int, val index: Int, val row: Int, val pixels: List<Byte>)
+    enum class RTDisplayUpdateReason(val id: Int) {
+        PUMP(0x48),
+        DM(0xB7);
+
+        companion object {
+            private val values = RTDisplayUpdateReason.values()
+            fun fromInt(value: Int) = values.firstOrNull { it.id == value }
+        }
+    }
+
+    data class RTDisplayContent(
+        val currentRTSequence: Int,
+        val reason: RTDisplayUpdateReason,
+        val index: Int,
+        val row: Int,
+        val pixels: List<Byte>
+    )
 
     fun parseRTDisplayPacket(packet: ComboPacket): RTDisplayContent {
         val payload = packet.payload
@@ -150,11 +166,24 @@ class ApplicationLayer {
         if (payload.size < (4 + 5 + 96))
             throw ParseException("Insufficient payload bytes in RT display packet", 0)
 
+        val reasonInt = payload[6].toPosInt()
+        val reason = RTDisplayUpdateReason.fromInt(reasonInt) ?: throw ParseException(
+            "Invalid RT display update reason %02X".format(reasonInt), 6)
+
+        val rowInt = payload[8].toPosInt()
+        val row = when (rowInt) {
+            0x47 -> 0
+            0x48 -> 1
+            0xB7 -> 2
+            0xB8 -> 3
+            else -> throw ParseException("Invalid RT display update row %02X".format(rowInt), 8)
+        }
+
         return RTDisplayContent(
             currentRTSequence = (payload[4].toPosInt() shl 0) or (payload[5].toPosInt() shl 8),
-            reason = payload[6].toPosInt(),
+            reason = reason,
             index = payload[7].toPosInt(),
-            row = payload[8].toPosInt(),
+            row = row,
             pixels = payload.subList(9, 105)
         )
     }

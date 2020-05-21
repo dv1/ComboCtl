@@ -1477,11 +1477,18 @@ sequence needs to be performed:
 
 This command is sent by the Combo to let the client show
 display contents. These contents mimic exactly what can
-be seen on the Combo's 96x32 pixels LCD. The current
-display frame is sent in four pieces to the client, over
-four `AL_RT_DISPLAY`, each with 96x8 pixels as payload.
-The client has to assemble the entire frame out of these
-pieces.
+be seen on the Combo's 96x32 pixels LCD. The display is
+divided into four rows. Each row contains 96x8 pixels.
+
+* Row 0: Top row, covers Y coordinates 0 to 7.
+* Row 1: Second row from top, covers Y coordinates 8 to 15.
+* Row 2: Second row from bottom, covers Y coordinates 16 to 23.
+* Row 3: Bottom row, covers Y coordinates 24 to 31.
+
+An `AL_RT_DISPLAY` packet contains the contents of one
+row. Therefore, the current display frame is fully updated
+by four packets. The client has to assemble the entire
+frame out of the contents of these packets.
 
 The first 2 bytes are the RT sequence, incremented by
 the Combo.
@@ -1492,20 +1499,22 @@ are known: 0x48 ("pump") and 0xB7 ("DM").
 #TODO: It is unclear at this moment what this exactly means.#
 
 The next byte is the index. Clients use this byte to
-check if the piece they just got is associated with
-the frame that is currently being assembled or if this
-is a piece associated with a new frame. In the latter
-case, the client has to discard any existing partial
-frame data that may exist. The check is simply to see
-if the index has changed since the last `AL_RT_DISPLAY`
-command that was received.
+check if the pixels from the frame they just got are
+associated with the frame that is currently being
+assembled or if these pixels are associated with a
+new frame. In the latter case, the client has to discard
+any existing partial frame data that may exist. The check
+is simply to see if the index has changed since the last
+`AL_RT_DISPLAY` command that was received. If so,
+existing partial frame data is discarded.
 
-The next byte is row, which indicates the portion of
-the frame that is updated by this command. Row 0 is
-the top row, or in other words, the top 96x8 pixels.
-Row 1 is the second row from the top, etc. In terms of
-Y coordinates, row 0 covers Y coordinates 0-7, row
-1 covers Y coordinates 8-15 etc.
+The next byte indicates which row is updated by this command.
+The four valid values are:
+
+* 0x47: Row 0 (the top row)
+* 0x48: Row 1 (second from the top)
+* 0xB7: Row 2 (second from the bottom)
+* 0xB8: Row 3 (the bottom row)
 
 The remaining 96 bytes contain the 96x8 pixels in
 this piece. This data is stored as a 1-bit bitmap.
