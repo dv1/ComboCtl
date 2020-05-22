@@ -111,7 +111,7 @@ class ComboFrameParser {
 
                     // Extract the frame's payload, un-escaping any escaped
                     // bytes inside (done by the readNextFrameByte() call).
-                    var framePayload = ArrayList<Byte>()
+                    val framePayload = ArrayList<Byte>()
                     val frameEndOffset = currentReadOffset - 1
                     var frameReadOffset = frameStartOffset
                     while (frameReadOffset < frameEndOffset) {
@@ -229,7 +229,7 @@ class ComboFrameParser {
  * @return Framed version of this payload.
  */
 fun List<Byte>.toComboFrame(): List<Byte> {
-    var escapedFrameData = ArrayList<Byte>()
+    val escapedFrameData = ArrayList<Byte>()
 
     escapedFrameData.add(FRAME_DELIMITER)
 

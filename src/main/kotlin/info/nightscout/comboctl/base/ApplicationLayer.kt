@@ -133,7 +133,7 @@ class ApplicationLayer {
             throw ParseException("Insufficient payload bytes in application layer packet", 0)
 
         val serviceIDInt = payload[1].toPosInt()
-        var serviceID = ServiceID.fromInt(serviceIDInt) ?: throw ParseException("Invalid service ID 0x%02X".format(serviceIDInt), 1)
+        val serviceID = ServiceID.fromInt(serviceIDInt) ?: throw ParseException("Invalid service ID 0x%02X".format(serviceIDInt), 1)
 
         val commandID = (payload[2].toPosInt() shl 0) or (payload[3].toPosInt() shl 8)
         val command = Command.fromIDs(serviceID, commandID) ?: throw ParseException(
@@ -170,8 +170,7 @@ class ApplicationLayer {
         val reason = RTDisplayUpdateReason.fromInt(reasonInt) ?: throw ParseException(
             "Invalid RT display update reason %02X".format(reasonInt), 6)
 
-        val rowInt = payload[8].toPosInt()
-        val row = when (rowInt) {
+        val row = when (val rowInt = payload[8].toPosInt()) {
             0x47 -> 0
             0x48 -> 1
             0xB7 -> 2
