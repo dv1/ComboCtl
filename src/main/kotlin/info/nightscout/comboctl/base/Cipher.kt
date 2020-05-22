@@ -1,5 +1,7 @@
 package info.nightscout.comboctl.base
 
+import crypto.twofish.TwofishAlgorithm
+
 const val CIPHER_KEY_SIZE = 16
 const val CIPHER_BLOCK_SIZE = 16
 
@@ -19,7 +21,7 @@ class Cipher(val key: ByteArray) {
         require(key.size == CIPHER_KEY_SIZE)
     }
 
-    private val keyObject = Twofish.Twofish_Algorithm.makeKey(key)
+    private val keyObject = TwofishAlgorithm.makeKey(key)
 
     /**
      * Encrypts a 128-bit block of cleartext, producing a 128-bit ciphertext block.
@@ -31,7 +33,7 @@ class Cipher(val key: ByteArray) {
      */
     fun encrypt(cleartext: ByteArray): ByteArray {
         require(cleartext.size == CIPHER_BLOCK_SIZE)
-        return Twofish.Twofish_Algorithm.blockEncrypt(cleartext, 0, keyObject)
+        return TwofishAlgorithm.blockEncrypt(cleartext, 0, keyObject)
     }
 
     /**
@@ -44,7 +46,7 @@ class Cipher(val key: ByteArray) {
      */
     fun decrypt(ciphertext: ByteArray): ByteArray {
         require(ciphertext.size == CIPHER_BLOCK_SIZE)
-        return Twofish.Twofish_Algorithm.blockDecrypt(ciphertext, 0, keyObject)
+        return TwofishAlgorithm.blockDecrypt(ciphertext, 0, keyObject)
     }
 }
 
