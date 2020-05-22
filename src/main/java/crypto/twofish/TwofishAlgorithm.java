@@ -7,7 +7,7 @@
 //
 //  https://github.com/bcgit/bc-java/blob/master/core/src/main/java/org/bouncycastle/crypto/engines/TwofishEngine.java
 //
-// In this copy of the jobb Twofish code, the implementation of isTraceable() in Twofish_Properties.java
+// In this copy of the jobb Twofish code, the implementation of isTraceable() in TwofishProperties.java
 // has been slightly modified to fix a deprecation warning, by replacing
 //
 //  new Boolean(s).booleanValue()
@@ -16,6 +16,8 @@
 //
 //  Boolean.parseBoolean(s)
 
+// The package name has been changed from `Twofish` to `crypto.twofish` and the classes `Twofish_Algorith`
+// to `TwofishAlgorithm` and `Twofish_Properties` to `TwofishProperties` to avoid problems on certain platforms.
 
 // $Id: $
 //
