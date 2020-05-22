@@ -1,9 +1,10 @@
 package info.nightscout.comboctl.base
 
 import java.text.ParseException
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 
 // Payload which contains some bytes that equal "special" or "reserved" bytes.
 // These bytes are 0xCC and 0x77.
@@ -48,7 +49,7 @@ class ComboFrameTest {
     fun parseEscapedFrameData() {
         // Parse escaped frame data and check that the original payload is recovered.
 
-        var parser = ComboFrameParser()
+        val parser = ComboFrameParser()
         parser.pushData(frameDataWithEscapedSpecialBytes)
 
         val parsedPayloadData = parser.parseFrame()
@@ -64,7 +65,7 @@ class ComboFrameTest {
         // the data within the two delimiters of the frame, un-escapes any escaped
         // bytes, and returns the recovered payload from that frame.
 
-        var parser = ComboFrameParser()
+        val parser = ComboFrameParser()
 
         // Three chunks of partial frame data. Only after all three have been pushed
         // into the parser can it find a complete frame. In fact, it then has
@@ -126,7 +127,7 @@ class ComboFrameTest {
         // the payload within the frames contain special bytes, so
         // the chunks contain escaped bytes.
 
-        var parser = ComboFrameParser()
+        val parser = ComboFrameParser()
 
         // First partial chunk. It ends with an escape byte (0x77). The
         // parser cannot do anything with that escape byte alone, since
@@ -165,14 +166,14 @@ class ComboFrameTest {
         assertEquals(null, parsedPayloadData)
     }
 
-    @Test(expected = ParseException::class)
+    @Test
     fun parseNonDelimiterOutsideOfFrame() {
         // Outside of frames, only the frame delimiter byte 0x77 is expected.
         // That's because the Combo frames are tightly packed, like this:
         //
         // 0xCC <frame 1 bytes> 0xCC  0xCC <frame 2 bytes> 0xCC ...
 
-        var parser = ComboFrameParser()
+        val parser = ComboFrameParser()
 
         // This is invalid data, since 0x11 lies before the 0xCC frame delimiter,
         // meaning that the 0x11 byte is "outside of a frame".
@@ -182,11 +183,10 @@ class ComboFrameTest {
 
         parser.pushData(frameDataWithNonDelimiterOutsideOfFrame)
 
-        // We expect parseFrame to throw a ParseException.
-        parser.parseFrame()
+        assertThrows<ParseException> { parser.parseFrame() }
     }
 
-    @Test(expected = ParseException::class)
+    @Test
     fun parseInvalidEscapeByteCombinatio() {
         // In frame data, the escape byte 0x77 is followed by the byte 0xDD
         // or 0xEE (the escaped form of bytes 0xCC and 0x77, respectively).
@@ -194,7 +194,7 @@ class ComboFrameTest {
         // escaping is defined then. For example, 0x77 0x88 does not describe
         // anything.
 
-        var parser = ComboFrameParser()
+        val parser = ComboFrameParser()
 
         // 0x77 0xAA is an invalid sequence.
         val frameDataWithInvalidEscapeByteCombination = byteArrayListOfInts(
@@ -203,7 +203,6 @@ class ComboFrameTest {
 
         parser.pushData(frameDataWithInvalidEscapeByteCombination)
 
-        // We expect parseFrame to throw a ParseException.
-        parser.parseFrame()
+        assertThrows<ParseException> { parser.parseFrame() }
     }
 }

@@ -1,4 +1,4 @@
 [*.{kt,kts}]
 max_line_length = 140
 
-disabled_rules=indent
+disabled_rules=indent,no-wildcard-imports
