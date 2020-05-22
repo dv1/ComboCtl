@@ -37,16 +37,16 @@ class Cipher(val key: ByteArray) {
     }
 
     /**
-     * Decrypts a 128-bit block of ciphertext, producing a 128-bit cleartext block.
+     * Decrypts a 128-bit block of cipher text, producing a 128-bit cleartext block.
      *
      * The key must have been set to a valid value before calling this function.
      *
-     * @param ciphertext Array of 16 bytes (128 bits) of ciphertext to decrypt.
+     * @param cipherText Array of 16 bytes (128 bits) of ciphertext to decrypt.
      * @return Array of 16 bytes (128 bits) of cleartext.
      */
-    fun decrypt(ciphertext: ByteArray): ByteArray {
-        require(ciphertext.size == CIPHER_BLOCK_SIZE)
-        return TwofishAlgorithm.blockDecrypt(ciphertext, 0, keyObject)
+    fun decrypt(cipherText: ByteArray): ByteArray {
+        require(cipherText.size == CIPHER_BLOCK_SIZE)
+        return TwofishAlgorithm.blockDecrypt(cipherText, 0, keyObject)
     }
 }
 

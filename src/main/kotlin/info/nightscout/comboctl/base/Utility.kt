@@ -66,7 +66,7 @@ fun List<Byte>.toHexString() = this.joinToString(separator = " ") { "%02X".forma
  * which is why it is called like this here.
  *
  * @param offset Offset in the list where the byte is.
- * @param context The size of the context before and the one after the byte.
+ * @param contextSize The size of the context before and the one after the byte.
  *        For example, a size of 10 will include up to 10 bytes before and up
  *        to 10 bytes after the byte at offset (less if the byte is close to
  *        the beginning or end of the list).

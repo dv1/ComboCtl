@@ -66,7 +66,7 @@ class TransportLayer {
          * This is one of the fields that must be stored persistently
          * and restored when the application is reloaded.
          */
-        var currentTxNonce = ByteArray(NUM_NONCE_BYTES, { 0x00 })
+        var currentTxNonce = ByteArray(NUM_NONCE_BYTES) { 0x00 }
             set(value) {
                 require(value.size == NUM_NONCE_BYTES)
                 field = value
@@ -117,20 +117,18 @@ class TransportLayer {
      */
     enum class CommandID(val id: Int) {
         // Pairing commands
-        REQUEST_PAIRING_CONNECTION(0x09), PAIRING_CONNECTION_REQUEST_ACCEPTED(0x0A), REQUEST_KEYS(
-            0x0C),
+        REQUEST_PAIRING_CONNECTION(0x09), PAIRING_CONNECTION_REQUEST_ACCEPTED(0x0A), REQUEST_KEYS(0x0C),
         GET_AVAILABLE_KEYS(0x0F), KEY_RESPONSE(0x11), REQUEST_ID(0x12), ID_RESPONSE(0x14),
 
         // Regular commands - these require that pairing was performed
-        REQUEST_REGULAR_CONNECTION(0x17), REGULAR_CONNECTION_REQUEST_ACCEPTED(0x18), DISCONNECT(0x1B), ACK_RESPONSE(
-            0x05),
-        DATA(0x03), ERROR_RESPONSE(0x06)
+        REQUEST_REGULAR_CONNECTION(0x17), REGULAR_CONNECTION_REQUEST_ACCEPTED(0x18), DISCONNECT(0x1B),
+        ACK_RESPONSE(0x05), DATA(0x03), ERROR_RESPONSE(0x06)
     }
 
     private fun incrementTxNonce(state: State) {
         var carry: Boolean = true
 
-        for (i in 0 until state.currentTxNonce.size) {
+        for (i in state.currentTxNonce.indices) {
             if (carry) {
                 var nonceByte = state.currentTxNonce[i]
 
@@ -150,23 +148,17 @@ class TransportLayer {
     // Base function for generating CRC-verified packets.
     // These packets only have the CRC itself as payload, and
     // are only used during the pairing process.
-    private fun createCRCPacket(commandID: CommandID): ComboPacket {
-        val packet = ComboPacket().apply {
-            majorVersion = 1
-            minorVersion = 0
-            sequenceBit = false
-            reliabilityBit = false
-            sourceAddress = 0xF
-            destinationAddress = 0x0
-            nonce = ByteArray(NUM_NONCE_BYTES, { 0x00 })
-            machineAuthenticationCode = ByteArray(NUM_MAC_BYTES, { 0x00 })
-        }
-
-        packet.commandID = commandID.id
-
-        packet.computeCRC16Payload()
-
-        return packet
+    private fun createCRCPacket(commandID: CommandID): ComboPacket = ComboPacket().apply {
+        majorVersion = 1
+        minorVersion = 0
+        sequenceBit = false
+        reliabilityBit = false
+        sourceAddress = 0xF
+        destinationAddress = 0x0
+        nonce = ByteArray(NUM_NONCE_BYTES) { 0x00 }
+        machineAuthenticationCode = ByteArray(NUM_MAC_BYTES) { 0x00 }
+        this.commandID = commandID.id
+        computeCRC16Payload()
     }
 
     // Base function for generating MAC-authenticated packets. This

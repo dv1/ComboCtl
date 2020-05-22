@@ -42,11 +42,9 @@ private const val PAYLOAD_BYTES_OFFSET = NONCE_BYTES_OFFSET + NUM_NONCE_BYTES
  *
  * See "Transport layer packet structure" in combo-comm-spec.adoc for details.
  */
-class ComboPacket {
-    constructor() {
-    }
+class ComboPacket() {
 
-    constructor(bytes: List<Byte>) {
+    constructor(bytes: List<Byte>) : this() {
         require(bytes.size >= (PACKET_HEADER_SIZE + NUM_MAC_BYTES))
 
         majorVersion = (bytes[VERSION_BYTE_OFFSET].toInt() shr 4) and 0xF
@@ -144,25 +142,26 @@ class ComboPacket {
     // the nonce and machineAuthenticationCode arrays are
     // not compared correctly.
     override fun equals(other: Any?) =
+        (this === other) ||
             (other is ComboPacket) &&
-                    (majorVersion == other.majorVersion) &&
-                    (minorVersion == other.minorVersion) &&
-                    (sequenceBit == other.sequenceBit) &&
-                    (reliabilityBit == other.reliabilityBit) &&
-                    (commandID == other.commandID) &&
-                    (sourceAddress == other.sourceAddress) &&
-                    (destinationAddress == other.destinationAddress) &&
-                    (payload == other.payload) &&
-                    (nonce contentEquals other.nonce) &&
-                    (machineAuthenticationCode contentEquals other.machineAuthenticationCode)
+            (majorVersion == other.majorVersion) &&
+            (minorVersion == other.minorVersion) &&
+            (sequenceBit == other.sequenceBit) &&
+            (reliabilityBit == other.reliabilityBit) &&
+            (commandID == other.commandID) &&
+            (sourceAddress == other.sourceAddress) &&
+            (destinationAddress == other.destinationAddress) &&
+            (payload == other.payload) &&
+            (nonce contentEquals other.nonce) &&
+            (machineAuthenticationCode contentEquals other.machineAuthenticationCode)
 
     fun toByteList(withMAC: Boolean = true, withPayload: Boolean = true): ArrayList<Byte> {
-        var bytes = ArrayList<Byte>(PACKET_HEADER_SIZE)
+        val bytes = ArrayList<Byte>(PACKET_HEADER_SIZE)
 
         bytes.add(((majorVersion shl 4) or minorVersion).toByte())
         bytes.add(((if (sequenceBit) 0x80 else 0)
-                or (if (reliabilityBit) 0x20 else 0)
-                or commandID).toByte())
+            or (if (reliabilityBit) 0x20 else 0)
+            or commandID).toByte())
         bytes.add((payload.size and 0xFF).toByte())
         bytes.add(((payload.size shr 8) and 0xFF).toByte())
         bytes.add(((sourceAddress shl 4) or destinationAddress).toByte())
@@ -182,7 +181,7 @@ class ComboPacket {
 
     fun computeCRC16Payload() {
         payload = byteArrayListOfInts(0, 0)
-        val headerData = toByteList(false, false)
+        val headerData = toByteList(withMAC = false, withPayload = false)
         val calculatedCRC16 = calculateCRC16MCRF4XX(headerData)
         payload[0] = (calculatedCRC16 and 0xFF).toByte()
         payload[1] = ((calculatedCRC16 shr 8) and 0xFF).toByte()
@@ -190,10 +189,10 @@ class ComboPacket {
 
     fun verifyCRC16Payload(): Boolean {
         require(payload.size == 2)
-        val headerData = toByteList(false, false)
+        val headerData = toByteList(withMAC = false, withPayload = false)
         val calculatedCRC16 = calculateCRC16MCRF4XX(headerData)
         return (payload[0] == (calculatedCRC16 and 0xFF).toByte()) &&
-                (payload[1] == ((calculatedCRC16 shr 8) and 0xFF).toByte())
+            (payload[1] == ((calculatedCRC16 shr 8) and 0xFF).toByte())
     }
 
     // Authentication
@@ -207,7 +206,7 @@ class ComboPacket {
     // This computes the MAC using Two-Fish and a modified RFC3610 CCM authentication
     // process. See "Packet authentication" in combo-comm-spec.adoc for details.
     private fun calculateMAC(cipher: Cipher): ByteArray {
-        var MAC = ByteArray(NUM_MAC_BYTES)
+        val MAC = ByteArray(NUM_MAC_BYTES)
         var block = ByteArray(CIPHER_BLOCK_SIZE)
 
         // Set up B_0.
@@ -240,12 +239,12 @@ class ComboPacket {
         val remainingDataBytes = packetData.size - numDataBlocks * CIPHER_BLOCK_SIZE
         if (remainingDataBytes > 0) {
             for (i in 0 until remainingDataBytes) {
-                var a: Int = block[i].toPosInt()
-                var b: Int = packetData[packetData.size - remainingDataBytes + i].toPosInt()
+                val a: Int = block[i].toPosInt()
+                val b: Int = packetData[packetData.size - remainingDataBytes + i].toPosInt()
                 block[i] = (a xor b).toByte()
             }
 
-            var paddingValue = 16 - remainingDataBytes
+            val paddingValue = 16 - remainingDataBytes
 
             for (i in remainingDataBytes until CIPHER_BLOCK_SIZE)
                 block[i] = ((block[i].toPosInt()) xor paddingValue).toByte()
@@ -274,6 +273,20 @@ class ComboPacket {
             MAC[i] = ((MAC[i].toPosInt()) xor (block[i].toPosInt())).toByte()
 
         return MAC
+    }
+
+    override fun hashCode(): Int {
+        var result = majorVersion
+        result = 31 * result + minorVersion
+        result = 31 * result + sequenceBit.hashCode()
+        result = 31 * result + reliabilityBit.hashCode()
+        result = 31 * result + commandID
+        result = 31 * result + sourceAddress
+        result = 31 * result + destinationAddress
+        result = 31 * result + nonce.contentHashCode()
+        result = 31 * result + payload.hashCode()
+        result = 31 * result + machineAuthenticationCode.contentHashCode()
+        return result
     }
 }
 
