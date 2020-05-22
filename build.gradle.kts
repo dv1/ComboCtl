@@ -3,6 +3,7 @@
  */
 
 import org.jetbrains.dokka.gradle.DokkaTask
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
     // Apply the Kotlin JVM plugin to add support for Kotlin.
@@ -20,6 +21,7 @@ repositories {
     // Use jcenter for resolving dependencies.
     // You can declare any Maven/Ivy/file repository here.
     jcenter()
+    mavenCentral()
 }
 
 dependencies {
@@ -29,12 +31,11 @@ dependencies {
     // Use the Kotlin JDK 8 standard library.
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
 
-    // Use the Kotlin test library.
-    testImplementation("org.jetbrains.kotlin:kotlin-test")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.6.2")
 
-    // Use the Kotlin JUnit integration.
-    testImplementation("org.jetbrains.kotlin:kotlin-test-junit")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.6.2")
 }
+
 
 tasks {
     val dokka by getting(DokkaTask::class) {
@@ -44,13 +45,20 @@ tasks {
             moduleName = "comboctl"
         }
     }
+
+
 }
 // Show the output of stdout and stderr when running gradle
 // test with --info and --debug.
 tasks.withType<Test> {
+    useJUnitPlatform()
     this.testLogging {
         this.showStandardStreams = true
     }
+}
+
+tasks.withType<KotlinCompile>().configureEach {
+    kotlinOptions.jvmTarget = "1.8"
 }
 
 // Enable more detailed deprecation warnings to be able to pinpoint
@@ -61,6 +69,7 @@ afterEvaluate {
         options.compilerArgs.add("-Xlint:deprecation")
     }
 }
+
 
 ktlint {
     debug.set(true)

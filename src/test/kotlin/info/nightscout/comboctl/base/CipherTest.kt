@@ -1,8 +1,9 @@
 package info.nightscout.comboctl.base
 
+import org.junit.jupiter.api.Assertions.assertArrayEquals
+import org.junit.jupiter.api.Test
 import kotlin.text.Charsets
-import org.junit.Assert.assertArrayEquals
-import org.junit.Test
+
 
 class CipherTest {
     @Test

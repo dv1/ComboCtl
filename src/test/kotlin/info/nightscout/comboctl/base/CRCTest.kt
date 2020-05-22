@@ -1,8 +1,9 @@
 package info.nightscout.comboctl.base
 
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Test
 import kotlin.text.Charsets
-import org.junit.Assert.assertEquals
-import org.junit.Test
+
 
 class CRCTest {
     @Test

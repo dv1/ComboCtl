@@ -1,8 +1,9 @@
 package info.nightscout.comboctl.base
 
-import org.junit.Assert.assertEquals
-import org.junit.Before
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
+
 
 class ApplicationLayerTest {
     val tpLayer = TransportLayer()
@@ -31,7 +32,7 @@ class ApplicationLayerTest {
         assertEquals(payload, packet.payload)
     }
 
-    @Before
+    @BeforeEach
     fun setup() {
         tpLayerState.keyResponseSourceAddress = 1
         tpLayerState.keyResponseDestinationAddress = 0
