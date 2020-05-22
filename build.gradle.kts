@@ -36,7 +36,6 @@ dependencies {
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.6.2")
 }
 
-
 tasks {
     val dokka by getting(DokkaTask::class) {
         outputFormat = "html"
@@ -45,8 +44,6 @@ tasks {
             moduleName = "comboctl"
         }
     }
-
-
 }
 // Show the output of stdout and stderr when running gradle
 // test with --info and --debug.
@@ -69,7 +66,6 @@ afterEvaluate {
         options.compilerArgs.add("-Xlint:deprecation")
     }
 }
-
 
 ktlint {
     debug.set(true)

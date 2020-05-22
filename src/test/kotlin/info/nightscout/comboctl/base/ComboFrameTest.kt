@@ -1,10 +1,10 @@
 package info.nightscout.comboctl.base
 
+import java.text.ParseException
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
-import java.text.ParseException
 
 // Payload which contains some bytes that equal "special" or "reserved" bytes.
 // These bytes are 0xCC and 0x77.

@@ -3,7 +3,6 @@ package info.nightscout.comboctl.base
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 
-
 class ComboPacketTest {
     @Test
     fun parsePacketData() {
