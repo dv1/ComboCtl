@@ -9,7 +9,7 @@
  * Copyright (c) 1997, 1998 Systemics Ltd on behalf of
  * the Cryptix Development Team. All rights reserved.
  */
-package Twofish;
+package crypto.twofish;
 
 import java.io.InputStream;
 import java.io.PrintStream;
@@ -34,14 +34,14 @@ import java.util.Properties;
  * @author  Jill Baker
  * @author  Raif S. Naffah
  */
-public class Twofish_Properties // implicit no-argument constructor
+public class TwofishProperties // implicit no-argument constructor
 {
 // Constants and variables with relevant static code
 //...........................................................................
 
     static final boolean GLOBAL_DEBUG = false;
 
-    static final String ALGORITHM = "Twofish";
+    static final String ALGORITHM = "crypto/twofish";
     static final double VERSION = 0.2;
     static final String FULL_NAME = ALGORITHM + " ver. " + VERSION;
     static final String NAME = "Twofish_Properties";
@@ -58,7 +58,7 @@ public class Twofish_Properties // implicit no-argument constructor
     static {
 if (GLOBAL_DEBUG) System.err.println(">>> " + NAME + ": Looking for " + ALGORITHM + " properties");
         String it = ALGORITHM + ".properties";
-        InputStream is = Twofish_Properties.class.getResourceAsStream(it);
+        InputStream is = TwofishProperties.class.getResourceAsStream(it);
         boolean ok = is != null;
         if (ok)
             try {

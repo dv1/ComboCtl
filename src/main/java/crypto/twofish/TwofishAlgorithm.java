@@ -7,7 +7,7 @@
 //
 //  https://github.com/bcgit/bc-java/blob/master/core/src/main/java/org/bouncycastle/crypto/engines/TwofishEngine.java
 //
-// In this copy of the jobb Twofish code, the implementation of isTraceable() in Twofish_Properties.java
+// In this copy of the jobb Twofish code, the implementation of isTraceable() in TwofishProperties.java
 // has been slightly modified to fix a deprecation warning, by replacing
 //
 //  new Boolean(s).booleanValue()
@@ -16,6 +16,8 @@
 //
 //  Boolean.parseBoolean(s)
 
+// The package name has been changed from `Twofish` to `crypto.twofish` and the classes `Twofish_Algorith`
+// to `TwofishAlgorithm` and `Twofish_Properties` to `TwofishProperties` to avoid problems on certain platforms.
 
 // $Id: $
 //
@@ -28,7 +30,7 @@
  * Copyright (c) 1997, 1998 Systemics Ltd on behalf of
  * the Cryptix Development Team. All rights reserved.
  */
-package Twofish;
+package crypto.twofish;
 
 import java.io.PrintWriter;
 import java.security.InvalidKeyException;
@@ -59,7 +61,7 @@ import java.security.InvalidKeyException;
  * <b>$Revision: $</b>
  * @author  Raif S. Naffah
  */
-public final class Twofish_Algorithm // implicit no-argument constructor
+public final class TwofishAlgorithm // implicit no-argument constructor
 {
 // Debugging methods and variables
 //...........................................................................
@@ -67,11 +69,11 @@ public final class Twofish_Algorithm // implicit no-argument constructor
    static final String NAME = "Twofish_Algorithm";
    static final boolean IN = true, OUT = false;
 
-   static final boolean DEBUG = Twofish_Properties.GLOBAL_DEBUG;
-   static final int debuglevel = DEBUG ? Twofish_Properties.getLevel(NAME) : 0;
-   static final PrintWriter err = DEBUG ? Twofish_Properties.getOutput() : null;
+   static final boolean DEBUG = TwofishProperties.GLOBAL_DEBUG;
+   static final int debuglevel = DEBUG ? TwofishProperties.getLevel(NAME) : 0;
+   static final PrintWriter err = DEBUG ? TwofishProperties.getOutput() : null;
 
-   static final boolean TRACE = Twofish_Properties.isTraceable(NAME);
+   static final boolean TRACE = TwofishProperties.isTraceable(NAME);
 
    static void debug (String s) { err.println(">>> "+NAME+": "+s); }
    static void trace (boolean in, String s) {
@@ -286,7 +288,7 @@ public final class Twofish_Algorithm // implicit no-argument constructor
       long time = System.currentTimeMillis();
 
 if (DEBUG && debuglevel > 6) {
-System.out.println("Algorithm Name: "+Twofish_Properties.FULL_NAME);
+System.out.println("Algorithm Name: "+ TwofishProperties.FULL_NAME);
 System.out.println("Electronic Codebook (ECB) Mode");
 System.out.println();
 }
