@@ -67,7 +67,7 @@ class TransportLayerTest {
             0x34, 0x35, 0x36, 0x37,
             0xab, 0xc6, 0x89, 0x7f, 0x14, 0x9b, 0xdf, 0x3b))
 
-        val tpLayer = TransportLayer()
+        val tpLayer = TransportLayer(LoggerFactory(StderrLoggerBackend(), LogLevel.DEBUG).getLogger(LogCategory.TP_LAYER))
         val tpLayerState = TransportLayer.State()
 
         // Send the first 3 pairing setup packets. After REQUEST_PAIRING_CONNECTION,

@@ -5,7 +5,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 
 class ApplicationLayerTest {
-    val tpLayer = TransportLayer()
+    val tpLayer = TransportLayer(LoggerFactory(StderrLoggerBackend()).getLogger(LogCategory.TP_LAYER))
     val tpLayerState = TransportLayer.State()
     val appLayer = ApplicationLayer()
     val appLayerState = ApplicationLayer.State(tpLayer, tpLayerState)

@@ -20,7 +20,7 @@ import java.lang.IllegalStateException
  * (for more details about persistent storage.)
  * When the application is started again, these properties must be restored.
  */
-class TransportLayer {
+class TransportLayer(val logger: Logger) {
     class State {
         /***********
          * Ciphers *
@@ -159,6 +159,9 @@ class TransportLayer {
         machineAuthenticationCode = ByteArray(NUM_MAC_BYTES) { 0x00 }
         this.commandID = commandID.id
         computeCRC16Payload()
+        logger.log(LogLevel.DEBUG) {
+            "Computed CRC16 payload 0x%02X%02X".format(this.payload[1].toPosInt(), this.payload[0].toPosInt())
+        }
     }
 
     // Base function for generating MAC-authenticated packets. This
