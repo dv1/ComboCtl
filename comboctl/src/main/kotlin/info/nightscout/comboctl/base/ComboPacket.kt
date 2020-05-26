@@ -47,16 +47,16 @@ class ComboPacket() {
     constructor(bytes: List<Byte>) : this() {
         require(bytes.size >= (PACKET_HEADER_SIZE + NUM_MAC_BYTES))
 
-        majorVersion = (bytes[VERSION_BYTE_OFFSET].toInt() shr 4) and 0xF
-        minorVersion = bytes[VERSION_BYTE_OFFSET].toInt() and 0xF
-        sequenceBit = (bytes[SEQ_REL_CMD_BYTE_OFFSET].toInt() and 0x80) != 0
-        reliabilityBit = (bytes[SEQ_REL_CMD_BYTE_OFFSET].toInt() and 0x20) != 0
-        commandID = bytes[SEQ_REL_CMD_BYTE_OFFSET].toInt() and 0x1F
+        majorVersion = (bytes[VERSION_BYTE_OFFSET].toPosInt() shr 4) and 0xF
+        minorVersion = bytes[VERSION_BYTE_OFFSET].toPosInt() and 0xF
+        sequenceBit = (bytes[SEQ_REL_CMD_BYTE_OFFSET].toPosInt() and 0x80) != 0
+        reliabilityBit = (bytes[SEQ_REL_CMD_BYTE_OFFSET].toPosInt() and 0x20) != 0
+        commandID = bytes[SEQ_REL_CMD_BYTE_OFFSET].toPosInt() and 0x1F
 
-        sourceAddress = (bytes[ADDRESS_BYTE_OFFSET].toInt() shr 4) and 0xF
-        destinationAddress = bytes[ADDRESS_BYTE_OFFSET].toInt() and 0xF
+        sourceAddress = (bytes[ADDRESS_BYTE_OFFSET].toPosInt() shr 4) and 0xF
+        destinationAddress = bytes[ADDRESS_BYTE_OFFSET].toPosInt() and 0xF
 
-        val payloadSize = (bytes[PAYLOAD_LENGTH_BYTES_OFFSET + 1].toInt() shl 8) or bytes[PAYLOAD_LENGTH_BYTES_OFFSET + 0].toInt()
+        val payloadSize = (bytes[PAYLOAD_LENGTH_BYTES_OFFSET + 1].toPosInt() shl 8) or bytes[PAYLOAD_LENGTH_BYTES_OFFSET + 0].toPosInt()
         require(bytes.size == (PACKET_HEADER_SIZE + payloadSize + NUM_MAC_BYTES))
 
         for (i in 0 until NUM_NONCE_BYTES) nonce[i] = bytes[NONCE_BYTES_OFFSET + i]
