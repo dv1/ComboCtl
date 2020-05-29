@@ -9,7 +9,7 @@ class CipherTest {
     fun checkWeakKeyGeneration() {
         // Generate a weak key out of the PIN 012-345-6789.
 
-        val PIN = intArrayOf(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
+        val PIN = PairingPIN(intArrayOf(0, 1, 2, 3, 4, 5, 6, 7, 8, 9))
 
         try {
             val expectedWeakKey = byteArrayOfInts(

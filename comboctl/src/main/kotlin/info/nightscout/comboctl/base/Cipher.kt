@@ -61,12 +61,15 @@ class Cipher(val key: ByteArray) {
  * additional keys that are used for en- and decrypting followup
  * packets coming from and going to the Combo.
  *
- * @param PIN Integer array with 10 digits. Each integer must be
- *        in the range 0 to 9.
+ * @param PIN Pairing PIN to use for generating the weak key.
  * @return 16 bytes containing the generated 128-bit weak key.
  */
-fun generateWeakKeyFromPIN(PIN: IntArray): ByteArray {
-    require(PIN.size == 10)
+fun generateWeakKeyFromPIN(PIN: PairingPIN): ByteArray {
+    // Verify that the PIN is smaller than the cipher key.
+    // NOTE: This could be a compile-time check, since these
+    // are constants. But currently, it is not known how to
+    // do this check at compile time.
+    assert(PAIRING_PIN_SIZE < CIPHER_KEY_SIZE)
 
     val generatedKey = ByteArray(CIPHER_KEY_SIZE)
 
@@ -77,7 +80,7 @@ fun generateWeakKeyFromPIN(PIN: IntArray): ByteArray {
     // that the first PIN digit is 2. It is interpreted as
     // character "2". That character has ASCII index 50.
     // Therefore, the first byte in the key is set to 50.
-    for (i in 0 until 10) {
+    for (i in 0 until PAIRING_PIN_SIZE) {
         val pinDigit = PIN[i]
         require((pinDigit >= 0) && (pinDigit <= 9))
 
@@ -95,7 +98,7 @@ fun generateWeakKeyFromPIN(PIN: IntArray): ByteArray {
         val pinDigit = PIN[i]
 
         val pinAsciiIndex = pinDigit + '0'.toInt()
-        generatedKey[i + 10] = (0xFF xor pinAsciiIndex).toByte()
+        generatedKey[i + PAIRING_PIN_SIZE] = (0xFF xor pinAsciiIndex).toByte()
     }
 
     return generatedKey

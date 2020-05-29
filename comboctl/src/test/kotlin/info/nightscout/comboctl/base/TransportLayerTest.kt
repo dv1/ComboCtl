@@ -79,7 +79,7 @@ class TransportLayerTest {
 
         // After REQUEST_KEYS is received, the user must enter the PIN shown on
         // the Combo. This PIN is used to create the weak key.
-        tpLayerState.weakCipher = Cipher(generateWeakKeyFromPIN(intArrayOf(2, 6, 0, 6, 8, 1, 9, 2, 7, 3)))
+        tpLayerState.weakCipher = Cipher(generateWeakKeyFromPIN(PairingPIN(intArrayOf(2, 6, 0, 6, 8, 1, 9, 2, 7, 3))))
 
         // After the weak key was generated, the client has to send GET_AVAILABLE_KEYS
         // to the Combo to retrieve the client-pump and pump-client keys it generated.
