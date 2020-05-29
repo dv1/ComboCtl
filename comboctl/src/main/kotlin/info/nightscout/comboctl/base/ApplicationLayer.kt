@@ -53,7 +53,7 @@ class ApplicationLayer {
         command: Command,
         reliabilityBit: Boolean = false,
         payload: ArrayList<Byte> = arrayListOf()
-    ): ComboPacket {
+    ): TransportLayer.Packet {
         val appLayerPacketPayload = ArrayList<Byte>(1 + 1 + 2 + payload.size)
         appLayerPacketPayload.add(0x10) // Major version (1) and minor version (0)
         appLayerPacketPayload.add(command.serviceID.id.toByte())
@@ -69,7 +69,7 @@ class ApplicationLayer {
             state.currentRTSequence = 0
     }
 
-    fun createCTRLConnectPacket(state: State): ComboPacket {
+    fun createCTRLConnectPacket(state: State): TransportLayer.Packet {
         val serialNumber: Int = 12345
         val payload = byteArrayListOfInts(
             (serialNumber shr 0) and 0xFF,
@@ -80,28 +80,28 @@ class ApplicationLayer {
         return createAppLayerPacket(state, Command.CTRL_CONNECT, true, payload)
     }
 
-    fun createCTRLGetServiceVersionPacket(state: State, serviceID: ServiceID): ComboPacket {
+    fun createCTRLGetServiceVersionPacket(state: State, serviceID: ServiceID): TransportLayer.Packet {
         return createAppLayerPacket(state, Command.CTRL_GET_SERVICE_VERSION, true, byteArrayListOfInts(serviceID.id))
     }
 
-    fun createCTRLBindPacket(state: State): ComboPacket {
+    fun createCTRLBindPacket(state: State): TransportLayer.Packet {
         // TODO: See the spec for this command. It is currently
         // unclear why the payload has to be 0x48.
         return createAppLayerPacket(state, Command.CTRL_BIND, true, byteArrayListOfInts(0x48))
     }
 
-    fun createCTRLDisconnectPacket(state: State): ComboPacket {
+    fun createCTRLDisconnectPacket(state: State): TransportLayer.Packet {
         // TODO: See the spec for this command. It is currently
         // unclear why the payload has to be 0x6003, and why
         // Ruffy sets this to 0x0003 instead.
         return createAppLayerPacket(state, Command.CTRL_DISCONNECT, true, byteArrayListOfInts(0x03, 0x60))
     }
 
-    fun createCTRLActivateServicePacket(state: State, serviceID: ServiceID): ComboPacket {
+    fun createCTRLActivateServicePacket(state: State, serviceID: ServiceID): TransportLayer.Packet {
         return createAppLayerPacket(state, Command.CTRL_ACTIVATE_SERVICE, true, byteArrayListOfInts(serviceID.id, 1, 0))
     }
 
-    fun createCTRLDeactivateAllServicesPacket(state: State): ComboPacket {
+    fun createCTRLDeactivateAllServicesPacket(state: State): TransportLayer.Packet {
         return createAppLayerPacket(state, Command.CTRL_DEACTIVATE_ALL_SERVICES, true)
     }
 
@@ -113,7 +113,7 @@ class ApplicationLayer {
         NO_BUTTON(0x00)
     }
 
-    fun createRTButtonStatusPacket(state: State, rtButtonCode: RTButtonCode, buttonStatusChanged: Boolean): ComboPacket {
+    fun createRTButtonStatusPacket(state: State, rtButtonCode: RTButtonCode, buttonStatusChanged: Boolean): TransportLayer.Packet {
         val payload = byteArrayListOfInts(
             (state.currentRTSequence shr 0) and 0xFF,
             (state.currentRTSequence shr 8) and 0xFF,
@@ -126,7 +126,7 @@ class ApplicationLayer {
         return createAppLayerPacket(state, Command.RT_BUTTON_STATUS, false, payload)
     }
 
-    fun parseAppLayerPacketCommand(packet: ComboPacket): Command {
+    fun parseAppLayerPacketCommand(packet: TransportLayer.Packet): Command {
         val payload = packet.payload
 
         if (payload.size < 4)
@@ -160,7 +160,7 @@ class ApplicationLayer {
         val pixels: List<Byte>
     )
 
-    fun parseRTDisplayPacket(packet: ComboPacket): RTDisplayContent {
+    fun parseRTDisplayPacket(packet: TransportLayer.Packet): RTDisplayContent {
         val payload = packet.payload
 
         if (payload.size < (4 + 5 + 96))

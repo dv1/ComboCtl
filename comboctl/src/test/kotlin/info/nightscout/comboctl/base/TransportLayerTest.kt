@@ -1,10 +1,143 @@
 package info.nightscout.comboctl.base
 
-import org.junit.jupiter.api.Assertions.assertArrayEquals
-import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 
 class TransportLayerTest {
+    @Test
+    fun parsePacketData() {
+        // Test the packet parser by parsing hardcoded packet data
+        // and verifying the individual packet property values.
+
+        val packetDataWithCRCPayload = byteArrayListOfInts(
+            0x10, // versions
+            0x09, // request_pairing_connection command (sequence and data reliability bit set to 0)
+            0x02, 0x00, // payload length
+            0xF0, // addresses
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // nonce
+            0x99, 0x44, // payload
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 // nullbyte MAC
+        )
+
+        // The actual parsing.
+        var packet = packetDataWithCRCPayload.toTransportLayerPacket()
+
+        // Check the individual properties.
+
+        assertEquals(1, packet.majorVersion)
+        assertEquals(0, packet.minorVersion)
+
+        assertFalse(packet.sequenceBit)
+
+        assertFalse(packet.reliabilityBit)
+
+        assertEquals(TransportLayer.CommandID.REQUEST_PAIRING_CONNECTION, packet.commandID)
+
+        assertEquals(0xF, packet.sourceAddress)
+        assertEquals(0x0, packet.destinationAddress)
+
+        assertArrayEquals(byteArrayOfInts(0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00), packet.nonce)
+
+        assertEquals(byteArrayListOfInts(0x99, 0x44), packet.payload)
+
+        assertArrayEquals(byteArrayOfInts(0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00), packet.machineAuthenticationCode)
+    }
+
+    @Test
+    fun createPacketData() {
+        // Create packet, and check that it is correctly converted to a byte list.
+
+        val packet = TransportLayer.Packet().apply {
+            majorVersion = 4
+            minorVersion = 2
+            sequenceBit = true
+            reliabilityBit = false
+            commandID = TransportLayer.CommandID.REQUEST_PAIRING_CONNECTION
+            sourceAddress = 0x4
+            destinationAddress = 0x5
+            nonce = byteArrayOfInts(0x0A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0B)
+            payload = byteArrayListOfInts(0x50, 0x60, 0x70)
+            machineAuthenticationCode = byteArrayOfInts(0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08)
+        }
+
+        val byteList = packet.toByteList()
+
+        val expectedPacketData = byteArrayListOfInts(
+            0x42, // versions
+            0x80 or 0x09, // command 0x09 with sequence bit enabled
+            0x03, 0x00, // payload length
+            0x45, // addresses,
+            0x0A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0B, // nonce
+            0x50, 0x60, 0x70, // payload
+            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 // MAC
+        )
+
+        assertEquals(byteList, expectedPacketData)
+    }
+
+    @Test
+    fun verifyPacketDataIntegrityWithCRC() {
+        // Create packet and verify that the CRC check detects data corruption.
+
+        val packet = TransportLayer.Packet().apply {
+            majorVersion = 4
+            minorVersion = 2
+            sequenceBit = true
+            reliabilityBit = false
+            commandID = TransportLayer.CommandID.REQUEST_PAIRING_CONNECTION
+            sourceAddress = 0x4
+            destinationAddress = 0x5
+            nonce = byteArrayOfInts(0x0A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0B)
+            machineAuthenticationCode = byteArrayOfInts(0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00)
+        }
+
+        // Check that the computed CRC is correct.
+        packet.computeCRC16Payload()
+        val expectedCRCPayload = byteArrayListOfInts(0xE1, 0x7B)
+        assertEquals(expectedCRCPayload, packet.payload)
+
+        // The CRC should match, since it was just computed.
+        assertTrue(packet.verifyCRC16Payload())
+
+        // Simulate data corruption by altering the command ID.
+        // This should produce a CRC mismatch.
+        packet.commandID = TransportLayer.CommandID.PAIRING_CONNECTION_REQUEST_ACCEPTED
+        assertFalse(packet.verifyCRC16Payload())
+    }
+
+    @Test
+    fun verifyPacketDataIntegrityWithMAC() {
+        // Create packet and verify that the MAC check detects data corruption.
+
+        val key = ByteArray(CIPHER_KEY_SIZE).apply { fill('0'.toByte()) }
+        val cipher = Cipher(key)
+
+        val packet = TransportLayer.Packet().apply {
+            majorVersion = 4
+            minorVersion = 2
+            sequenceBit = true
+            reliabilityBit = false
+            commandID = TransportLayer.CommandID.REQUEST_PAIRING_CONNECTION
+            sourceAddress = 0x4
+            destinationAddress = 0x5
+            nonce = byteArrayOfInts(0x0A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0B)
+            payload = byteArrayListOfInts(0x00, 0x00)
+        }
+
+        // Check that the computed MAC is correct.
+        packet.authenticate(cipher)
+        val expectedMAC = byteArrayOfInts(0x00, 0xC5, 0x48, 0xB3, 0xA8, 0xE6, 0x97, 0x76)
+        assertArrayEquals(expectedMAC, packet.machineAuthenticationCode)
+
+        // The MAC should match, since it was just computed.
+        assertTrue(packet.verifyAuthentication(cipher))
+
+        // Simulate data corruption by altering the payload.
+        // This should produce a MAC mismatch.
+        packet.payload[0] = 0xFF.toByte()
+        assertFalse(packet.verifyAuthentication(cipher))
+    }
+
     @Test
     fun checkPairingSequenceProcessing() {
         // Test the behavior of the transport layer code when it
@@ -14,7 +147,7 @@ class TransportLayerTest {
         // verify that the created packets are correct, and behave
         // as it they got sent right after the create* call.
 
-        val requestPairingConnectionPacket = ComboPacket(byteArrayListOfInts(
+        val requestPairingConnectionPacket = TransportLayer.Packet(byteArrayListOfInts(
             0x10,
             0x09,
             0x02, 0x00,
@@ -22,7 +155,7 @@ class TransportLayerTest {
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0xb2, 0x11,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00))
-        val requestKeysPacket = ComboPacket(byteArrayListOfInts(
+        val requestKeysPacket = TransportLayer.Packet(byteArrayListOfInts(
             0x10,
             0x0c,
             0x02, 0x00,
@@ -30,7 +163,7 @@ class TransportLayerTest {
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x81, 0x41,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00))
-        val getAvailableKeysPacket = ComboPacket(byteArrayListOfInts(
+        val getAvailableKeysPacket = TransportLayer.Packet(byteArrayListOfInts(
             0x10,
             0x0f,
             0x02, 0x00,
@@ -38,7 +171,7 @@ class TransportLayerTest {
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x90, 0x71,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00))
-        val keyResponsePacket = ComboPacket(byteArrayListOfInts(
+        val keyResponsePacket = TransportLayer.Packet(byteArrayListOfInts(
             0x10,
             0x11,
             0x20, 0x00,
@@ -48,7 +181,7 @@ class TransportLayerTest {
             0x08, 0x92, 0x7b, 0xf0, 0xa3, 0x75, 0xf3, 0xb4, 0x5f, 0xe2, 0xf3, 0x46, 0x63,
             0xcd, 0xdd, 0xc4, 0x96, 0x37, 0xac,
             0x25, 0xa0, 0x26, 0x47, 0x29, 0x37, 0xff, 0x66))
-        val requestIDPacket = ComboPacket(byteArrayListOfInts(
+        val requestIDPacket = TransportLayer.Packet(byteArrayListOfInts(
             0x10,
             0x12,
             0x11, 0x00,
@@ -57,7 +190,7 @@ class TransportLayerTest {
             0x08, 0x29, 0x00, 0x00, 0x54, 0x65, 0x73, 0x74, 0x20, 0x31, 0x32, 0x33, 0x00,
             0x00, 0x00, 0x00, 0x00,
             0x75, 0xca, 0x6c, 0x95, 0x01, 0xbf, 0x9b, 0x5a))
-        val idResponsePacket = ComboPacket(byteArrayListOfInts(
+        val idResponsePacket = TransportLayer.Packet(byteArrayListOfInts(
             0x10,
             0x14,
             0x11, 0x00,

@@ -11,13 +11,13 @@ class ApplicationLayerTest {
     val appLayerState = ApplicationLayer.State(tpLayer, tpLayerState)
 
     private fun checkCreatedPacket(
-        packet: ComboPacket,
+        packet: TransportLayer.Packet,
         command: ApplicationLayer.Command,
         appLayerPayload: ArrayList<Byte> = arrayListOf()
     ) {
         assertEquals(1, packet.majorVersion)
         assertEquals(0, packet.minorVersion)
-        assertEquals(ComboPacket.CommandID.DATA, packet.commandID)
+        assertEquals(TransportLayer.CommandID.DATA, packet.commandID)
         assertEquals(tpLayerState.keyResponseSourceAddress, packet.sourceAddress)
         assertEquals(tpLayerState.keyResponseDestinationAddress, packet.destinationAddress)
 
@@ -121,7 +121,7 @@ class ApplicationLayerTest {
 
     @Test
     fun checkRTDisplayPacket() {
-        val packet = ComboPacket(byteArrayListOfInts(
+        val packet = TransportLayer.Packet(byteArrayListOfInts(
             0x10,
             0x03,
             0x69, 0x00,

@@ -57,7 +57,7 @@ fun main(vararg args: String) {
             "Got ${if (frameData.isOutgoingData) "outgoing" else "incoming"} frame payload with ${framePayload.size} byte(s)"
         }
 
-        val packet = framePayload.toComboPacket()
+        val packet = framePayload.toTransportLayerPacket()
         logger.log(LogLevel.DEBUG) {
             "Got packet:" +
             "  major/minor version: ${packet.majorVersion}/${packet.minorVersion}" +
