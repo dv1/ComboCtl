@@ -1,5 +1,7 @@
 package info.nightscout.comboctl.base
 
+import java.text.ParseException
+
 // Packet structure:
 //
 //   1. 4 bits    : Packet major version (always set to 0x01)
@@ -43,6 +45,23 @@ private const val PAYLOAD_BYTES_OFFSET = NONCE_BYTES_OFFSET + NUM_NONCE_BYTES
  * See "Transport layer packet structure" in combo-comm-spec.adoc for details.
  */
 class ComboPacket() {
+    /**
+     * Valid command IDs for Combo packets.
+     */
+    enum class CommandID(val id: Int) {
+        // Pairing commands
+        REQUEST_PAIRING_CONNECTION(0x09), PAIRING_CONNECTION_REQUEST_ACCEPTED(0x0A), REQUEST_KEYS(0x0C),
+        GET_AVAILABLE_KEYS(0x0F), KEY_RESPONSE(0x11), REQUEST_ID(0x12), ID_RESPONSE(0x14),
+
+        // Regular commands - these require that pairing was performed
+        REQUEST_REGULAR_CONNECTION(0x17), REGULAR_CONNECTION_REQUEST_ACCEPTED(0x18), DISCONNECT(0x1B),
+        ACK_RESPONSE(0x05), DATA(0x03), ERROR_RESPONSE(0x06);
+
+        companion object {
+            private val values = CommandID.values()
+            fun fromInt(value: Int) = values.firstOrNull { it.id == value }
+        }
+    }
 
     constructor(bytes: List<Byte>) : this() {
         require(bytes.size >= (PACKET_HEADER_SIZE + NUM_MAC_BYTES))
@@ -51,7 +70,9 @@ class ComboPacket() {
         minorVersion = bytes[VERSION_BYTE_OFFSET].toPosInt() and 0xF
         sequenceBit = (bytes[SEQ_REL_CMD_BYTE_OFFSET].toPosInt() and 0x80) != 0
         reliabilityBit = (bytes[SEQ_REL_CMD_BYTE_OFFSET].toPosInt() and 0x20) != 0
-        commandID = bytes[SEQ_REL_CMD_BYTE_OFFSET].toPosInt() and 0x1F
+
+        val commandIDInt = bytes[SEQ_REL_CMD_BYTE_OFFSET].toPosInt() and 0x1F
+        commandID = CommandID.fromInt(commandIDInt) ?: throw ParseException("Invalid command ID 0x%02X".format(commandIDInt), 1)
 
         sourceAddress = (bytes[ADDRESS_BYTE_OFFSET].toPosInt() shr 4) and 0xF
         destinationAddress = bytes[ADDRESS_BYTE_OFFSET].toPosInt() and 0xF
@@ -98,11 +119,7 @@ class ComboPacket() {
 
     var reliabilityBit: Boolean = false
 
-    var commandID: Int = 0
-        set(value) {
-            require((value >= 0) && (value <= 31))
-            field = value
-        }
+    var commandID: CommandID? = null
 
     var sourceAddress: Int = 0
         set(value) {
@@ -161,7 +178,7 @@ class ComboPacket() {
         bytes.add(((majorVersion shl 4) or minorVersion).toByte())
         bytes.add(((if (sequenceBit) 0x80 else 0)
             or (if (reliabilityBit) 0x20 else 0)
-            or commandID).toByte())
+            or commandID!!.id).toByte())
         bytes.add((payload.size and 0xFF).toByte())
         bytes.add(((payload.size shr 8) and 0xFF).toByte())
         bytes.add(((sourceAddress shl 4) or destinationAddress).toByte())
@@ -280,7 +297,7 @@ class ComboPacket() {
         result = 31 * result + minorVersion
         result = 31 * result + sequenceBit.hashCode()
         result = 31 * result + reliabilityBit.hashCode()
-        result = 31 * result + commandID
+        result = 31 * result + commandID!!.id
         result = 31 * result + sourceAddress
         result = 31 * result + destinationAddress
         result = 31 * result + nonce.contentHashCode()

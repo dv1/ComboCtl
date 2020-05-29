@@ -17,7 +17,7 @@ class ApplicationLayerTest {
     ) {
         assertEquals(1, packet.majorVersion)
         assertEquals(0, packet.minorVersion)
-        assertEquals(TransportLayer.CommandID.DATA.id, packet.commandID)
+        assertEquals(ComboPacket.CommandID.DATA, packet.commandID)
         assertEquals(tpLayerState.keyResponseSourceAddress, packet.sourceAddress)
         assertEquals(tpLayerState.keyResponseDestinationAddress, packet.destinationAddress)
 

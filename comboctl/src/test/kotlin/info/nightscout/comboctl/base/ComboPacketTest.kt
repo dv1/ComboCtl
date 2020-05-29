@@ -31,7 +31,7 @@ class ComboPacketTest {
 
         assertFalse(packet.reliabilityBit)
 
-        assertEquals(0x09, packet.commandID)
+        assertEquals(ComboPacket.CommandID.REQUEST_PAIRING_CONNECTION, packet.commandID)
 
         assertEquals(0xF, packet.sourceAddress)
         assertEquals(0x0, packet.destinationAddress)
@@ -52,7 +52,7 @@ class ComboPacketTest {
             minorVersion = 2
             sequenceBit = true
             reliabilityBit = false
-            commandID = 0x05
+            commandID = ComboPacket.CommandID.REQUEST_PAIRING_CONNECTION
             sourceAddress = 0x4
             destinationAddress = 0x5
             nonce = byteArrayOfInts(0x0A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0B)
@@ -64,7 +64,7 @@ class ComboPacketTest {
 
         val expectedPacketData = byteArrayListOfInts(
             0x42, // versions
-            0x80 or 0x05, // command 0x05 with sequence bit enabled
+            0x80 or 0x09, // command 0x09 with sequence bit enabled
             0x03, 0x00, // payload length
             0x45, // addresses,
             0x0A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0B, // nonce
@@ -84,7 +84,7 @@ class ComboPacketTest {
             minorVersion = 2
             sequenceBit = true
             reliabilityBit = false
-            commandID = 0x05
+            commandID = ComboPacket.CommandID.REQUEST_PAIRING_CONNECTION
             sourceAddress = 0x4
             destinationAddress = 0x5
             nonce = byteArrayOfInts(0x0A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0B)
@@ -93,15 +93,15 @@ class ComboPacketTest {
 
         // Check that the computed CRC is correct.
         packet.computeCRC16Payload()
-        val expectedCRCPayload = byteArrayListOfInts(0xA5, 0xBB)
-        assertEquals(packet.payload, expectedCRCPayload)
+        val expectedCRCPayload = byteArrayListOfInts(0xE1, 0x7B)
+        assertEquals(expectedCRCPayload, packet.payload)
 
         // The CRC should match, since it was just computed.
         assertTrue(packet.verifyCRC16Payload())
 
         // Simulate data corruption by altering the command ID.
         // This should produce a CRC mismatch.
-        packet.commandID = 0x10
+        packet.commandID = ComboPacket.CommandID.PAIRING_CONNECTION_REQUEST_ACCEPTED
         assertFalse(packet.verifyCRC16Payload())
     }
 
@@ -117,7 +117,7 @@ class ComboPacketTest {
             minorVersion = 2
             sequenceBit = true
             reliabilityBit = false
-            commandID = 0x05
+            commandID = ComboPacket.CommandID.REQUEST_PAIRING_CONNECTION
             sourceAddress = 0x4
             destinationAddress = 0x5
             nonce = byteArrayOfInts(0x0A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0B)
@@ -126,8 +126,8 @@ class ComboPacketTest {
 
         // Check that the computed MAC is correct.
         packet.authenticate(cipher)
-        val expectedMAC = byteArrayOfInts(0x27, 0xD5, 0xAC, 0x50, 0x60, 0xE1, 0x3A, 0xB3)
-        assertArrayEquals(packet.machineAuthenticationCode, expectedMAC)
+        val expectedMAC = byteArrayOfInts(0x00, 0xC5, 0x48, 0xB3, 0xA8, 0xE6, 0x97, 0x76)
+        assertArrayEquals(expectedMAC, packet.machineAuthenticationCode)
 
         // The MAC should match, since it was just computed.
         assertTrue(packet.verifyAuthentication(cipher))

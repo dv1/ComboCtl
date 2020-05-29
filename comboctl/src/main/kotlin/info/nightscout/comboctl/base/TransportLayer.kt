@@ -112,19 +112,6 @@ class TransportLayer(val logger: Logger) {
         var currentSequenceFlag = false
     }
 
-    /**
-     * Valid command IDs for Combo packets.
-     */
-    enum class CommandID(val id: Int) {
-        // Pairing commands
-        REQUEST_PAIRING_CONNECTION(0x09), PAIRING_CONNECTION_REQUEST_ACCEPTED(0x0A), REQUEST_KEYS(0x0C),
-        GET_AVAILABLE_KEYS(0x0F), KEY_RESPONSE(0x11), REQUEST_ID(0x12), ID_RESPONSE(0x14),
-
-        // Regular commands - these require that pairing was performed
-        REQUEST_REGULAR_CONNECTION(0x17), REGULAR_CONNECTION_REQUEST_ACCEPTED(0x18), DISCONNECT(0x1B),
-        ACK_RESPONSE(0x05), DATA(0x03), ERROR_RESPONSE(0x06)
-    }
-
     private fun incrementTxNonce(state: State) {
         var carry: Boolean = true
 
@@ -148,7 +135,7 @@ class TransportLayer(val logger: Logger) {
     // Base function for generating CRC-verified packets.
     // These packets only have the CRC itself as payload, and
     // are only used during the pairing process.
-    private fun createCRCPacket(commandID: CommandID): ComboPacket = ComboPacket().apply {
+    private fun createCRCPacket(commandID: ComboPacket.CommandID): ComboPacket = ComboPacket().apply {
         majorVersion = 1
         minorVersion = 0
         sequenceBit = false
@@ -157,7 +144,7 @@ class TransportLayer(val logger: Logger) {
         destinationAddress = 0x0
         nonce = ByteArray(NUM_NONCE_BYTES) { 0x00 }
         machineAuthenticationCode = ByteArray(NUM_MAC_BYTES) { 0x00 }
-        this.commandID = commandID.id
+        this.commandID = commandID
         computeCRC16Payload()
         logger.log(LogLevel.DEBUG) {
             "Computed CRC16 payload 0x%02X%02X".format(this.payload[1].toPosInt(), this.payload[0].toPosInt())
@@ -171,7 +158,7 @@ class TransportLayer(val logger: Logger) {
     // to valid values.
     private fun createMACAuthenticatedPacket(
         state: State,
-        commandID: CommandID,
+        commandID: ComboPacket.CommandID,
         payload: ArrayList<Byte> = arrayListOf(),
         sequenceBit: Boolean = false,
         reliabilityBit: Boolean = false
@@ -186,7 +173,7 @@ class TransportLayer(val logger: Logger) {
             destinationAddress = state.keyResponseDestinationAddress!!
         }
 
-        packet.commandID = commandID.id
+        packet.commandID = commandID
         packet.sequenceBit = sequenceBit
         packet.reliabilityBit = reliabilityBit
         packet.payload = payload
@@ -209,7 +196,7 @@ class TransportLayer(val logger: Logger) {
      * @return The produced packet.
      */
     fun createRequestPairingConnectionPacket(): ComboPacket {
-        return createCRCPacket(CommandID.REQUEST_PAIRING_CONNECTION)
+        return createCRCPacket(ComboPacket.CommandID.REQUEST_PAIRING_CONNECTION)
     }
 
     /**
@@ -222,7 +209,7 @@ class TransportLayer(val logger: Logger) {
      * @return The produced packet.
      */
     fun createRequestKeysPacket(): ComboPacket {
-        return createCRCPacket(CommandID.REQUEST_KEYS)
+        return createCRCPacket(ComboPacket.CommandID.REQUEST_KEYS)
     }
 
     /**
@@ -235,7 +222,7 @@ class TransportLayer(val logger: Logger) {
      * @return The produced packet.
      */
     fun createGetAvailableKeysPacket(): ComboPacket {
-        return createCRCPacket(CommandID.GET_AVAILABLE_KEYS)
+        return createCRCPacket(ComboPacket.CommandID.GET_AVAILABLE_KEYS)
     }
 
     /**
@@ -273,7 +260,7 @@ class TransportLayer(val logger: Logger) {
         for (i in 0 until numBTFriendlyNameBytes) payload.add(btFriendlyNameBytes[i])
         for (i in numBTFriendlyNameBytes until 13) payload.add(0.toByte())
 
-        return createMACAuthenticatedPacket(state, CommandID.REQUEST_ID, payload)
+        return createMACAuthenticatedPacket(state, ComboPacket.CommandID.REQUEST_ID, payload)
     }
 
     /**
@@ -287,7 +274,7 @@ class TransportLayer(val logger: Logger) {
      * @return The produced packet.
      */
     fun createRequestRegularConnectionPacket(state: State): ComboPacket {
-        return createMACAuthenticatedPacket(state, CommandID.REQUEST_REGULAR_CONNECTION)
+        return createMACAuthenticatedPacket(state, ComboPacket.CommandID.REQUEST_REGULAR_CONNECTION)
     }
 
     /**
@@ -300,7 +287,7 @@ class TransportLayer(val logger: Logger) {
      * @return The produced packet.
      */
     fun createAckResponsePacket(state: State, sequenceBit: Boolean): ComboPacket {
-        return createMACAuthenticatedPacket(state, CommandID.ACK_RESPONSE, sequenceBit = sequenceBit,
+        return createMACAuthenticatedPacket(state, ComboPacket.CommandID.ACK_RESPONSE, sequenceBit = sequenceBit,
             reliabilityBit = true)
     }
 
@@ -328,7 +315,7 @@ class TransportLayer(val logger: Logger) {
             state.currentSequenceFlag = !state.currentSequenceFlag
         } else sequenceBit = false
 
-        return createMACAuthenticatedPacket(state, CommandID.DATA, payload = payload, sequenceBit = sequenceBit,
+        return createMACAuthenticatedPacket(state, ComboPacket.CommandID.DATA, payload = payload, sequenceBit = sequenceBit,
             reliabilityBit = reliabilityBit)
     }
 
@@ -350,7 +337,7 @@ class TransportLayer(val logger: Logger) {
 
         val weakCipher = state.weakCipher ?: throw IllegalStateException()
 
-        require(packet.commandID == CommandID.KEY_RESPONSE.id)
+        require(packet.commandID == ComboPacket.CommandID.KEY_RESPONSE)
         require(packet.payload.size == (CIPHER_KEY_SIZE * 2))
         require(packet.verifyAuthentication(weakCipher))
 
@@ -396,7 +383,7 @@ class TransportLayer(val logger: Logger) {
      * @return The parsed IDs.
      */
     fun parseIDResponsePacket(state: State, packet: ComboPacket): ComboIDs {
-        require(packet.commandID == CommandID.ID_RESPONSE.id)
+        require(packet.commandID == ComboPacket.CommandID.ID_RESPONSE)
         require(packet.payload.size == 17)
         val pumpClientCipher = state.pumpClientCipher ?: throw IllegalStateException()
         require(packet.verifyAuthentication(pumpClientCipher))
@@ -432,7 +419,7 @@ class TransportLayer(val logger: Logger) {
      */
     private fun parseErrorResponsePacket(state: State, packet: ComboPacket): Int? =
         state.pumpClientCipher?.let { cipher ->
-            require(packet.commandID == CommandID.ERROR_RESPONSE.id)
+            require(packet.commandID == ComboPacket.CommandID.ERROR_RESPONSE)
             require(packet.payload.size == 1)
             require(packet.verifyAuthentication(cipher))
 
