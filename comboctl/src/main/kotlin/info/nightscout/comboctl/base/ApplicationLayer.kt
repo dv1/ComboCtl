@@ -1,14 +1,27 @@
 package info.nightscout.comboctl.base
 
-import java.text.ParseException
+// Application layer packet structure (excluding the additional transport layer packet metadata):
+//
+// 1. 4 bits  : Application layer major version (always set to 0x01)
+// 2. 4 bits  : Application layer minor version (always set to 0x00)
+// 3. 8 bits  : Service ID; can be one of these values:
+//              0x00 : control service ID
+//              0x48 : RT mode service ID
+//              0xB7 : command mode service ID
+// 4. 16 bits : Command ID, stored as a 16-bit little endian integer
+// 5. n bytes : Payload
+
+// 1 byte with major & minor version
+// 1 byte with service ID
+// 2 bytes with command ID
+private const val PACKET_HEADER_SIZE = 1 + 1 + 2
+
+private const val VERSION_BYTE_OFFSET = 0
+private const val SERVICE_ID_BYTE_OFFSET = 1
+private const val COMMAND_ID_BYTE_OFFSET = 2
+private const val PAYLOAD_BYTES_OFFSET = 4
 
 class ApplicationLayer {
-    class State(
-        val transportLayer: TransportLayer,
-        val transportLayerState: TransportLayer.State,
-        var currentRTSequence: Int = 0
-    )
-
     /**
      * Valid application layer command service IDs.
      */
@@ -23,21 +36,30 @@ class ApplicationLayer {
         }
     }
 
-    enum class Command(val serviceID: ServiceID, val commandID: Int) {
-        CTRL_CONNECT(ServiceID.CONTROL, 0x9055),
-        CTRL_CONNECT_RESPONSE(ServiceID.CONTROL, 0xA055),
-        CTRL_GET_SERVICE_VERSION(ServiceID.CONTROL, 0x9065),
-        CTRL_SERVICE_VERSION_RESPONSE(ServiceID.CONTROL, 0xA065),
-        CTRL_BIND(ServiceID.CONTROL, 0x9095),
-        CTRL_BIND_RESPONSE(ServiceID.CONTROL, 0xA095),
-        CTRL_DISCONNECT(ServiceID.CONTROL, 0x005A),
-        CTRL_ACTIVATE_SERVICE(ServiceID.CONTROL, 0x9066),
-        CTRL_ACTIVATE_SERVICE_RESPONSE(ServiceID.CONTROL, 0xA066),
-        CTRL_DEACTIVATE_ALL_SERVICES(ServiceID.CONTROL, 0x906A),
-        CTRL_ALL_SERVICES_DEACTIVATED(ServiceID.CONTROL, 0xA06A),
+    /**
+     * Valid application layer commands.
+     *
+     * An application layer command is a combination of a service ID, a command ID,
+     * and a flag whether or not the command is to be sent with the underlying
+     * DATA transport layer packet's reliability flag set or unset. The former
+     * two already uniquely identify the command; the "reliable" flag is additional
+     * information.
+     */
+    enum class Command(val serviceID: ServiceID, val commandID: Int, val reliable: Boolean) {
+        CTRL_CONNECT(ServiceID.CONTROL, 0x9055, true),
+        CTRL_CONNECT_RESPONSE(ServiceID.CONTROL, 0xA055, true),
+        CTRL_GET_SERVICE_VERSION(ServiceID.CONTROL, 0x9065, true),
+        CTRL_SERVICE_VERSION_RESPONSE(ServiceID.CONTROL, 0xA065, true),
+        CTRL_BIND(ServiceID.CONTROL, 0x9095, true),
+        CTRL_BIND_RESPONSE(ServiceID.CONTROL, 0xA095, true),
+        CTRL_DISCONNECT(ServiceID.CONTROL, 0x005A, true),
+        CTRL_ACTIVATE_SERVICE(ServiceID.CONTROL, 0x9066, true),
+        CTRL_ACTIVATE_SERVICE_RESPONSE(ServiceID.CONTROL, 0xA066, true),
+        CTRL_DEACTIVATE_ALL_SERVICES(ServiceID.CONTROL, 0x906A, true),
+        CTRL_ALL_SERVICES_DEACTIVATED(ServiceID.CONTROL, 0xA06A, true),
 
-        RT_BUTTON_STATUS(ServiceID.RT_MODE, 0x0565),
-        RT_DISPLAY(ServiceID.RT_MODE, 0x0555);
+        RT_BUTTON_STATUS(ServiceID.RT_MODE, 0x0565, false),
+        RT_DISPLAY(ServiceID.RT_MODE, 0x0555, false);
 
         companion object {
             private val values = Command.values()
@@ -96,19 +118,83 @@ class ApplicationLayer {
         var currentRTSequence: Int = 0
     )
 
-    private fun createAppLayerPacket(
-        state: State,
-        command: Command,
-        reliabilityBit: Boolean = false,
-        payload: ArrayList<Byte> = arrayListOf()
-    ): TransportLayer.Packet {
-        val appLayerPacketPayload = ArrayList<Byte>(1 + 1 + 2 + payload.size)
-        appLayerPacketPayload.add(0x10) // Major version (1) and minor version (0)
-        appLayerPacketPayload.add(command.serviceID.id.toByte())
-        appLayerPacketPayload.add(((command.commandID shr 0) and 0xFF).toByte())
-        appLayerPacketPayload.add(((command.commandID shr 8) and 0xFF).toByte())
-        appLayerPacketPayload.addAll(payload)
-        return state.transportLayer.createDataPacket(state.transportLayerState, reliabilityBit, appLayerPacketPayload)
+    class Packet() {
+        /**
+         * Major version number.
+         *
+         * In all observed packets, this was set to 1.
+         *
+         * Valid range is 0-15.
+         */
+        var majorVersion: Int = 1
+            set(value) {
+                require((value >= 0x0) && (value <= 0xF))
+                field = value
+            }
+
+        /**
+         * Minor version number.
+         *
+         * In all observed packets, this was set to 0.
+         *
+         * Valid range is 0-15.
+         */
+        var minorVersion: Int = 0
+            set(value) {
+                require((value >= 0x0) && (value <= 0xF))
+                field = value
+            }
+
+        var command: Command? = null
+
+        var payload: ArrayList<Byte> = ArrayList<Byte>(0)
+            set(value) {
+                require(value.size <= (65535 - PACKET_HEADER_SIZE))
+                field = value
+            }
+
+        constructor(tpLayerPacket: TransportLayer.Packet) : this() {
+            require(tpLayerPacket.commandID == TransportLayer.CommandID.DATA)
+            require(tpLayerPacket.payload.size >= (PACKET_HEADER_SIZE))
+
+            val appPacketBytes = tpLayerPacket.payload
+
+            majorVersion = (appPacketBytes[VERSION_BYTE_OFFSET].toPosInt() shr 4) and 0xF
+            minorVersion = appPacketBytes[VERSION_BYTE_OFFSET].toPosInt() and 0xF
+
+            val serviceIDInt = appPacketBytes[SERVICE_ID_BYTE_OFFSET].toPosInt()
+            val serviceID = ServiceID.fromInt(serviceIDInt) ?: throw InvalidServiceIDException(tpLayerPacket, serviceIDInt)
+            val commandID = (tpLayerPacket.payload[COMMAND_ID_BYTE_OFFSET + 0].toPosInt() shl 0) or
+                (tpLayerPacket.payload[COMMAND_ID_BYTE_OFFSET + 1].toPosInt() shl 8)
+            command = Command.fromIDs(serviceID, commandID) ?: throw InvalidCommandIDException(tpLayerPacket, serviceID, commandID)
+
+            payload = ArrayList<Byte>(appPacketBytes.subList(PAYLOAD_BYTES_OFFSET, appPacketBytes.size))
+        }
+
+        override fun equals(other: Any?) =
+            (this === other) ||
+                (other is Packet) &&
+                (majorVersion == other.majorVersion) &&
+                (minorVersion == other.minorVersion) &&
+                (command == other.command) &&
+                (payload == other.payload)
+
+        fun toTransportLayerPacket(appLayerState: ApplicationLayer.State): TransportLayer.Packet {
+            require(command != null)
+
+            val appLayerPacketPayload = ArrayList<Byte>(PACKET_HEADER_SIZE + payload.size)
+            appLayerPacketPayload.add(((majorVersion shl 4) or minorVersion).toByte())
+            appLayerPacketPayload.add(command!!.serviceID.id.toByte())
+            appLayerPacketPayload.add(((command!!.commandID shr 0) and 0xFF).toByte())
+            appLayerPacketPayload.add(((command!!.commandID shr 8) and 0xFF).toByte())
+            appLayerPacketPayload.addAll(payload)
+
+            return appLayerState.transportLayer.createDataPacket(
+                appLayerState.transportLayerState,
+                command!!.reliable,
+                appLayerPacketPayload
+            )
+        }
     }
 
     private fun incrementRTSequence(state: State) {
@@ -117,7 +203,7 @@ class ApplicationLayer {
             state.currentRTSequence = 0
     }
 
-    fun createCTRLConnectPacket(state: State): TransportLayer.Packet {
+    fun createCTRLConnectPacket(): Packet {
         val serialNumber: Int = 12345
         val payload = byteArrayListOfInts(
             (serialNumber shr 0) and 0xFF,
@@ -125,32 +211,47 @@ class ApplicationLayer {
             (serialNumber shr 16) and 0xFF,
             (serialNumber shr 24) and 0xFF
         )
-        return createAppLayerPacket(state, Command.CTRL_CONNECT, true, payload)
+        return Packet().apply {
+            command = Command.CTRL_CONNECT
+            this.payload = payload
+        }
     }
 
-    fun createCTRLGetServiceVersionPacket(state: State, serviceID: ServiceID): TransportLayer.Packet {
-        return createAppLayerPacket(state, Command.CTRL_GET_SERVICE_VERSION, true, byteArrayListOfInts(serviceID.id))
+    fun createCTRLGetServiceVersionPacket(serviceID: ServiceID): Packet {
+        return Packet().apply {
+            command = Command.CTRL_GET_SERVICE_VERSION
+            payload = byteArrayListOfInts(serviceID.id)
+        }
     }
 
-    fun createCTRLBindPacket(state: State): TransportLayer.Packet {
+    fun createCTRLBindPacket(): Packet {
         // TODO: See the spec for this command. It is currently
         // unclear why the payload has to be 0x48.
-        return createAppLayerPacket(state, Command.CTRL_BIND, true, byteArrayListOfInts(0x48))
+        return Packet().apply {
+            command = Command.CTRL_BIND
+            payload = byteArrayListOfInts(0x48)
+        }
     }
 
-    fun createCTRLDisconnectPacket(state: State): TransportLayer.Packet {
+    fun createCTRLDisconnectPacket(): Packet {
         // TODO: See the spec for this command. It is currently
         // unclear why the payload has to be 0x6003, and why
         // Ruffy sets this to 0x0003 instead.
-        return createAppLayerPacket(state, Command.CTRL_DISCONNECT, true, byteArrayListOfInts(0x03, 0x60))
+        return Packet().apply {
+            command = Command.CTRL_DISCONNECT
+            payload = byteArrayListOfInts(0x03, 0x60)
+        }
     }
 
-    fun createCTRLActivateServicePacket(state: State, serviceID: ServiceID): TransportLayer.Packet {
-        return createAppLayerPacket(state, Command.CTRL_ACTIVATE_SERVICE, true, byteArrayListOfInts(serviceID.id, 1, 0))
+    fun createCTRLActivateServicePacket(serviceID: ServiceID): Packet {
+        return Packet().apply {
+            command = Command.CTRL_ACTIVATE_SERVICE
+            payload = byteArrayListOfInts(serviceID.id, 1, 0)
+        }
     }
 
-    fun createCTRLDeactivateAllServicesPacket(state: State): TransportLayer.Packet {
-        return createAppLayerPacket(state, Command.CTRL_DEACTIVATE_ALL_SERVICES, true)
+    fun createCTRLDeactivateAllServicesPacket(): Packet {
+        return Packet().apply { command = Command.CTRL_DEACTIVATE_ALL_SERVICES }
     }
 
     enum class RTButtonCode(val id: Int) {
@@ -161,7 +262,7 @@ class ApplicationLayer {
         NO_BUTTON(0x00)
     }
 
-    fun createRTButtonStatusPacket(state: State, rtButtonCode: RTButtonCode, buttonStatusChanged: Boolean): TransportLayer.Packet {
+    fun createRTButtonStatusPacket(state: State, rtButtonCode: RTButtonCode, buttonStatusChanged: Boolean): Packet {
         val payload = byteArrayListOfInts(
             (state.currentRTSequence shr 0) and 0xFF,
             (state.currentRTSequence shr 8) and 0xFF,
@@ -171,23 +272,10 @@ class ApplicationLayer {
 
         incrementRTSequence(state)
 
-        return createAppLayerPacket(state, Command.RT_BUTTON_STATUS, false, payload)
-    }
-
-    fun parseAppLayerPacketCommand(packet: TransportLayer.Packet): Command {
-        val payload = packet.payload
-
-        if (payload.size < 4)
-            throw ParseException("Insufficient payload bytes in application layer packet", 0)
-
-        val serviceIDInt = payload[1].toPosInt()
-        val serviceID = ServiceID.fromInt(serviceIDInt) ?: throw ParseException("Invalid service ID 0x%02X".format(serviceIDInt), 1)
-
-        val commandID = (payload[2].toPosInt() shl 0) or (payload[3].toPosInt() shl 8)
-        val command = Command.fromIDs(serviceID, commandID) ?: throw ParseException(
-            "Invalid command ID 0x%04X (service ID: %02X)".format(commandID, serviceIDInt), 2)
-
-        return command
+        return Packet().apply {
+            command = Command.RT_BUTTON_STATUS
+            this.payload = payload
+        }
     }
 
     enum class RTDisplayUpdateReason(val id: Int) {
@@ -208,30 +296,35 @@ class ApplicationLayer {
         val pixels: List<Byte>
     )
 
-    fun parseRTDisplayPacket(packet: TransportLayer.Packet): RTDisplayContent {
+    fun parseRTDisplayPacket(packet: Packet): RTDisplayContent {
         val payload = packet.payload
 
-        if (payload.size < (4 + 5 + 96))
-            throw ParseException("Insufficient payload bytes in RT display packet", 0)
+        val expectedPayloadSize = 5 + 96
+        if (payload.size < expectedPayloadSize) {
+            throw InvalidPayloadException(
+                packet,
+                "Insufficient payload bytes in RT display packet; expected $expectedPayloadSize byte(s), got ${payload.size}"
+            )
+        }
 
-        val reasonInt = payload[6].toPosInt()
-        val reason = RTDisplayUpdateReason.fromInt(reasonInt) ?: throw ParseException(
-            "Invalid RT display update reason %02X".format(reasonInt), 6)
+        val reasonInt = payload[2].toPosInt()
+        val reason = RTDisplayUpdateReason.fromInt(reasonInt) ?: throw InvalidPayloadException(
+            packet, "Invalid RT display update reason $reasonInt")
 
-        val row = when (val rowInt = payload[8].toPosInt()) {
+        val row = when (val rowInt = payload[4].toPosInt()) {
             0x47 -> 0
             0x48 -> 1
             0xB7 -> 2
             0xB8 -> 3
-            else -> throw ParseException("Invalid RT display update row %02X".format(rowInt), 8)
+            else -> throw InvalidPayloadException(packet, "Invalid RT display update row $rowInt")
         }
 
         return RTDisplayContent(
-            currentRTSequence = (payload[4].toPosInt() shl 0) or (payload[5].toPosInt() shl 8),
+            currentRTSequence = (payload[0].toPosInt() shl 0) or (payload[1].toPosInt() shl 8),
             reason = reason,
-            index = payload[7].toPosInt(),
+            index = payload[3].toPosInt(),
             row = row,
-            pixels = payload.subList(9, 105)
+            pixels = payload.subList(4, 101)
         )
     }
 }

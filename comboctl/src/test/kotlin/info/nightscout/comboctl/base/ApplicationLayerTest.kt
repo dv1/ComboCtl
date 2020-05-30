@@ -11,15 +11,17 @@ class ApplicationLayerTest {
     val appLayerState = ApplicationLayer.State(tpLayer, tpLayerState)
 
     private fun checkCreatedPacket(
-        packet: TransportLayer.Packet,
+        packet: ApplicationLayer.Packet,
         command: ApplicationLayer.Command,
         appLayerPayload: ArrayList<Byte> = arrayListOf()
     ) {
-        assertEquals(1, packet.majorVersion)
-        assertEquals(0, packet.minorVersion)
-        assertEquals(TransportLayer.CommandID.DATA, packet.commandID)
-        assertEquals(tpLayerState.keyResponseSourceAddress, packet.sourceAddress)
-        assertEquals(tpLayerState.keyResponseDestinationAddress, packet.destinationAddress)
+        val tpLayerPacket = packet.toTransportLayerPacket(appLayerState)
+
+        assertEquals(1, tpLayerPacket.majorVersion)
+        assertEquals(0, tpLayerPacket.minorVersion)
+        assertEquals(TransportLayer.CommandID.DATA, tpLayerPacket.commandID)
+        assertEquals(tpLayerState.keyResponseSourceAddress, tpLayerPacket.sourceAddress)
+        assertEquals(tpLayerState.keyResponseDestinationAddress, tpLayerPacket.destinationAddress)
 
         val payload = byteArrayListOfInts(
             0x10,
@@ -28,7 +30,7 @@ class ApplicationLayerTest {
             (command.commandID shr 8) and 0xFF
         )
         payload.addAll(appLayerPayload)
-        assertEquals(payload, packet.payload)
+        assertEquals(payload, tpLayerPacket.payload)
     }
 
     @BeforeEach
@@ -45,7 +47,7 @@ class ApplicationLayerTest {
 
     @Test
     fun checkCTRLConnectPacket() {
-        val packet = appLayer.createCTRLConnectPacket(appLayerState)
+        val packet = appLayer.createCTRLConnectPacket()
         val serialNumber: Int = 12345
         checkCreatedPacket(
             packet,
@@ -61,7 +63,7 @@ class ApplicationLayerTest {
 
     @Test
     fun checkCTRLGetServiceVersionPacket() {
-        val packet = appLayer.createCTRLGetServiceVersionPacket(appLayerState, ApplicationLayer.ServiceID.COMMAND_MODE)
+        val packet = appLayer.createCTRLGetServiceVersionPacket(ApplicationLayer.ServiceID.COMMAND_MODE)
         checkCreatedPacket(
             packet,
             ApplicationLayer.Command.CTRL_GET_SERVICE_VERSION,
@@ -71,7 +73,7 @@ class ApplicationLayerTest {
 
     @Test
     fun checkCTRLBindPacket() {
-        val packet = appLayer.createCTRLBindPacket(appLayerState)
+        val packet = appLayer.createCTRLBindPacket()
         checkCreatedPacket(
             packet,
             ApplicationLayer.Command.CTRL_BIND,
@@ -81,7 +83,7 @@ class ApplicationLayerTest {
 
     @Test
     fun checkCTRLDisconnect() {
-        val packet = appLayer.createCTRLDisconnectPacket(appLayerState)
+        val packet = appLayer.createCTRLDisconnectPacket()
         checkCreatedPacket(
             packet,
             ApplicationLayer.Command.CTRL_DISCONNECT,
@@ -91,7 +93,7 @@ class ApplicationLayerTest {
 
     @Test
     fun checkCTRLActivateServicePacket() {
-        val packet = appLayer.createCTRLActivateServicePacket(appLayerState, ApplicationLayer.ServiceID.COMMAND_MODE)
+        val packet = appLayer.createCTRLActivateServicePacket(ApplicationLayer.ServiceID.COMMAND_MODE)
         checkCreatedPacket(
             packet,
             ApplicationLayer.Command.CTRL_ACTIVATE_SERVICE,
@@ -101,7 +103,7 @@ class ApplicationLayerTest {
 
     @Test
     fun checkCTRLDeactivateAllServicesPacket() {
-        val packet = appLayer.createCTRLDeactivateAllServicesPacket(appLayerState)
+        val packet = appLayer.createCTRLDeactivateAllServicesPacket()
         checkCreatedPacket(
             packet,
             ApplicationLayer.Command.CTRL_DEACTIVATE_ALL_SERVICES
@@ -121,7 +123,7 @@ class ApplicationLayerTest {
 
     @Test
     fun checkRTDisplayPacket() {
-        val packet = TransportLayer.Packet(byteArrayListOfInts(
+        val tpLayerPacket = TransportLayer.Packet(byteArrayListOfInts(
             0x10,
             0x03,
             0x69, 0x00,
@@ -139,10 +141,11 @@ class ApplicationLayerTest {
             0xbd, 0x1a, 0x44, 0xfc, 0x76, 0xf5, 0x2e, 0xb9
         ))
 
-        val command = appLayer.parseAppLayerPacketCommand(packet)
-        assertEquals(ApplicationLayer.Command.RT_DISPLAY, command)
+        val appLayerPacket = ApplicationLayer.Packet(tpLayerPacket)
 
-        val content = appLayer.parseRTDisplayPacket(packet)
+        assertEquals(ApplicationLayer.Command.RT_DISPLAY, appLayerPacket.command)
+
+        val content = appLayer.parseRTDisplayPacket(appLayerPacket)
         assertEquals(0x0002, content.currentRTSequence)
         assertEquals(ApplicationLayer.RTDisplayUpdateReason.PUMP, content.reason)
         assertEquals(0x00, content.index)
