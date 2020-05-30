@@ -3,7 +3,7 @@ package info.nightscout.comboctl.base
 import java.lang.IllegalStateException
 import java.text.ParseException
 
-// Packet structure:
+// Transport layer packet structure:
 //
 //   1. 4 bits    : Packet major version (always set to 0x01)
 //   2. 4 bits    : Packet minor version (always set to 0x00)
@@ -116,7 +116,7 @@ class TransportLayer(val logger: Logger) {
          *
          * Valid range is 0-15.
          */
-        var majorVersion: Int = 0
+        var majorVersion: Int = 1
             set(value) {
                 require((value >= 0x0) && (value <= 0xF))
                 field = value
@@ -442,8 +442,6 @@ class TransportLayer(val logger: Logger) {
     // These packets only have the CRC itself as payload, and
     // are only used during the pairing process.
     private fun createCRCPacket(commandID: CommandID): Packet = Packet().apply {
-        majorVersion = 1
-        minorVersion = 0
         sequenceBit = false
         reliabilityBit = false
         sourceAddress = 0xF
@@ -473,8 +471,6 @@ class TransportLayer(val logger: Logger) {
         require(state.keyResponseDestinationAddress != null)
 
         val packet = Packet().apply {
-            majorVersion = 1
-            minorVersion = 0
             sourceAddress = state.keyResponseSourceAddress!!
             destinationAddress = state.keyResponseDestinationAddress!!
         }
