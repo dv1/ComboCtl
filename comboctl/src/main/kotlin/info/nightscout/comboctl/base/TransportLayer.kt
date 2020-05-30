@@ -75,6 +75,11 @@ class TransportLayer(val logger: Logger) {
         val packetBytes: List<Byte>
     ) : ComboException("Invalid/unknown transport layer packet command ID $commandID")
 
+    class IncorrectPacketException(
+        val packet: TransportLayer.Packet,
+        val expectedCommandID: CommandID
+    ) : ComboException("Incorrect packet: expected ${expectedCommandID.name} packet, got ${packet.commandID?.name ?: "<invalid>"} one")
+
     class PacketVerificationException(
         val packet: TransportLayer.Packet
     ) : ComboException("Packet verification failed")

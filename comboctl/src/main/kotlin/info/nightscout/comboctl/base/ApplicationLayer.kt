@@ -101,6 +101,11 @@ class ApplicationLayer {
         val commandID: Int
     ) : ApplicationLayer.Exception("Invalid/unknown application layer packet command ID $commandID (service ID: ${serviceID.name})")
 
+    class IncorrectPacketException(
+        val appLayerPacket: Packet,
+        val expectedCommand: Command
+    ) : ComboException("Incorrect packet: expected ${expectedCommand.name} packet, got ${appLayerPacket.command?.name ?: "<invalid>"} one")
+
     /**
      * Exception thrown when something is wrong with an application layer packet's payload.
      *
