@@ -48,6 +48,54 @@ class ApplicationLayer {
         }
     }
 
+    /**
+     * Base class for application layer exceptions.
+     *
+     * @param message The detail message.
+     */
+    open class Exception(message: String) : ComboException(message)
+
+    /**
+     * Exception thrown when an application layer packet arrives with an invalid service ID.
+     *
+     * @property tpLayerPacket Underlying transport layer DATA packet containing the application layer packet data.
+     * @property serviceID The invalid service ID.
+     */
+    class InvalidServiceIDException(
+        val tpLayerPacket: TransportLayer.Packet,
+        val serviceID: Int
+    ) : ApplicationLayer.Exception("Invalid/unknown application layer packet service ID $serviceID")
+
+    /**
+     * Exception thrown when an application layer packet packet arrives with an invalid application layer command ID.
+     *
+     * @property tpLayerPacket Underlying transport layer DATA packet containing the application layer packet data.
+     * @property seviceID Service ID from the application layer packet.
+     * @property commandID The invalid application layer command ID.
+     */
+    class InvalidCommandIDException(
+        val tpLayerPacket: TransportLayer.Packet,
+        val serviceID: ServiceID,
+        val commandID: Int
+    ) : ApplicationLayer.Exception("Invalid/unknown application layer packet command ID $commandID (service ID: ${serviceID.name})")
+
+    /**
+     * Exception thrown when something is wrong with an application layer packet's payload.
+     *
+     * @property appLayerPacket Application layer packet with the invalid payload.
+     * @property message Detail message.
+     */
+    class InvalidPayloadException(
+        val appLayerPacket: Packet,
+        message: String
+    ) : ApplicationLayer.Exception(message)
+
+    class State(
+        val transportLayer: TransportLayer,
+        val transportLayerState: TransportLayer.State,
+        var currentRTSequence: Int = 0
+    )
+
     private fun createAppLayerPacket(
         state: State,
         command: Command,

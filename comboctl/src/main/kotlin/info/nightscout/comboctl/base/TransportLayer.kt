@@ -1,7 +1,6 @@
 package info.nightscout.comboctl.base
 
 import java.lang.IllegalStateException
-import java.text.ParseException
 
 // Transport layer packet structure:
 //
@@ -71,6 +70,15 @@ class TransportLayer(val logger: Logger) {
         }
     }
 
+    class InvalidCommandIDException(
+        val commandID: Int,
+        val packetBytes: List<Byte>
+    ) : ComboException("Invalid/unknown transport layer packet command ID $commandID")
+
+    class PacketVerificationException(
+        val packet: TransportLayer.Packet
+    ) : ComboException("Packet verification failed")
+
     /**
      * Class containing data of a Combo transport layer packet.
      *
@@ -92,7 +100,7 @@ class TransportLayer(val logger: Logger) {
             reliabilityBit = (bytes[SEQ_REL_CMD_BYTE_OFFSET].toPosInt() and 0x20) != 0
 
             val commandIDInt = bytes[SEQ_REL_CMD_BYTE_OFFSET].toPosInt() and 0x1F
-            commandID = CommandID.fromInt(commandIDInt) ?: throw ParseException("Invalid command ID 0x%02X".format(commandIDInt), 1)
+            commandID = CommandID.fromInt(commandIDInt) ?: throw InvalidCommandIDException(commandIDInt, bytes)
 
             sourceAddress = (bytes[ADDRESS_BYTE_OFFSET].toPosInt() shr 4) and 0xF
             destinationAddress = bytes[ADDRESS_BYTE_OFFSET].toPosInt() and 0xF
