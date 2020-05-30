@@ -57,16 +57,23 @@ fun main(vararg args: String) {
             "Got ${if (frameData.isOutgoingData) "outgoing" else "incoming"} frame payload with ${framePayload.size} byte(s)"
         }
 
-        val packet = framePayload.toTransportLayerPacket()
-        logger.log(LogLevel.DEBUG) {
-            "Got packet:" +
-            "  major/minor version: ${packet.majorVersion}/${packet.minorVersion}" +
-            "  sequence bit: ${packet.sequenceBit}" +
-            "  reliability bit: ${packet.reliabilityBit}" +
-            "  source/destination address: ${packet.sourceAddress}/${packet.destinationAddress}" +
-            "  nonce: ${packet.nonce.toHexString()}" +
-            "  MAC: ${packet.machineAuthenticationCode.toHexString()}" +
-            "  payload: ${packet.payload.size} byte(s): ${packet.payload.toHexString()}"
+        try {
+            val packet = framePayload.toTransportLayerPacket()
+            logger.log(LogLevel.DEBUG) {
+                "Got packet:" +
+                "  major/minor version: ${packet.majorVersion}/${packet.minorVersion}" +
+                "  command ID: ${packet.commandID?.name ?: "<unknown command ID>"}" +
+                "  sequence bit: ${packet.sequenceBit}" +
+                "  reliability bit: ${packet.reliabilityBit}" +
+                "  source/destination address: ${packet.sourceAddress}/${packet.destinationAddress}" +
+                "  nonce: ${packet.nonce.toHexString()}" +
+                "  MAC: ${packet.machineAuthenticationCode.toHexString()}" +
+                "  payload: ${packet.payload.size} byte(s): ${packet.payload.toHexString()}"
+            }
+        } catch (exc: TransportLayer.InvalidCommandIDException) {
+            logger.log(LogLevel.ERROR) { exc.message ?: "<got InvalidCommandIDException with no message>" }
+        } catch (exc: ComboException) {
+            logger.log(LogLevel.ERROR) { "Caught ComboException: $exc" }
         }
     }
 }
