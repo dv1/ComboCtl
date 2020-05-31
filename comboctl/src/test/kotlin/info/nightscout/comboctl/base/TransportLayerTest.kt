@@ -212,7 +212,7 @@ class TransportLayerTest {
 
         // After REQUEST_KEYS is received, the user must enter the PIN shown on
         // the Combo. This PIN is used to create the weak key.
-        tpLayerState.weakCipher = Cipher(generateWeakKeyFromPIN(PairingPIN(intArrayOf(2, 6, 0, 6, 8, 1, 9, 2, 7, 3))))
+        val weakCipher = Cipher(generateWeakKeyFromPIN(PairingPIN(intArrayOf(2, 6, 0, 6, 8, 1, 9, 2, 7, 3))))
 
         // After the weak key was generated, the client has to send GET_AVAILABLE_KEYS
         // to the Combo to retrieve the client-pump and pump-client keys it generated.
@@ -222,7 +222,7 @@ class TransportLayerTest {
         // We simulate this with keyResponsePacket. This packet must be parsed to get
         // the client-pump and pump-client keys as well as the source and destination
         // key response addresses.
-        tpLayer.parseKeyResponsePacket(tpLayerState, keyResponsePacket)
+        tpLayer.parseKeyResponsePacket(tpLayerState, weakCipher, keyResponsePacket)
         // Verify that the state has been updated with the correct addresses
         // and decrypted keys.
         assertEquals(1, tpLayerState.keyResponseSourceAddress)

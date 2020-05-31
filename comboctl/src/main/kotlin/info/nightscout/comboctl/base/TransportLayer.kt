@@ -44,8 +44,8 @@ private const val PAYLOAD_BYTES_OFFSET = NONCE_BYTES_OFFSET + NUM_NONCE_BYTES
  * - Managing and incrementing the tx nonce in outgoing TL packets
  *
  * The nested State class contains the entire state of the transport layer.
- * All of its properties (except for weakCipher and currentSequenceFlag) must
- * be stored persistently once pairing with the Combo has been completed.
+ * All of its properties (except for currentSequenceFlag) must be stored
+ * persistently once pairing with the Combo has been completed.
  * Storing the ciphers is accomplished by storing their "key" properties.
  * (See the section "What data to persistently store" in combo-comm-spec.adoc
  * (for more details about persistent storage.)
@@ -345,11 +345,6 @@ class TransportLayer(val logger: Logger) {
          * Ciphers *
          ***********/
 
-        // Weak key cipher, only used for authenticating the KEY_RESPONSE
-        // message and for decrypting its payload (the client-pump and
-        // pump-client keys).
-        var weakCipher: Cipher? = null
-
         /**
          * Client-pump cipher.
          *
@@ -557,8 +552,9 @@ class TransportLayer(val logger: Logger) {
     fun createRequestIDPacket(state: State, bluetoothFriendlyName: String): Packet {
         // The nonce is set to 1 in the REQUEST_ID packet, and
         // get incremented from that moment onwards.
-        state.currentTxNonce = byteArrayOfInts(0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00)
+        state.currentTxNonce = byteArrayOfInts(
+            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+        )
 
         val btFriendlyNameBytes = bluetoothFriendlyName.toByteArray(Charsets.UTF_8)
         val numBTFriendlyNameBytes = kotlin.math.min(btFriendlyNameBytes.size, 13)
@@ -643,15 +639,12 @@ class TransportLayer(val logger: Logger) {
      * specified state as well as its keyResponseSourceAddress and
      * keyResponseDestinationAddress fields.
      *
-     * The weak key must have been set before this can be called.
-     *
      * @param state Current transport layer state. Will be updated.
+     * @param weakCipher Cipher used for decrypting the pump-client
+     *        and client-pump keys.
      * @param packet The packet that came from the Combo.
      */
-    fun parseKeyResponsePacket(state: State, packet: Packet) {
-
-        val weakCipher = state.weakCipher ?: throw IllegalStateException()
-
+    fun parseKeyResponsePacket(state: State, weakCipher: Cipher, packet: Packet) {
         require(packet.commandID == CommandID.KEY_RESPONSE)
         require(packet.payload.size == (CIPHER_KEY_SIZE * 2))
         require(packet.verifyAuthentication(weakCipher))
