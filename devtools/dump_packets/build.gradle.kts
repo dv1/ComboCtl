@@ -7,7 +7,7 @@ plugins {
 // no sense to try to built these for JS, Android etc.
 
 application {
-    mainClass.set("devtools.DumpTLPackets")
+    mainClass.set("devtools.DumpPackets")
 }
 
 sourceSets {
@@ -29,7 +29,7 @@ tasks.jar {
     appendix = "standalone"
 
     manifest {
-        attributes["Main-Class"] = "devtools.DumpTLPacketsKt"
+        attributes["Main-Class"] = "devtools.DumpPacketsKt"
     }
 
     from(sourceSets.main.get().output)
