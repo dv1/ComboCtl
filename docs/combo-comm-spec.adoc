@@ -1541,7 +1541,7 @@ byte payload_pixel_data[96];
 // This stores the pixels in the more familiar
 // row-major fashion. That is: given coordinates
 // x,y , then a pixel is stored in the array here
-// at index (x + y*8).
+// at index (x + y*96).
 boolean output_pixels[96*8];
 
 for (b = 0; b < 96; b = b + 1)
