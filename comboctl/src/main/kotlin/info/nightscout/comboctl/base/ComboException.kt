@@ -1,7 +1,5 @@
 package info.nightscout.comboctl.base
 
-import java.lang.Exception
-
     /**
      * Base class for ComboCtl specific exceptions.
      *

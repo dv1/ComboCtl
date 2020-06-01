@@ -84,7 +84,7 @@ fun main(vararg args: String) {
                         "  command: ${appLayerPacket.command ?: "<unknown command ID>"}" +
                         "  payload: ${appLayerPacket.payload.size} byte(s): ${appLayerPacket.payload.toHexString()}"
                     }
-                } catch (exc: ApplicationLayer.Exception) {
+                } catch (exc: ApplicationLayer.ExceptionBase) {
                     packetLogger.log(LogLevel.ERROR) { "Could not parse DATA packet as application layer packet: $exc" }
                 }
             }

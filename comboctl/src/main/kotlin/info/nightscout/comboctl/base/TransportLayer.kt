@@ -70,19 +70,26 @@ class TransportLayer(val logger: Logger) {
         }
     }
 
+    /**
+     * Base class for transport layer exceptions.
+     *
+     * @param message The detail message.
+     */
+    open class ExceptionBase(message: String) : ComboException(message)
+
     class InvalidCommandIDException(
         val commandID: Int,
         val packetBytes: List<Byte>
-    ) : ComboException("Invalid/unknown transport layer packet command ID $commandID")
+    ) : ExceptionBase("Invalid/unknown transport layer packet command ID $commandID")
 
     class IncorrectPacketException(
         val packet: TransportLayer.Packet,
         val expectedCommandID: CommandID
-    ) : ComboException("Incorrect packet: expected ${expectedCommandID.name} packet, got ${packet.commandID?.name ?: "<invalid>"} one")
+    ) : ExceptionBase("Incorrect packet: expected ${expectedCommandID.name} packet, got ${packet.commandID?.name ?: "<invalid>"} one")
 
     class PacketVerificationException(
         val packet: TransportLayer.Packet
-    ) : ComboException("Packet verification failed")
+    ) : ExceptionBase("Packet verification failed")
 
     /**
      * Class containing data of a Combo transport layer packet.
