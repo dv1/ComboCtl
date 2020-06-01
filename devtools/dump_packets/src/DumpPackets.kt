@@ -69,7 +69,7 @@ fun main(vararg args: String) {
                 "  sequence bit: ${packet.sequenceBit}" +
                 "  reliability bit: ${packet.reliabilityBit}" +
                 "  source/destination address: ${packet.sourceAddress}/${packet.destinationAddress}" +
-                "  nonce: ${packet.nonce.toHexString()}" +
+                "  nonce: ${packet.nonce}" +
                 "  MAC: ${packet.machineAuthenticationCode.toHexString()}" +
                 "  payload: ${packet.payload.size} byte(s): ${packet.payload.toHexString()}"
             }

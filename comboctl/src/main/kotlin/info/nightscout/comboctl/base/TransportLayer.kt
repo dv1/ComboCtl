@@ -17,7 +17,6 @@ import java.lang.IllegalStateException
 //  11. n bytes   : Payload
 //  12. 8 bytes   : Message authentication code
 
-const val NUM_NONCE_BYTES = 13
 const val NUM_MAC_BYTES = 8
 
 // 1 byte with major & minor version
@@ -120,7 +119,7 @@ class TransportLayer(private val logger: Logger) {
             val payloadSize = (bytes[PAYLOAD_LENGTH_BYTES_OFFSET + 1].toPosInt() shl 8) or bytes[PAYLOAD_LENGTH_BYTES_OFFSET + 0].toPosInt()
             require(bytes.size == (PACKET_HEADER_SIZE + payloadSize + NUM_MAC_BYTES))
 
-            for (i in 0 until NUM_NONCE_BYTES) nonce[i] = bytes[NONCE_BYTES_OFFSET + i]
+            nonce = Nonce(bytes.subList(NONCE_BYTES_OFFSET, NONCE_BYTES_OFFSET + NUM_NONCE_BYTES))
 
             payload = ArrayList<Byte>(bytes.subList(PAYLOAD_BYTES_OFFSET, PAYLOAD_BYTES_OFFSET + payloadSize))
 
@@ -173,11 +172,7 @@ class TransportLayer(private val logger: Logger) {
                 field = value
             }
 
-        var nonce = ByteArray(NUM_NONCE_BYTES)
-            set(value) {
-                require(value.size == NUM_NONCE_BYTES)
-                field = value
-            }
+        var nonce = NullNonce
 
         // Payload
 
@@ -209,7 +204,7 @@ class TransportLayer(private val logger: Logger) {
                 (sourceAddress == other.sourceAddress) &&
                 (destinationAddress == other.destinationAddress) &&
                 (payload == other.payload) &&
-                (nonce contentEquals other.nonce) &&
+                (nonce == other.nonce) &&
                 (machineAuthenticationCode contentEquals other.machineAuthenticationCode)
 
         fun toByteList(withMAC: Boolean = true, withPayload: Boolean = true): ArrayList<Byte> {
@@ -340,7 +335,7 @@ class TransportLayer(private val logger: Logger) {
             result = 31 * result + commandID!!.id
             result = 31 * result + sourceAddress
             result = 31 * result + destinationAddress
-            result = 31 * result + nonce.contentHashCode()
+            result = 31 * result + nonce.hashCode()
             result = 31 * result + payload.hashCode()
             result = 31 * result + machineAuthenticationCode.contentHashCode()
             return result
@@ -387,11 +382,7 @@ class TransportLayer(private val logger: Logger) {
          * This is one of the fields that must be stored persistently
          * and restored when the application is reloaded.
          */
-        var currentTxNonce = ByteArray(NUM_NONCE_BYTES) { 0x00 }
-            set(value) {
-                require(value.size == NUM_NONCE_BYTES)
-                field = value
-            }
+        var currentTxNonce = NullNonce
 
         /**********************************
          * Source & destination addresses *
@@ -434,23 +425,7 @@ class TransportLayer(private val logger: Logger) {
     }
 
     private fun incrementTxNonce(state: State) {
-        var carry = true
-
-        for (i in state.currentTxNonce.indices) {
-            if (carry) {
-                var nonceByte = state.currentTxNonce[i]
-
-                if (nonceByte == 0xFF.toByte()) {
-                    state.currentTxNonce[i] = 0x00.toByte()
-                } else {
-                    nonceByte++
-                    state.currentTxNonce[i] = nonceByte
-                    carry = false
-                }
-            }
-
-            if (!carry) break
-        }
+        state.currentTxNonce = state.currentTxNonce.getIncrementedNonce()
     }
 
     // Base function for generating CRC-verified packets.
@@ -461,7 +436,7 @@ class TransportLayer(private val logger: Logger) {
         reliabilityBit = false
         sourceAddress = 0xF
         destinationAddress = 0x0
-        nonce = ByteArray(NUM_NONCE_BYTES) { 0x00 }
+        nonce = NullNonce
         machineAuthenticationCode = ByteArray(NUM_MAC_BYTES) { 0x00 }
         this.commandID = commandID
         computeCRC16Payload()
@@ -495,7 +470,7 @@ class TransportLayer(private val logger: Logger) {
         packet.reliabilityBit = reliabilityBit
         packet.payload = payload
 
-        packet.nonce = state.currentTxNonce.copyOf()
+        packet.nonce = state.currentTxNonce
         incrementTxNonce(state)
 
         state.clientPumpCipher?.let { packet.authenticate(it) } ?: throw IllegalStateException()
@@ -559,9 +534,9 @@ class TransportLayer(private val logger: Logger) {
     fun createRequestIDPacket(state: State, bluetoothFriendlyName: String): Packet {
         // The nonce is set to 1 in the REQUEST_ID packet, and
         // get incremented from that moment onwards.
-        state.currentTxNonce = byteArrayOfInts(
+        state.currentTxNonce = Nonce(byteArrayListOfInts(
             0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-        )
+        ))
 
         val btFriendlyNameBytes = bluetoothFriendlyName.toByteArray(Charsets.UTF_8)
         val numBTFriendlyNameBytes = kotlin.math.min(btFriendlyNameBytes.size, 13)
