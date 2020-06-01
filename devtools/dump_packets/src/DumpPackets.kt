@@ -79,9 +79,9 @@ fun main(vararg args: String) {
                     val appLayerPacket = ApplicationLayer.Packet(packet)
                     packetLogger.log(LogLevel.DEBUG) {
                         "  Application layer packet: " +
-                        "  major/minor version: ${appLayerPacket.majorVersion}/${appLayerPacket.minorVersion}" +
-                        "  service ID: ${appLayerPacket.command?.serviceID ?: "<unknown service ID>"}" +
-                        "  command: ${appLayerPacket.command ?: "<unknown command ID>"}" +
+                        "  major/minor version: ${"%02x".format(appLayerPacket.version)}" +
+                        "  service ID: ${appLayerPacket.command.serviceID}" +
+                        "  command: ${appLayerPacket.command}" +
                         "  payload: ${appLayerPacket.payload.size} byte(s): ${appLayerPacket.payload.toHexString()}"
                     }
                 } catch (exc: ApplicationLayer.ExceptionBase) {
