@@ -21,8 +21,7 @@ private suspend fun sendApplicationLayerPacket(
     logger: Logger,
     packet: ApplicationLayer.Packet
 ) {
-    require(packet.command != null)
-    logger.log(LogLevel.DEBUG) { "Sending application layer ${packet.command!!.name} packet" }
+    logger.log(LogLevel.DEBUG) { "Sending application layer ${packet.command.name} packet" }
     dataChannel.send(packet.toTransportLayerPacket(appLayerState).toByteList())
 }
 
