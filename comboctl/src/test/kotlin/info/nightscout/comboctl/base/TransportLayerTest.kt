@@ -10,10 +10,10 @@ class TransportLayerTest {
         // and verifying the individual packet property values.
 
         val packetDataWithCRCPayload = byteArrayListOfInts(
-            0x10, // versions
+            0x10, // version
             0x09, // request_pairing_connection command (sequence and data reliability bit set to 0)
             0x02, 0x00, // payload length
-            0xF0, // addresses
+            0xF0, // address
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // nonce
             0x99, 0x44, // payload
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 // nullbyte MAC
@@ -24,8 +24,7 @@ class TransportLayerTest {
 
         // Check the individual properties.
 
-        assertEquals(1, packet.majorVersion)
-        assertEquals(0, packet.minorVersion)
+        assertEquals(0x10, packet.version)
 
         assertFalse(packet.sequenceBit)
 
@@ -33,8 +32,7 @@ class TransportLayerTest {
 
         assertEquals(TransportLayer.CommandID.REQUEST_PAIRING_CONNECTION, packet.commandID)
 
-        assertEquals(0xF, packet.sourceAddress)
-        assertEquals(0x0, packet.destinationAddress)
+        assertEquals(0xF0.toByte(), packet.address)
 
         assertEquals(NullNonce, packet.nonce)
 
@@ -48,13 +46,11 @@ class TransportLayerTest {
         // Create packet, and check that it is correctly converted to a byte list.
 
         val packet = TransportLayer.Packet().apply {
-            majorVersion = 4
-            minorVersion = 2
+            version = 0x42
             sequenceBit = true
             reliabilityBit = false
             commandID = TransportLayer.CommandID.REQUEST_PAIRING_CONNECTION
-            sourceAddress = 0x4
-            destinationAddress = 0x5
+            address = 0x45
             nonce = Nonce(byteArrayListOfInts(0x0A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0B))
             payload = byteArrayListOfInts(0x50, 0x60, 0x70)
             machineAuthenticationCode = MachineAuthCode(byteArrayListOfInts(0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08))
@@ -63,10 +59,10 @@ class TransportLayerTest {
         val byteList = packet.toByteList()
 
         val expectedPacketData = byteArrayListOfInts(
-            0x42, // versions
+            0x42, // version
             0x80 or 0x09, // command 0x09 with sequence bit enabled
             0x03, 0x00, // payload length
-            0x45, // addresses,
+            0x45, // address,
             0x0A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0B, // nonce
             0x50, 0x60, 0x70, // payload
             0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 // MAC
@@ -80,13 +76,11 @@ class TransportLayerTest {
         // Create packet and verify that the CRC check detects data corruption.
 
         val packet = TransportLayer.Packet().apply {
-            majorVersion = 4
-            minorVersion = 2
+            version = 0x42
             sequenceBit = true
             reliabilityBit = false
             commandID = TransportLayer.CommandID.REQUEST_PAIRING_CONNECTION
-            sourceAddress = 0x4
-            destinationAddress = 0x5
+            address = 0x45
             nonce = Nonce(byteArrayListOfInts(0x0A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0B))
             machineAuthenticationCode = MachineAuthCode(byteArrayListOfInts(0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00))
         }
@@ -113,13 +107,11 @@ class TransportLayerTest {
         val cipher = Cipher(key)
 
         val packet = TransportLayer.Packet().apply {
-            majorVersion = 4
-            minorVersion = 2
+            version = 0x42
             sequenceBit = true
             reliabilityBit = false
             commandID = TransportLayer.CommandID.REQUEST_PAIRING_CONNECTION
-            sourceAddress = 0x4
-            destinationAddress = 0x5
+            address = 0x45
             nonce = Nonce(byteArrayListOfInts(0x0A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0B))
             payload = byteArrayListOfInts(0x00, 0x00)
         }
@@ -220,13 +212,11 @@ class TransportLayerTest {
 
         // After sending GET_AVAILABLE_KEYS, the Combo will respond with KEY_RESPONSE.
         // We simulate this with keyResponsePacket. This packet must be parsed to get
-        // the client-pump and pump-client keys as well as the source and destination
-        // key response addresses.
+        // the client-pump and pump-client keys as well as the key response addresses.
         tpLayer.parseKeyResponsePacket(tpLayerState, weakCipher, keyResponsePacket)
         // Verify that the state has been updated with the correct addresses
         // and decrypted keys.
-        assertEquals(1, tpLayerState.keyResponseSourceAddress)
-        assertEquals(0, tpLayerState.keyResponseDestinationAddress)
+        assertEquals(0x10, tpLayerState.keyResponseAddress)
         assertArrayEquals(byteArrayOfInts(
             0x5a, 0x25, 0x0b, 0x75, 0xa9, 0x02, 0x21, 0xfa,
             0xab, 0xbd, 0x36, 0x4d, 0x5c, 0xb8, 0x37, 0xd7),

@@ -64,11 +64,11 @@ fun main(vararg args: String) {
             packetLogger.log(LogLevel.DEBUG) {
                 val directionDesc = if (frameData.isOutgoingData) "<=== Outgoing" else "===> Incoming"
                 "$directionDesc packet:" +
-                "  major/minor version: ${packet.majorVersion}/${packet.minorVersion}" +
+                "  version: ${"%02x".format(packet.version)}" +
                 "  command ID: ${packet.commandID?.name ?: "<unknown command ID>"}" +
                 "  sequence bit: ${packet.sequenceBit}" +
                 "  reliability bit: ${packet.reliabilityBit}" +
-                "  source/destination address: ${packet.sourceAddress}/${packet.destinationAddress}" +
+                "  address: ${"%02x".format(packet.address)}" +
                 "  nonce: ${packet.nonce}" +
                 "  MAC: ${packet.machineAuthenticationCode}" +
                 "  payload: ${packet.payload.size} byte(s): ${packet.payload.toHexString()}"

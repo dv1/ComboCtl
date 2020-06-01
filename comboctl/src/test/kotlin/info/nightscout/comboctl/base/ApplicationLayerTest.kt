@@ -17,11 +17,9 @@ class ApplicationLayerTest {
     ) {
         val tpLayerPacket = packet.toTransportLayerPacket(appLayerState)
 
-        assertEquals(1, tpLayerPacket.majorVersion)
-        assertEquals(0, tpLayerPacket.minorVersion)
+        assertEquals(0x10, tpLayerPacket.version)
         assertEquals(TransportLayer.CommandID.DATA, tpLayerPacket.commandID)
-        assertEquals(tpLayerState.keyResponseSourceAddress, tpLayerPacket.sourceAddress)
-        assertEquals(tpLayerState.keyResponseDestinationAddress, tpLayerPacket.destinationAddress)
+        assertEquals(tpLayerState.keyResponseAddress, tpLayerPacket.address)
 
         val payload = byteArrayListOfInts(
             0x10,
@@ -35,8 +33,7 @@ class ApplicationLayerTest {
 
     @BeforeEach
     fun setup() {
-        tpLayerState.keyResponseSourceAddress = 1
-        tpLayerState.keyResponseDestinationAddress = 0
+        tpLayerState.keyResponseAddress = 0x10
         tpLayerState.clientPumpCipher = Cipher(byteArrayOfInts(
             0x5a, 0x25, 0x0b, 0x75, 0xa9, 0x02, 0x21, 0xfa,
             0xab, 0xbd, 0x36, 0x4d, 0x5c, 0xb8, 0x37, 0xd7))

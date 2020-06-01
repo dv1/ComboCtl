@@ -103,16 +103,14 @@ class TransportLayer(private val logger: Logger) {
         constructor(bytes: List<Byte>) : this() {
             require(bytes.size >= (PACKET_HEADER_SIZE + NUM_MAC_BYTES))
 
-            majorVersion = (bytes[VERSION_BYTE_OFFSET].toPosInt() shr 4) and 0xF
-            minorVersion = bytes[VERSION_BYTE_OFFSET].toPosInt() and 0xF
+            version = bytes[VERSION_BYTE_OFFSET]
             sequenceBit = (bytes[SEQ_REL_CMD_BYTE_OFFSET].toPosInt() and 0x80) != 0
             reliabilityBit = (bytes[SEQ_REL_CMD_BYTE_OFFSET].toPosInt() and 0x20) != 0
 
             val commandIDInt = bytes[SEQ_REL_CMD_BYTE_OFFSET].toPosInt() and 0x1F
             commandID = CommandID.fromInt(commandIDInt) ?: throw InvalidCommandIDException(commandIDInt, bytes)
 
-            sourceAddress = (bytes[ADDRESS_BYTE_OFFSET].toPosInt() shr 4) and 0xF
-            destinationAddress = bytes[ADDRESS_BYTE_OFFSET].toPosInt() and 0xF
+            address = bytes[ADDRESS_BYTE_OFFSET]
 
             val payloadSize = (bytes[PAYLOAD_LENGTH_BYTES_OFFSET + 1].toPosInt() shl 8) or bytes[PAYLOAD_LENGTH_BYTES_OFFSET + 0].toPosInt()
             require(bytes.size == (PACKET_HEADER_SIZE + payloadSize + NUM_MAC_BYTES))
@@ -129,30 +127,13 @@ class TransportLayer(private val logger: Logger) {
         // Header
 
         /**
-         * Major version number.
+         * Byte containing version numbers.
          *
-         * In all observed packets, this was set to 1.
+         * The upper 4 bit contain the major, the lower 4 bit the minor version number.
          *
-         * Valid range is 0-15.
+         * In all observed packets, this was set to 0x10.
          */
-        var majorVersion: Int = 1
-            set(value) {
-                require((value >= 0x0) && (value <= 0xF))
-                field = value
-            }
-
-        /**
-         * Minor version number.
-         *
-         * In all observed packets, this was set to 0.
-         *
-         * Valid range is 0-15.
-         */
-        var minorVersion: Int = 0
-            set(value) {
-                require((value >= 0x0) && (value <= 0xF))
-                field = value
-            }
+        var version: Byte = 0x10
 
         var sequenceBit: Boolean = false
 
@@ -160,17 +141,16 @@ class TransportLayer(private val logger: Logger) {
 
         var commandID: CommandID? = null
 
-        var sourceAddress: Int = 0
-            set(value) {
-                require((value >= 0x0) && (value <= 0xF))
-                field = value
-            }
-
-        var destinationAddress: Int = 0
-            set(value) {
-                require((value >= 0x0) && (value <= 0xF))
-                field = value
-            }
+        /**
+         * Address byte.
+         *
+         * The upper 4 bit contain the source, the lower 4 bit the destionation address.
+         *
+         * NOTE: Currently, it is not clear what "address" means. However, these values
+         * are checked by the Combo, so they must be set to valid values. See the
+         * spec for details.
+         */
+        var address: Byte = 0
 
         var nonce = NullNonce
 
@@ -192,13 +172,11 @@ class TransportLayer(private val logger: Logger) {
         override fun equals(other: Any?) =
             (this === other) ||
                 (other is Packet) &&
-                (majorVersion == other.majorVersion) &&
-                (minorVersion == other.minorVersion) &&
+                (version == other.version) &&
                 (sequenceBit == other.sequenceBit) &&
                 (reliabilityBit == other.reliabilityBit) &&
                 (commandID == other.commandID) &&
-                (sourceAddress == other.sourceAddress) &&
-                (destinationAddress == other.destinationAddress) &&
+                (address == other.address) &&
                 (payload == other.payload) &&
                 (nonce == other.nonce) &&
                 (machineAuthenticationCode == other.machineAuthenticationCode)
@@ -206,13 +184,13 @@ class TransportLayer(private val logger: Logger) {
         fun toByteList(withMAC: Boolean = true, withPayload: Boolean = true): ArrayList<Byte> {
             val bytes = ArrayList<Byte>(PACKET_HEADER_SIZE)
 
-            bytes.add(((majorVersion shl 4) or minorVersion).toByte())
+            bytes.add(version)
             bytes.add(((if (sequenceBit) 0x80 else 0)
                 or (if (reliabilityBit) 0x20 else 0)
                 or commandID!!.id).toByte())
             bytes.add((payload.size and 0xFF).toByte())
             bytes.add(((payload.size shr 8) and 0xFF).toByte())
-            bytes.add(((sourceAddress shl 4) or destinationAddress).toByte())
+            bytes.add(address)
 
             bytes.addAll(nonce.asSequence())
 
@@ -324,13 +302,11 @@ class TransportLayer(private val logger: Logger) {
         }
 
         override fun hashCode(): Int {
-            var result = majorVersion
-            result = 31 * result + minorVersion
+            var result = version.toPosInt()
             result = 31 * result + sequenceBit.hashCode()
             result = 31 * result + reliabilityBit.hashCode()
             result = 31 * result + commandID!!.id
-            result = 31 * result + sourceAddress
-            result = 31 * result + destinationAddress
+            result = 31 * result + address.toPosInt()
             result = 31 * result + nonce.hashCode()
             result = 31 * result + payload.hashCode()
             result = 31 * result + machineAuthenticationCode.hashCode()
@@ -385,30 +361,22 @@ class TransportLayer(private val logger: Logger) {
          **********************************/
 
         /**
-         * The source address of a previously received KEY_RESPONSE packet.
+         * The address byte of a previously received KEY_RESPONSE packet.
+         *
+         * The source and destination address values inside the address
+         * byte must have been reordered to match the order that outgoing
+         * packets expect. That is: Source address stored in the upper,
+         * destination address in the lower 4 bit of the byte.
+         * (In incoming packets - and KEY_RESPONSE is an incoming packet -
+         * these two are ordered the other way round.)
          *
          * This is one of the fields that must be stored persistently
          * and restored when the application is reloaded.
          * (This is also the reason why this property isn't private.)
          */
-        var keyResponseSourceAddress: Int? = null
+        var keyResponseAddress: Byte? = null
             set(value) {
                 require(value != null)
-                require((value >= 0x0) && (value <= 0xF))
-                field = value
-            }
-
-        /**
-         * The destination address of a previously received KEY_RESPONSE packet.
-         *
-         * This is one of the fields that must be stored persistently
-         * and restored when the application is reloaded.
-         * (This is also the reason why this property isn't private.)
-         */
-        var keyResponseDestinationAddress: Int? = null
-            set(value) {
-                require(value != null)
-                require((value >= 0x0) && (value <= 0xF))
                 field = value
             }
 
@@ -430,8 +398,7 @@ class TransportLayer(private val logger: Logger) {
     private fun createCRCPacket(commandID: CommandID): Packet = Packet().apply {
         sequenceBit = false
         reliabilityBit = false
-        sourceAddress = 0xF
-        destinationAddress = 0x0
+        address = 0xF0.toByte()
         nonce = NullNonce
         machineAuthenticationCode = NullMachineAuthCode
         this.commandID = commandID
@@ -443,9 +410,8 @@ class TransportLayer(private val logger: Logger) {
 
     // Base function for generating MAC-authenticated packets. This
     // function assumes that the TL_KEY_RESPONSE packet has already
-    // been received, because only then will keyResponseSourceAddress,
-    // keyResponseDestinationAddress, and clientPumpCipher.key be set
-    // to valid values.
+    // been received, because only then will keyResponseAddress and
+    // clientPumpCipher.key be set to valid values.
     private fun createMACAuthenticatedPacket(
         state: State,
         commandID: CommandID,
@@ -453,12 +419,10 @@ class TransportLayer(private val logger: Logger) {
         sequenceBit: Boolean = false,
         reliabilityBit: Boolean = false
     ): Packet {
-        require(state.keyResponseSourceAddress != null)
-        require(state.keyResponseDestinationAddress != null)
+        require(state.keyResponseAddress != null)
 
         val packet = Packet().apply {
-            sourceAddress = state.keyResponseSourceAddress!!
-            destinationAddress = state.keyResponseDestinationAddress!!
+            address = state.keyResponseAddress!!
         }
 
         packet.commandID = commandID
@@ -614,8 +578,7 @@ class TransportLayer(private val logger: Logger) {
      * The Combo sends this during the pairing process. It contains
      * client-pump and pump-client keys, encrypted with the weak key.
      * This will modify the client-pump and pump-client keys in the
-     * specified state as well as its keyResponseSourceAddress and
-     * keyResponseDestinationAddress fields.
+     * specified state as well as its keyResponseAddress field.
      *
      * @param state Current transport layer state. Will be updated.
      * @param weakCipher Cipher used for decrypting the pump-client
@@ -640,8 +603,10 @@ class TransportLayer(private val logger: Logger) {
 
         // Note: Source and destination addresses are reversed,
         // since they are set from the perspective of the pump.
-        state.keyResponseSourceAddress = packet.destinationAddress
-        state.keyResponseDestinationAddress = packet.sourceAddress
+        val addressInt = packet.address.toPosInt()
+        val sourceAddress = addressInt and 0xF
+        val destinationAddress = (addressInt shr 4) and 0xF
+        state.keyResponseAddress = ((sourceAddress shl 4) or destinationAddress).toByte()
     }
 
     /**

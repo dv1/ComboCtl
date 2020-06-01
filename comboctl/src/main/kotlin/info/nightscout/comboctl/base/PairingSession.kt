@@ -162,7 +162,7 @@ suspend fun performPairing(
     logger.log(LogLevel.DEBUG) { "Reading keys and source/destination addresses from KEY_RESPONSE packet" }
     transportLayer.parseKeyResponsePacket(tpLayerState, weakCipher, keyResponsePacket!!)
     logger.log(LogLevel.DEBUG) {
-        "Source/destination addresses: ${tpLayerState.keyResponseSourceAddress!!}/${tpLayerState.keyResponseDestinationAddress!!}" +
+        "Address: ${"%02x".format(tpLayerState.keyResponseAddress)}" +
         "  decrypted client->pump key: ${tpLayerState.clientPumpCipher!!.key.toHexString()}" +
         "  decrypted pump->client key: ${tpLayerState.pumpClientCipher!!.key.toHexString()}"
     }
