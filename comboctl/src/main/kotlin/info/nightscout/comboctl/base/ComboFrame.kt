@@ -26,7 +26,8 @@ private const val ESCAPED_ESCAPE_BYTE = 0xEE.toByte()
  * point, it extracts the payload from inside that frame, and returns it. This is
  * done by [parseFrame].
  *
- * The payload is a Combo packet. See [Packet] for details about those.
+ * The payload is a transport layer packet. See [TransportLayer.Packet] for details
+ * about those.
  */
 class ComboFrameParser {
     /**
@@ -224,7 +225,8 @@ class ComboFrameParser {
  *
  * The reverse functionality is provided by the [ComboFrameParser] class.
  *
- * The payload is a Combo packet. See [Packet] for details about those.
+ * The payload is a transport layer packet. See [TransportLayer.Packet] for
+ * details about those.
  *
  * @return Framed version of this payload.
  */

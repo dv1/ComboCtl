@@ -17,8 +17,8 @@ import java.lang.IllegalStateException
 //  11. n bytes   : Payload
 //  12. 8 bytes   : Message authentication code
 
-public const val NUM_NONCE_BYTES = 13
-public const val NUM_MAC_BYTES = 8
+const val NUM_NONCE_BYTES = 13
+const val NUM_MAC_BYTES = 8
 
 // 1 byte with major & minor version
 // 1 byte with sequence bit & "Res1" & reliability bit & command ID
@@ -51,7 +51,7 @@ private const val PAYLOAD_BYTES_OFFSET = NONCE_BYTES_OFFSET + NUM_NONCE_BYTES
  * (for more details about persistent storage.)
  * When the application is started again, these properties must be restored.
  */
-class TransportLayer(val logger: Logger) {
+class TransportLayer(private val logger: Logger) {
     /**
      * Valid command IDs for Combo packets.
      */
@@ -284,8 +284,8 @@ class TransportLayer(val logger: Logger) {
             // inside the loop.
             for (dataBlockNr in 0 until numDataBlocks) {
                 for (i in 0 until CIPHER_BLOCK_SIZE) {
-                    var a: Int = block[i].toPosInt()
-                    var b: Int = packetData[dataBlockNr * CIPHER_BLOCK_SIZE + i].toPosInt()
+                    val a: Int = block[i].toPosInt()
+                    val b: Int = packetData[dataBlockNr * CIPHER_BLOCK_SIZE + i].toPosInt()
                     block[i] = (a xor b).toByte()
                 }
 
@@ -434,7 +434,7 @@ class TransportLayer(val logger: Logger) {
     }
 
     private fun incrementTxNonce(state: State) {
-        var carry: Boolean = true
+        var carry = true
 
         for (i in state.currentTxNonce.indices) {
             if (carry) {

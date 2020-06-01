@@ -84,7 +84,6 @@ suspend fun performPairing(
 ) {
     val transportLayer = appLayerState.transportLayer
     val tpLayerState = appLayerState.transportLayerState
-    var tpLayerPacket: TransportLayer.Packet
 
     // Initiate pairing and wait for the response.
     // (The response contains no meaningful payload.)
@@ -174,7 +173,12 @@ suspend fun performPairing(
     // it seems that we still have to request these IDs, otherwise
     // the pump reports an error. (TODO: Further verify this.)
     sendTransportLayerPacket(dataChannel, logger, transportLayer.createRequestIDPacket(tpLayerState, bluetoothFriendlyName))
-    tpLayerPacket = receiveTransportLayerPacket(dataChannel, appLayerState, logger, TransportLayer.CommandID.ID_RESPONSE)
+    val tpLayerPacket: TransportLayer.Packet = receiveTransportLayerPacket(
+        dataChannel,
+        appLayerState,
+        logger,
+        TransportLayer.CommandID.ID_RESPONSE
+    )
     if (!tpLayerPacket.verifyAuthentication(tpLayerState.pumpClientCipher!!))
         throw TransportLayer.PacketVerificationException(tpLayerPacket)
     val comboIDs = transportLayer.parseIDResponsePacket(tpLayerState, tpLayerPacket)

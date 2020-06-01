@@ -89,10 +89,10 @@ class ApplicationLayer {
     ) : ApplicationLayer.ExceptionBase("Invalid/unknown application layer packet service ID $serviceID")
 
     /**
-     * Exception thrown when an application layer packet packet arrives with an invalid application layer command ID.
+     * Exception thrown when an application layer packet arrives with an invalid application layer command ID.
      *
      * @property tpLayerPacket Underlying transport layer DATA packet containing the application layer packet data.
-     * @property seviceID Service ID from the application layer packet.
+     * @property serviceID Service ID from the application layer packet.
      * @property commandID The invalid application layer command ID.
      */
     class InvalidCommandIDException(
@@ -101,6 +101,14 @@ class ApplicationLayer {
         val commandID: Int
     ) : ApplicationLayer.ExceptionBase("Invalid/unknown application layer packet command ID $commandID (service ID: ${serviceID.name})")
 
+    /**
+     * Exception thrown when a different application layer packet was expected than the one that arrived.
+     *
+     * More precisely, the arrived packet's command is not the one that was expected.
+     *
+     * @property appLayerPacket Application layer packet that arrived.
+     * @property expectedCommand The command that was expected in the packet.
+     */
     class IncorrectPacketException(
         val appLayerPacket: Packet,
         val expectedCommand: Command
@@ -184,7 +192,7 @@ class ApplicationLayer {
                 (command == other.command) &&
                 (payload == other.payload)
 
-        fun toTransportLayerPacket(appLayerState: ApplicationLayer.State): TransportLayer.Packet {
+        fun toTransportLayerPacket(appLayerState: State): TransportLayer.Packet {
             require(command != null)
 
             val appLayerPacketPayload = ArrayList<Byte>(PACKET_HEADER_SIZE + payload.size)
@@ -209,7 +217,7 @@ class ApplicationLayer {
     }
 
     fun createCTRLConnectPacket(): Packet {
-        val serialNumber: Int = 12345
+        val serialNumber = 12345
         val payload = byteArrayListOfInts(
             (serialNumber shr 0) and 0xFF,
             (serialNumber shr 8) and 0xFF,

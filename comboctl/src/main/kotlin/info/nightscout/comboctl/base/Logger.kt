@@ -42,8 +42,8 @@ interface LoggerBackend {
      * these in its output in whatever way it wishes.
      *
      * In addition, a throwable can be logged in case the log line
-     * was caused by one. The [Logger.log] call may have provided only a
-     * message string, or a throwable, or both, which is why both of these
+     * was caused by one. The [LoggerFactory.Logger.log] call may have provided
+     * only a message string, or a throwable, or both, which is why both of these
      * arguments are nullable.
      *
      * As said above, do not apply level or category based filtering here.
@@ -52,7 +52,7 @@ interface LoggerBackend {
      * @param category Category the message belongs to.
      * @param level Log level of the given message.
      * @param message Optional string containing the message to log.
-     * @param Optional throwable that got passed to [Logger.log].
+     * @param throwable Optional throwable that got passed to [LoggerFactory.Logger.log].
      */
     fun log(category: LogCategory, level: LogLevel, message: String?, throwable: Throwable?)
 }
@@ -73,7 +73,7 @@ class StderrLoggerBackend : LoggerBackend {
         if (throwable != null)
             str += " (" + throwable.javaClass.name + ": \"" + throwable.message + "\")"
         if (message != null)
-            str += " " + message
+            str += " $message"
         System.err.println(str)
     }
 }
@@ -140,7 +140,7 @@ class StderrLoggerBackend : LoggerBackend {
  * plausible that sometimes, only the throwable is of interest, the message
  * string is optional if a Throwable is also passed.
  */
-class LoggerFactory(val backend: LoggerBackend, val defaultLogLevelThreshold: LogLevel = LogLevel.INFO) {
+class LoggerFactory(val backend: LoggerBackend, private val defaultLogLevelThreshold: LogLevel = LogLevel.INFO) {
     /**
      * Main logger API.
      *
