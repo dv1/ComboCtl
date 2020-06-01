@@ -30,6 +30,9 @@ private const val ADDRESS_BYTE_OFFSET = 4
 private const val NONCE_BYTES_OFFSET = 5
 private const val PAYLOAD_BYTES_OFFSET = NONCE_BYTES_OFFSET + NUM_NONCE_BYTES
 
+private fun checkedGetCommandID(value: Int, bytes: List<Byte>): TransportLayer.CommandID =
+    TransportLayer.CommandID.fromInt(value) ?: throw TransportLayer.InvalidCommandIDException(value, bytes)
+
 /**
  * Combo transport layer (TL) communication implementation.
  *
@@ -82,7 +85,7 @@ class TransportLayer(private val logger: Logger) {
     class IncorrectPacketException(
         val packet: TransportLayer.Packet,
         val expectedCommandID: CommandID
-    ) : ExceptionBase("Incorrect packet: expected ${expectedCommandID.name} packet, got ${packet.commandID?.name ?: "<invalid>"} one")
+    ) : ExceptionBase("Incorrect packet: expected ${expectedCommandID.name} packet, got ${packet.commandID.name} one")
 
     class PacketVerificationException(
         val packet: TransportLayer.Packet
@@ -98,88 +101,58 @@ class TransportLayer(private val logger: Logger) {
      * and for verifying / authenticating via MAC and CRC.
      *
      * See "Transport layer packet structure" in combo-comm-spec.adoc for details.
+     *
+     * NOTE: Currently, it is not clear what "address" means. However, these values
+     * are checked by the Combo, so they must be set to valid values.
+     *
+     * @property commandID The command ID of this packet.
+     * @property version Byte containing version numbers. The upper 4 bit contain the
+     *           major, the lower 4 bit the minor version number.
+     *           In all observed packets, this was set to 0x10.
+     * @property sequenceBit The packet's sequence bit.
+     * @property reliabilityBit The packet's reliability bit.
+     * @property address Address byte. The upper 4 bit contain the source, the lower
+     *           4 bit the destionation address.
+     * @property payload The packet's actual payload. Max valid size is 65535 bytes.
+     * @property machineAuthenticationCode Machine authentication code. Must be
+     *           (re)calculated using [authenticate] if the packet uses MACs and
+     *           it is being set up or its payload was modified.
      */
-    class Packet() {
-        constructor(bytes: List<Byte>) : this() {
-            require(bytes.size >= (PACKET_HEADER_SIZE + NUM_MAC_BYTES))
+    data class Packet(
+        val commandID: CommandID,
+        val version: Byte = 0x10,
+        val sequenceBit: Boolean = false,
+        val reliabilityBit: Boolean = false,
+        val address: Byte = 0,
+        val nonce: Nonce = NullNonce,
+        var payload: ArrayList<Byte> = ArrayList<Byte>(0),
+        var machineAuthenticationCode: MachineAuthCode = NullMachineAuthCode
+    ) {
+        init {
+            require(payload.size <= 65535)
+        }
 
-            version = bytes[VERSION_BYTE_OFFSET]
-            sequenceBit = (bytes[SEQ_REL_CMD_BYTE_OFFSET].toPosInt() and 0x80) != 0
-            reliabilityBit = (bytes[SEQ_REL_CMD_BYTE_OFFSET].toPosInt() and 0x20) != 0
-
-            val commandIDInt = bytes[SEQ_REL_CMD_BYTE_OFFSET].toPosInt() and 0x1F
-            commandID = CommandID.fromInt(commandIDInt) ?: throw InvalidCommandIDException(commandIDInt, bytes)
-
-            address = bytes[ADDRESS_BYTE_OFFSET]
-
-            val payloadSize = (bytes[PAYLOAD_LENGTH_BYTES_OFFSET + 1].toPosInt() shl 8) or bytes[PAYLOAD_LENGTH_BYTES_OFFSET + 0].toPosInt()
-            require(bytes.size == (PACKET_HEADER_SIZE + payloadSize + NUM_MAC_BYTES))
-
-            nonce = Nonce(bytes.subList(NONCE_BYTES_OFFSET, NONCE_BYTES_OFFSET + NUM_NONCE_BYTES))
-
-            payload = ArrayList<Byte>(bytes.subList(PAYLOAD_BYTES_OFFSET, PAYLOAD_BYTES_OFFSET + payloadSize))
-
+        // This is a trick to avoid having to retrieve the payload size from
+        // the bytes more than once. The public variant of this constructor
+        // extracts the size, and then calls this one, passing the size as
+        // the second argument.
+        private constructor(bytes: List<Byte>, payloadSize: Int) : this(
+            commandID = checkedGetCommandID(bytes[SEQ_REL_CMD_BYTE_OFFSET].toPosInt() and 0x1F, bytes),
+            version = bytes[VERSION_BYTE_OFFSET],
+            sequenceBit = (bytes[SEQ_REL_CMD_BYTE_OFFSET].toPosInt() and 0x80) != 0,
+            reliabilityBit = (bytes[SEQ_REL_CMD_BYTE_OFFSET].toPosInt() and 0x20) != 0,
+            address = bytes[ADDRESS_BYTE_OFFSET],
+            nonce = Nonce(bytes.subList(NONCE_BYTES_OFFSET, NONCE_BYTES_OFFSET + NUM_NONCE_BYTES)),
+            payload = ArrayList<Byte>(bytes.subList(PAYLOAD_BYTES_OFFSET, PAYLOAD_BYTES_OFFSET + payloadSize)),
             machineAuthenticationCode = MachineAuthCode(
                 bytes.subList(PAYLOAD_BYTES_OFFSET + payloadSize, PAYLOAD_BYTES_OFFSET + payloadSize + NUM_MAC_BYTES)
             )
+        ) {
         }
 
-        // Header
-
-        /**
-         * Byte containing version numbers.
-         *
-         * The upper 4 bit contain the major, the lower 4 bit the minor version number.
-         *
-         * In all observed packets, this was set to 0x10.
-         */
-        var version: Byte = 0x10
-
-        var sequenceBit: Boolean = false
-
-        var reliabilityBit: Boolean = false
-
-        var commandID: CommandID? = null
-
-        /**
-         * Address byte.
-         *
-         * The upper 4 bit contain the source, the lower 4 bit the destionation address.
-         *
-         * NOTE: Currently, it is not clear what "address" means. However, these values
-         * are checked by the Combo, so they must be set to valid values. See the
-         * spec for details.
-         */
-        var address: Byte = 0
-
-        var nonce = NullNonce
-
-        // Payload
-
-        var payload: ArrayList<Byte> = ArrayList<Byte>(0)
-            set(value) {
-                require(value.size <= 65535)
-                field = value
-            }
-
-        // MAC
-
-        var machineAuthenticationCode = NullMachineAuthCode
-
-        // Implementing custom equals operator, since otherwise,
-        // the nonce and machineAuthenticationCode arrays are
-        // not compared correctly.
-        override fun equals(other: Any?) =
-            (this === other) ||
-                (other is Packet) &&
-                (version == other.version) &&
-                (sequenceBit == other.sequenceBit) &&
-                (reliabilityBit == other.reliabilityBit) &&
-                (commandID == other.commandID) &&
-                (address == other.address) &&
-                (payload == other.payload) &&
-                (nonce == other.nonce) &&
-                (machineAuthenticationCode == other.machineAuthenticationCode)
+        constructor(bytes: List<Byte>) :
+            this(bytes, (bytes[PAYLOAD_LENGTH_BYTES_OFFSET + 1].toPosInt() shl 8) or bytes[PAYLOAD_LENGTH_BYTES_OFFSET + 0].toPosInt()) {
+        }
 
         fun toByteList(withMAC: Boolean = true, withPayload: Boolean = true): ArrayList<Byte> {
             val bytes = ArrayList<Byte>(PACKET_HEADER_SIZE)
@@ -187,7 +160,7 @@ class TransportLayer(private val logger: Logger) {
             bytes.add(version)
             bytes.add(((if (sequenceBit) 0x80 else 0)
                 or (if (reliabilityBit) 0x20 else 0)
-                or commandID!!.id).toByte())
+                or commandID.id).toByte())
             bytes.add((payload.size and 0xFF).toByte())
             bytes.add(((payload.size shr 8) and 0xFF).toByte())
             bytes.add(address)
@@ -300,18 +273,6 @@ class TransportLayer(private val logger: Logger) {
 
             return MachineAuthCode(macBytes)
         }
-
-        override fun hashCode(): Int {
-            var result = version.toPosInt()
-            result = 31 * result + sequenceBit.hashCode()
-            result = 31 * result + reliabilityBit.hashCode()
-            result = 31 * result + commandID!!.id
-            result = 31 * result + address.toPosInt()
-            result = 31 * result + nonce.hashCode()
-            result = 31 * result + payload.hashCode()
-            result = 31 * result + machineAuthenticationCode.hashCode()
-            return result
-        }
     }
 
     class State {
@@ -388,24 +349,23 @@ class TransportLayer(private val logger: Logger) {
         var currentSequenceFlag = false
     }
 
-    private fun incrementTxNonce(state: State) {
-        state.currentTxNonce = state.currentTxNonce.getIncrementedNonce()
-    }
-
     // Base function for generating CRC-verified packets.
     // These packets only have the CRC itself as payload, and
     // are only used during the pairing process.
-    private fun createCRCPacket(commandID: CommandID): Packet = Packet().apply {
-        sequenceBit = false
-        reliabilityBit = false
-        address = 0xF0.toByte()
-        nonce = NullNonce
-        machineAuthenticationCode = NullMachineAuthCode
-        this.commandID = commandID
-        computeCRC16Payload()
+    private fun createCRCPacket(commandID: CommandID): Packet {
+        val packet = Packet(
+            commandID = commandID,
+            sequenceBit = false,
+            reliabilityBit = false,
+            address = 0xF0.toByte(),
+            nonce = NullNonce,
+            machineAuthenticationCode = NullMachineAuthCode
+        )
+        packet.computeCRC16Payload()
         logger.log(LogLevel.DEBUG) {
-            "Computed CRC16 payload 0x%02X%02X".format(this.payload[1].toPosInt(), this.payload[0].toPosInt())
+            "Computed CRC16 payload 0x%02X%02X".format(packet.payload[1].toPosInt(), packet.payload[0].toPosInt())
         }
+        return packet
     }
 
     // Base function for generating MAC-authenticated packets. This
@@ -421,17 +381,16 @@ class TransportLayer(private val logger: Logger) {
     ): Packet {
         require(state.keyResponseAddress != null)
 
-        val packet = Packet().apply {
-            address = state.keyResponseAddress!!
-        }
+        val packet = Packet(
+            commandID = commandID,
+            address = state.keyResponseAddress!!,
+            sequenceBit = sequenceBit,
+            reliabilityBit = reliabilityBit,
+            payload = payload,
+            nonce = state.currentTxNonce
+        )
 
-        packet.commandID = commandID
-        packet.sequenceBit = sequenceBit
-        packet.reliabilityBit = reliabilityBit
-        packet.payload = payload
-
-        packet.nonce = state.currentTxNonce
-        incrementTxNonce(state)
+        state.currentTxNonce = state.currentTxNonce.getIncrementedNonce()
 
         state.clientPumpCipher?.let { packet.authenticate(it) } ?: throw IllegalStateException()
 

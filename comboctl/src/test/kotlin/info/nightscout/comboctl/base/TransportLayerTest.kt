@@ -45,16 +45,16 @@ class TransportLayerTest {
     fun createPacketData() {
         // Create packet, and check that it is correctly converted to a byte list.
 
-        val packet = TransportLayer.Packet().apply {
-            version = 0x42
-            sequenceBit = true
-            reliabilityBit = false
-            commandID = TransportLayer.CommandID.REQUEST_PAIRING_CONNECTION
-            address = 0x45
-            nonce = Nonce(byteArrayListOfInts(0x0A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0B))
-            payload = byteArrayListOfInts(0x50, 0x60, 0x70)
+        val packet = TransportLayer.Packet(
+            commandID = TransportLayer.CommandID.REQUEST_PAIRING_CONNECTION,
+            version = 0x42,
+            sequenceBit = true,
+            reliabilityBit = false,
+            address = 0x45,
+            nonce = Nonce(byteArrayListOfInts(0x0A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0B)),
+            payload = byteArrayListOfInts(0x50, 0x60, 0x70),
             machineAuthenticationCode = MachineAuthCode(byteArrayListOfInts(0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08))
-        }
+        )
 
         val byteList = packet.toByteList()
 
@@ -75,15 +75,15 @@ class TransportLayerTest {
     fun verifyPacketDataIntegrityWithCRC() {
         // Create packet and verify that the CRC check detects data corruption.
 
-        val packet = TransportLayer.Packet().apply {
-            version = 0x42
-            sequenceBit = true
-            reliabilityBit = false
-            commandID = TransportLayer.CommandID.REQUEST_PAIRING_CONNECTION
-            address = 0x45
-            nonce = Nonce(byteArrayListOfInts(0x0A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0B))
+        val packet = TransportLayer.Packet(
+            commandID = TransportLayer.CommandID.REQUEST_PAIRING_CONNECTION,
+            version = 0x42,
+            sequenceBit = true,
+            reliabilityBit = false,
+            address = 0x45,
+            nonce = Nonce(byteArrayListOfInts(0x0A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0B)),
             machineAuthenticationCode = MachineAuthCode(byteArrayListOfInts(0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00))
-        }
+        )
 
         // Check that the computed CRC is correct.
         packet.computeCRC16Payload()
@@ -93,9 +93,10 @@ class TransportLayerTest {
         // The CRC should match, since it was just computed.
         assertTrue(packet.verifyCRC16Payload())
 
-        // Simulate data corruption by altering the command ID.
-        // This should produce a CRC mismatch.
-        packet.commandID = TransportLayer.CommandID.PAIRING_CONNECTION_REQUEST_ACCEPTED
+        // Simulate data corruption by altering the CRC itself.
+        // This should produce a CRC mismatch, since the check
+        // will recompute the CRC from the header data.
+        packet.payload[0] = (packet.payload[0].toPosInt() xor 0xFF).toByte()
         assertFalse(packet.verifyCRC16Payload())
     }
 
@@ -106,15 +107,15 @@ class TransportLayerTest {
         val key = ByteArray(CIPHER_KEY_SIZE).apply { fill('0'.toByte()) }
         val cipher = Cipher(key)
 
-        val packet = TransportLayer.Packet().apply {
-            version = 0x42
-            sequenceBit = true
-            reliabilityBit = false
-            commandID = TransportLayer.CommandID.REQUEST_PAIRING_CONNECTION
-            address = 0x45
-            nonce = Nonce(byteArrayListOfInts(0x0A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0B))
+        val packet = TransportLayer.Packet(
+            commandID = TransportLayer.CommandID.REQUEST_PAIRING_CONNECTION,
+            version = 0x42,
+            sequenceBit = true,
+            reliabilityBit = false,
+            address = 0x45,
+            nonce = Nonce(byteArrayListOfInts(0x0A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0B)),
             payload = byteArrayListOfInts(0x00, 0x00)
-        }
+        )
 
         // Check that the computed MAC is correct.
         packet.authenticate(cipher)

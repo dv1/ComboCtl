@@ -11,8 +11,7 @@ private suspend fun sendTransportLayerPacket(
     logger: Logger,
     packet: TransportLayer.Packet
 ) {
-    require(packet.commandID != null)
-    logger.log(LogLevel.DEBUG) { "Sending transport layer ${packet.commandID!!.name} packet" }
+    logger.log(LogLevel.DEBUG) { "Sending transport layer ${packet.commandID.name} packet" }
     dataChannel.send(packet.toByteList())
 }
 

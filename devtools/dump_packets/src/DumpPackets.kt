@@ -65,7 +65,7 @@ fun main(vararg args: String) {
                 val directionDesc = if (frameData.isOutgoingData) "<=== Outgoing" else "===> Incoming"
                 "$directionDesc packet:" +
                 "  version: ${"%02x".format(packet.version)}" +
-                "  command ID: ${packet.commandID?.name ?: "<unknown command ID>"}" +
+                "  command ID: ${packet.commandID.name}" +
                 "  sequence bit: ${packet.sequenceBit}" +
                 "  reliability bit: ${packet.reliabilityBit}" +
                 "  address: ${"%02x".format(packet.address)}" +
