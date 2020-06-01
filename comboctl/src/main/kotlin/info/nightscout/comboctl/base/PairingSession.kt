@@ -119,7 +119,7 @@ suspend fun performPairing(
         val getPINDeferred = CompletableDeferred<PairingPIN>()
         pairingPINCallback.invoke(getPINDeferred)
         pin = getPINDeferred.await()
-        logger.log(LogLevel.DEBUG) { "PIN entered: ${pin.toPINString()}" }
+        logger.log(LogLevel.DEBUG) { "PIN entered: $pin" }
 
         // Set up the weak cipher fpr verifying the KEY_RESPONSE
         // packet and decrypting the other keys.

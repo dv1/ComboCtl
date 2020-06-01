@@ -75,7 +75,7 @@ data class PairingPIN(val pinDigits: IntArray) : Iterable<Int> {
      *
      * The format is 012-345-6789.
      */
-    fun toPINString() = "${pinDigits[0]}${pinDigits[1]}${pinDigits[2]}-" +
-                        "${pinDigits[3]}${pinDigits[4]}${pinDigits[5]}-" +
-                        "${pinDigits[6]}${pinDigits[7]}${pinDigits[8]}${pinDigits[9]}"
+    override fun toString() = "${pinDigits[0]}${pinDigits[1]}${pinDigits[2]}-" +
+                              "${pinDigits[3]}${pinDigits[4]}${pinDigits[5]}-" +
+                              "${pinDigits[6]}${pinDigits[7]}${pinDigits[8]}${pinDigits[9]}"
 }
