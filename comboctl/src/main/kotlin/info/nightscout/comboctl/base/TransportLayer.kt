@@ -17,8 +17,6 @@ import java.lang.IllegalStateException
 //  11. n bytes   : Payload
 //  12. 8 bytes   : Message authentication code
 
-const val NUM_MAC_BYTES = 8
-
 // 1 byte with major & minor version
 // 1 byte with sequence bit & "Res1" & reliability bit & command ID
 // 2 bytes with payload length
@@ -123,7 +121,9 @@ class TransportLayer(private val logger: Logger) {
 
             payload = ArrayList<Byte>(bytes.subList(PAYLOAD_BYTES_OFFSET, PAYLOAD_BYTES_OFFSET + payloadSize))
 
-            for (i in 0 until NUM_MAC_BYTES) machineAuthenticationCode[i] = bytes[PAYLOAD_BYTES_OFFSET + payloadSize + i]
+            machineAuthenticationCode = MachineAuthCode(
+                bytes.subList(PAYLOAD_BYTES_OFFSET + payloadSize, PAYLOAD_BYTES_OFFSET + payloadSize + NUM_MAC_BYTES)
+            )
         }
 
         // Header
@@ -184,11 +184,7 @@ class TransportLayer(private val logger: Logger) {
 
         // MAC
 
-        var machineAuthenticationCode = ByteArray(NUM_MAC_BYTES)
-            set(value) {
-                require(value.size == NUM_MAC_BYTES)
-                field = value
-            }
+        var machineAuthenticationCode = NullMachineAuthCode
 
         // Implementing custom equals operator, since otherwise,
         // the nonce and machineAuthenticationCode arrays are
@@ -205,7 +201,7 @@ class TransportLayer(private val logger: Logger) {
                 (destinationAddress == other.destinationAddress) &&
                 (payload == other.payload) &&
                 (nonce == other.nonce) &&
-                (machineAuthenticationCode contentEquals other.machineAuthenticationCode)
+                (machineAuthenticationCode == other.machineAuthenticationCode)
 
         fun toByteList(withMAC: Boolean = true, withPayload: Boolean = true): ArrayList<Byte> {
             val bytes = ArrayList<Byte>(PACKET_HEADER_SIZE)
@@ -253,12 +249,12 @@ class TransportLayer(private val logger: Logger) {
             machineAuthenticationCode = calculateMAC(cipher)
         }
 
-        fun verifyAuthentication(cipher: Cipher): Boolean = calculateMAC(cipher).contentEquals(machineAuthenticationCode)
+        fun verifyAuthentication(cipher: Cipher): Boolean = calculateMAC(cipher) == machineAuthenticationCode
 
         // This computes the MAC using Two-Fish and a modified RFC3610 CCM authentication
         // process. See "Packet authentication" in combo-comm-spec.adoc for details.
-        private fun calculateMAC(cipher: Cipher): ByteArray {
-            val MAC = ByteArray(NUM_MAC_BYTES)
+        private fun calculateMAC(cipher: Cipher): MachineAuthCode {
+            val macBytes = ArrayList<Byte>(NUM_MAC_BYTES)
             var block = ByteArray(CIPHER_BLOCK_SIZE)
 
             // Set up B_0.
@@ -308,7 +304,7 @@ class TransportLayer(private val logger: Logger) {
 
             // Produce the "U" value.
             for (i in 0 until NUM_MAC_BYTES)
-                MAC[i] = block[i]
+                macBytes.add(block[i])
 
             // Produce the new B_0.
             block[0] = 0x41
@@ -322,9 +318,9 @@ class TransportLayer(private val logger: Logger) {
             // Compute the final MAC out of U and the
             // first 8 bytes of X_1 XORed together.
             for (i in 0 until NUM_MAC_BYTES)
-                MAC[i] = ((MAC[i].toPosInt()) xor (block[i].toPosInt())).toByte()
+                macBytes[i] = ((macBytes[i].toPosInt()) xor (block[i].toPosInt())).toByte()
 
-            return MAC
+            return MachineAuthCode(macBytes)
         }
 
         override fun hashCode(): Int {
@@ -337,7 +333,7 @@ class TransportLayer(private val logger: Logger) {
             result = 31 * result + destinationAddress
             result = 31 * result + nonce.hashCode()
             result = 31 * result + payload.hashCode()
-            result = 31 * result + machineAuthenticationCode.contentHashCode()
+            result = 31 * result + machineAuthenticationCode.hashCode()
             return result
         }
     }
@@ -437,7 +433,7 @@ class TransportLayer(private val logger: Logger) {
         sourceAddress = 0xF
         destinationAddress = 0x0
         nonce = NullNonce
-        machineAuthenticationCode = ByteArray(NUM_MAC_BYTES) { 0x00 }
+        machineAuthenticationCode = NullMachineAuthCode
         this.commandID = commandID
         computeCRC16Payload()
         logger.log(LogLevel.DEBUG) {

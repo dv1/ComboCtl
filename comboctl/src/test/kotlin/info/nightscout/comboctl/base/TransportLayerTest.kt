@@ -40,7 +40,7 @@ class TransportLayerTest {
 
         assertEquals(byteArrayListOfInts(0x99, 0x44), packet.payload)
 
-        assertArrayEquals(byteArrayOfInts(0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00), packet.machineAuthenticationCode)
+        assertEquals(NullMachineAuthCode, packet.machineAuthenticationCode)
     }
 
     @Test
@@ -57,7 +57,7 @@ class TransportLayerTest {
             destinationAddress = 0x5
             nonce = Nonce(byteArrayListOfInts(0x0A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0B))
             payload = byteArrayListOfInts(0x50, 0x60, 0x70)
-            machineAuthenticationCode = byteArrayOfInts(0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08)
+            machineAuthenticationCode = MachineAuthCode(byteArrayListOfInts(0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08))
         }
 
         val byteList = packet.toByteList()
@@ -88,7 +88,7 @@ class TransportLayerTest {
             sourceAddress = 0x4
             destinationAddress = 0x5
             nonce = Nonce(byteArrayListOfInts(0x0A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0B))
-            machineAuthenticationCode = byteArrayOfInts(0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00)
+            machineAuthenticationCode = MachineAuthCode(byteArrayListOfInts(0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00))
         }
 
         // Check that the computed CRC is correct.
@@ -126,8 +126,8 @@ class TransportLayerTest {
 
         // Check that the computed MAC is correct.
         packet.authenticate(cipher)
-        val expectedMAC = byteArrayOfInts(0x00, 0xC5, 0x48, 0xB3, 0xA8, 0xE6, 0x97, 0x76)
-        assertArrayEquals(expectedMAC, packet.machineAuthenticationCode)
+        val expectedMAC = MachineAuthCode(byteArrayListOfInts(0x00, 0xC5, 0x48, 0xB3, 0xA8, 0xE6, 0x97, 0x76))
+        assertEquals(expectedMAC, packet.machineAuthenticationCode)
 
         // The MAC should match, since it was just computed.
         assertTrue(packet.verifyAuthentication(cipher))
