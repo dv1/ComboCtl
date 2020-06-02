@@ -7,35 +7,44 @@ import kotlinx.coroutines.channels.*
 // Utility functions.
 
 private suspend fun sendTransportLayerPacket(
-    dataChannel: Channel<List<Byte>>,
+    outgoingDataChannel: SendChannel<List<Byte>>,
     logger: Logger,
     packet: TransportLayer.Packet
 ) {
     logger.log(LogLevel.DEBUG) { "Sending transport layer ${packet.commandID.name} packet" }
-    dataChannel.send(packet.toByteList())
+    outgoingDataChannel.send(packet.toByteList())
 }
 
 private suspend fun sendApplicationLayerPacket(
-    dataChannel: Channel<List<Byte>>,
+    outgoingDataChannel: SendChannel<List<Byte>>,
     appLayerState: ApplicationLayer.State,
     logger: Logger,
     packet: ApplicationLayer.Packet
 ) {
     logger.log(LogLevel.DEBUG) { "Sending application layer ${packet.command.name} packet" }
-    dataChannel.send(packet.toTransportLayerPacket(appLayerState).toByteList())
+    outgoingDataChannel.send(packet.toTransportLayerPacket(appLayerState).toByteList())
 }
 
 private suspend fun receiveTransportLayerPacket(
-    dataChannel: Channel<List<Byte>>,
+    incomingDataChannel: ReceiveChannel<List<Byte>>,
+    outgoingDataChannel: SendChannel<List<Byte>>,
     appLayerState: ApplicationLayer.State,
     logger: Logger,
     expectedCommandID: TransportLayer.CommandID
 ): TransportLayer.Packet {
     logger.log(LogLevel.DEBUG) { "Waiting for transport layer ${expectedCommandID.name} packet" }
-    val tpLayerPacket = TransportLayer.Packet(dataChannel.receive())
 
-    if (tpLayerPacket.commandID != expectedCommandID)
-        throw TransportLayer.IncorrectPacketException(tpLayerPacket, expectedCommandID)
+    lateinit var tpLayerPacket: TransportLayer.Packet
+
+    receivingPacket@ while (true) {
+        tpLayerPacket = TransportLayer.Packet(incomingDataChannel.receive())
+
+        when (tpLayerPacket.commandID) {
+            expectedCommandID -> break@receivingPacket
+            TransportLayer.CommandID.ACK_RESPONSE -> logger.log(LogLevel.DEBUG) { "Got ACK_RESPONSE packet; ignoring" }
+            else -> throw TransportLayer.IncorrectPacketException(tpLayerPacket, expectedCommandID)
+        }
+    }
 
     // Packets with the reliability flag set must be immediately
     // responded to with an ACK_RESPONSE packet whose sequence bit
@@ -50,20 +59,27 @@ private suspend fun receiveTransportLayerPacket(
             appLayerState.transportLayerState,
             tpLayerPacket.sequenceBit
         )
-        dataChannel.send(ackResponsePacket.toByteList())
+        outgoingDataChannel.send(ackResponsePacket.toByteList())
     }
 
     return tpLayerPacket
 }
 
 private suspend fun receiveApplicationLayerPacket(
-    dataChannel: Channel<List<Byte>>,
+    incomingDataChannel: ReceiveChannel<List<Byte>>,
+    outgoingDataChannel: SendChannel<List<Byte>>,
     appLayerState: ApplicationLayer.State,
     logger: Logger,
     expectedCommand: ApplicationLayer.Command
 ): ApplicationLayer.Packet {
     logger.log(LogLevel.DEBUG) { "Waiting for application layer ${expectedCommand.name} packet" }
-    val tpLayerPacket = receiveTransportLayerPacket(dataChannel, appLayerState, logger, TransportLayer.CommandID.DATA)
+    val tpLayerPacket = receiveTransportLayerPacket(
+        incomingDataChannel,
+        outgoingDataChannel,
+        appLayerState,
+        logger,
+        TransportLayer.CommandID.DATA
+    )
     val appLayerPacket = ApplicationLayer.Packet(tpLayerPacket)
 
     if (appLayerPacket.command != expectedCommand)
@@ -78,20 +94,27 @@ suspend fun performPairing(
     bluetoothFriendlyName: String,
     logger: Logger,
     pairingPINCallback: (getPINDeferred: CompletableDeferred<PairingPIN>) -> Unit,
-    dataChannel: Channel<List<Byte>>
+    incomingDataChannel: ReceiveChannel<List<Byte>>,
+    outgoingDataChannel: SendChannel<List<Byte>>
 ) {
     val transportLayer = appLayerState.transportLayer
     val tpLayerState = appLayerState.transportLayerState
 
     // Initiate pairing and wait for the response.
     // (The response contains no meaningful payload.)
-    sendTransportLayerPacket(dataChannel, logger, transportLayer.createRequestPairingConnectionPacket())
-    receiveTransportLayerPacket(dataChannel, appLayerState, logger, TransportLayer.CommandID.PAIRING_CONNECTION_REQUEST_ACCEPTED)
+    sendTransportLayerPacket(outgoingDataChannel, logger, transportLayer.createRequestPairingConnectionPacket())
+    receiveTransportLayerPacket(
+        incomingDataChannel,
+        outgoingDataChannel,
+        appLayerState,
+        logger,
+        TransportLayer.CommandID.PAIRING_CONNECTION_REQUEST_ACCEPTED
+    )
 
     // Initiate pump-client and client-pump keys request.
     // This will cause the pump to generate and show a
     // 10-digit PIN.
-    sendTransportLayerPacket(dataChannel, logger, transportLayer.createRequestKeysPacket())
+    sendTransportLayerPacket(outgoingDataChannel, logger, transportLayer.createRequestKeysPacket())
 
     // Ask the user for the 10-digit PIN, and retrieve
     // the keys from the pump. In case the user did not
@@ -130,10 +153,16 @@ suspend fun performPairing(
         // message sent earlier above only causes the pump to
         // generate the keys and show the PIN.)
         if (keyResponsePacket == null) {
-            sendTransportLayerPacket(dataChannel, logger, transportLayer.createGetAvailableKeysPacket())
+            sendTransportLayerPacket(outgoingDataChannel, logger, transportLayer.createGetAvailableKeysPacket())
 
             // Wait for the KEY_RESPONSE packet.
-            keyResponsePacket = receiveTransportLayerPacket(dataChannel, appLayerState, logger, TransportLayer.CommandID.KEY_RESPONSE)
+            keyResponsePacket = receiveTransportLayerPacket(
+                incomingDataChannel,
+                outgoingDataChannel,
+                appLayerState,
+                logger,
+                TransportLayer.CommandID.KEY_RESPONSE
+            )
         }
 
         // If the KEY_RESPONSE packet could not be verified,
@@ -170,9 +199,10 @@ suspend fun performPairing(
     // values that aren't necessary for operating the pump. However,
     // it seems that we still have to request these IDs, otherwise
     // the pump reports an error. (TODO: Further verify this.)
-    sendTransportLayerPacket(dataChannel, logger, transportLayer.createRequestIDPacket(tpLayerState, bluetoothFriendlyName))
+    sendTransportLayerPacket(outgoingDataChannel, logger, transportLayer.createRequestIDPacket(tpLayerState, bluetoothFriendlyName))
     val tpLayerPacket: TransportLayer.Packet = receiveTransportLayerPacket(
-        dataChannel,
+        incomingDataChannel,
+        outgoingDataChannel,
         appLayerState,
         logger,
         TransportLayer.CommandID.ID_RESPONSE
@@ -194,15 +224,27 @@ suspend fun performPairing(
     // application layer. For this to happen, we need a regular
     // _transport layer_ connection.
     // Wait for the response and verify it.
-    sendTransportLayerPacket(dataChannel, logger, transportLayer.createRequestRegularConnectionPacket(tpLayerState))
-    receiveTransportLayerPacket(dataChannel, appLayerState, logger, TransportLayer.CommandID.REGULAR_CONNECTION_REQUEST_ACCEPTED)
+    sendTransportLayerPacket(outgoingDataChannel, logger, transportLayer.createRequestRegularConnectionPacket(tpLayerState))
+    receiveTransportLayerPacket(
+        incomingDataChannel,
+        outgoingDataChannel,
+        appLayerState,
+        logger,
+        TransportLayer.CommandID.REGULAR_CONNECTION_REQUEST_ACCEPTED
+    )
     if (!tpLayerPacket.verifyAuthentication(tpLayerState.pumpClientCipher!!))
         throw TransportLayer.PacketVerificationException(tpLayerPacket)
 
     // Initiate application-layer connection and wait for the response.
     // (The response contains no meaningful payload.)
-    sendApplicationLayerPacket(dataChannel, appLayerState, logger, appLayer.createCTRLConnectPacket())
-    receiveApplicationLayerPacket(dataChannel, appLayerState, logger, ApplicationLayer.Command.CTRL_CONNECT_RESPONSE)
+    sendApplicationLayerPacket(outgoingDataChannel, appLayerState, logger, appLayer.createCTRLConnectPacket())
+    receiveApplicationLayerPacket(
+        incomingDataChannel,
+        outgoingDataChannel,
+        appLayerState,
+        logger,
+        ApplicationLayer.Command.CTRL_CONNECT_RESPONSE
+    )
 
     // Next, we have to query the versions of both command mode and
     // RT mode services. It is currently unknown how to interpret
@@ -210,36 +252,60 @@ suspend fun performPairing(
     // otherwise the pump considers it an error.
     // TODO: Further verify this.
     sendApplicationLayerPacket(
-        dataChannel,
+        outgoingDataChannel,
         appLayerState,
         logger,
         appLayer.createCTRLGetServiceVersionPacket(ApplicationLayer.ServiceID.COMMAND_MODE)
     )
-    receiveApplicationLayerPacket(dataChannel, appLayerState, logger, ApplicationLayer.Command.CTRL_SERVICE_VERSION_RESPONSE)
+    receiveApplicationLayerPacket(
+        incomingDataChannel,
+        outgoingDataChannel,
+        appLayerState,
+        logger,
+        ApplicationLayer.Command.CTRL_SERVICE_VERSION_RESPONSE
+    )
     sendApplicationLayerPacket(
-        dataChannel,
+        outgoingDataChannel,
         appLayerState,
         logger,
         appLayer.createCTRLGetServiceVersionPacket(ApplicationLayer.ServiceID.RT_MODE)
     )
-    receiveApplicationLayerPacket(dataChannel, appLayerState, logger, ApplicationLayer.Command.CTRL_SERVICE_VERSION_RESPONSE)
+    receiveApplicationLayerPacket(
+        incomingDataChannel,
+        outgoingDataChannel,
+        appLayerState,
+        logger,
+        ApplicationLayer.Command.CTRL_SERVICE_VERSION_RESPONSE
+    )
 
     // Next, send a BIND command and wait for the response.
     // (The response contains no meaningful payload.)
-    sendApplicationLayerPacket(dataChannel, appLayerState, logger, appLayer.createCTRLBindPacket())
-    receiveApplicationLayerPacket(dataChannel, appLayerState, logger, ApplicationLayer.Command.CTRL_BIND_RESPONSE)
+    sendApplicationLayerPacket(outgoingDataChannel, appLayerState, logger, appLayer.createCTRLBindPacket())
+    receiveApplicationLayerPacket(
+        incomingDataChannel,
+        outgoingDataChannel,
+        appLayerState,
+        logger,
+        ApplicationLayer.Command.CTRL_BIND_RESPONSE
+    )
 
     // We have to re-connect the regular connection at the
     // transport layer now. (Unclear why, but it seems this
     // is necessary for the pairing process to succeed.)
     // Wait for the response and verify it.
-    sendTransportLayerPacket(dataChannel, logger, transportLayer.createRequestRegularConnectionPacket(tpLayerState))
-    receiveTransportLayerPacket(dataChannel, appLayerState, logger, TransportLayer.CommandID.REGULAR_CONNECTION_REQUEST_ACCEPTED)
+    sendTransportLayerPacket(outgoingDataChannel, logger, transportLayer.createRequestRegularConnectionPacket(tpLayerState))
+    receiveTransportLayerPacket(
+        incomingDataChannel,
+        outgoingDataChannel,
+        appLayerState,
+        logger,
+        TransportLayer.CommandID.REGULAR_CONNECTION_REQUEST_ACCEPTED
+    )
     if (!tpLayerPacket.verifyAuthentication(tpLayerState.pumpClientCipher!!))
         throw TransportLayer.PacketVerificationException(tpLayerPacket)
 
     // Disconnect the application layer connection.
-    sendApplicationLayerPacket(dataChannel, appLayerState, logger, appLayer.createCTRLDisconnectPacket())
+    sendApplicationLayerPacket(outgoingDataChannel, appLayerState, logger, appLayer.createCTRLDisconnectPacket())
 
     // Pairing complete.
 }
