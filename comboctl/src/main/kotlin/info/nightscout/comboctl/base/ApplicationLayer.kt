@@ -15,6 +15,7 @@ package info.nightscout.comboctl.base
 // 1 byte with service ID
 // 2 bytes with command ID
 private const val PACKET_HEADER_SIZE = 1 + 1 + 2
+private const val MAX_VALID_PAYLOAD_SIZE = 65535 - PACKET_HEADER_SIZE
 
 private const val VERSION_BYTE_OFFSET = 0
 private const val SERVICE_ID_BYTE_OFFSET = 1
@@ -205,7 +206,11 @@ class ApplicationLayer {
         var payload: ArrayList<Byte> = ArrayList<Byte>(0)
     ) {
         init {
-            require(payload.size <= (65535 - PACKET_HEADER_SIZE))
+            if (payload.size > MAX_VALID_PAYLOAD_SIZE) {
+                throw IllegalArgumentException(
+                    "Payload size ${payload.size} exceeds allowed maximum of $MAX_VALID_PAYLOAD_SIZE bytes"
+                )
+            }
         }
 
         constructor(tpLayerPacket: TransportLayer.Packet) : this(
@@ -213,7 +218,12 @@ class ApplicationLayer {
             version = tpLayerPacket.payload[VERSION_BYTE_OFFSET],
             payload = ArrayList<Byte>(tpLayerPacket.payload.subList(PAYLOAD_BYTES_OFFSET, tpLayerPacket.payload.size))
         ) {
-            require(tpLayerPacket.commandID == TransportLayer.CommandID.DATA)
+            if (tpLayerPacket.commandID != TransportLayer.CommandID.DATA) {
+                throw TransportLayer.IncorrectPacketException(
+                    tpLayerPacket,
+                    TransportLayer.CommandID.DATA
+                )
+            }
         }
 
         /**

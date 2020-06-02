@@ -22,6 +22,7 @@ import java.lang.IllegalStateException
 // 2 bytes with payload length
 // 1 byte with source and destination addresses
 private const val PACKET_HEADER_SIZE = 1 + 1 + 2 + 1 + NUM_NONCE_BYTES
+private const val MAX_VALID_PAYLOAD_SIZE = 65535
 
 private const val VERSION_BYTE_OFFSET = 0
 private const val SEQ_REL_CMD_BYTE_OFFSET = 1
@@ -142,7 +143,11 @@ class TransportLayer(private val logger: Logger) {
         var machineAuthenticationCode: MachineAuthCode = NullMachineAuthCode
     ) {
         init {
-            require(payload.size <= 65535)
+            if (payload.size > MAX_VALID_PAYLOAD_SIZE) {
+                throw IllegalArgumentException(
+                    "Payload size ${payload.size} exceeds allowed maximum of $MAX_VALID_PAYLOAD_SIZE bytes"
+                )
+            }
         }
 
         // This is a trick to avoid having to retrieve the payload size from
@@ -200,7 +205,12 @@ class TransportLayer(private val logger: Logger) {
         }
 
         fun verifyCRC16Payload(): Boolean {
-            require(payload.size == 2)
+            if (payload.size != 2) {
+                throw InvalidPayloadException(
+                    this,
+                    "Invalid CRC16 payload: CRC16 payload has 2 bytes, this packet has ${payload.size}"
+                )
+            }
             val headerData = toByteList(withMAC = false, withPayload = false)
             val calculatedCRC16 = calculateCRC16MCRF4XX(headerData)
             return (payload[0] == (calculatedCRC16 and 0xFF).toByte()) &&
@@ -403,7 +413,8 @@ class TransportLayer(private val logger: Logger) {
         sequenceBit: Boolean = false,
         reliabilityBit: Boolean = false
     ): Packet {
-        require(state.keyResponseAddress != null)
+        if (state.keyResponseAddress == null)
+            throw IllegalStateException()
 
         val packet = Packet(
             commandID = commandID,
@@ -569,9 +580,12 @@ class TransportLayer(private val logger: Logger) {
      * @param packet The packet that came from the Combo.
      */
     fun parseKeyResponsePacket(state: State, weakCipher: Cipher, packet: Packet) {
-        require(packet.commandID == CommandID.KEY_RESPONSE)
-        require(packet.payload.size == (CIPHER_KEY_SIZE * 2))
-        require(packet.verifyAuthentication(weakCipher))
+        if (packet.commandID != CommandID.KEY_RESPONSE)
+            throw IncorrectPacketException(packet, CommandID.KEY_RESPONSE)
+        if (packet.payload.size != (CIPHER_KEY_SIZE * 2))
+            throw InvalidPayloadException(packet, "Expected ${CIPHER_KEY_SIZE * 2} bytes, got ${packet.payload.size}")
+        if (!packet.verifyAuthentication(weakCipher))
+            throw PacketVerificationException(packet)
 
         val encryptedPCKey = ByteArray(CIPHER_KEY_SIZE)
         val encryptedCPKey = ByteArray(CIPHER_KEY_SIZE)
@@ -617,10 +631,14 @@ class TransportLayer(private val logger: Logger) {
      * @return The parsed IDs.
      */
     fun parseIDResponsePacket(state: State, packet: Packet): ComboIDs {
-        require(packet.commandID == CommandID.ID_RESPONSE)
-        require(packet.payload.size == 17)
+        if (packet.commandID != CommandID.ID_RESPONSE)
+            throw IncorrectPacketException(packet, CommandID.ID_RESPONSE)
+        if (packet.payload.size != 17)
+            throw InvalidPayloadException(packet, "Expected 17 bytes, got ${packet.payload.size}")
+
         val pumpClientCipher = state.pumpClientCipher ?: throw IllegalStateException()
-        require(packet.verifyAuthentication(pumpClientCipher))
+        if (!packet.verifyAuthentication(pumpClientCipher))
+            throw PacketVerificationException(packet)
 
         val serverID = ((packet.payload[0].toPosLong() shl 0) or
             (packet.payload[1].toPosLong() shl 8) or
@@ -651,14 +669,18 @@ class TransportLayer(private val logger: Logger) {
      * @param packet The packet that came from the Combo.
      * @return The parsed error ID.
      */
-    private fun parseErrorResponsePacket(state: State, packet: Packet): Int? =
-        state.pumpClientCipher?.let { cipher ->
-            require(packet.commandID == CommandID.ERROR_RESPONSE)
-            require(packet.payload.size == 1)
-            require(packet.verifyAuthentication(cipher))
+    private fun parseErrorResponsePacket(state: State, packet: Packet): Int {
+        if (packet.commandID != CommandID.ERROR_RESPONSE)
+            throw IncorrectPacketException(packet, CommandID.ERROR_RESPONSE)
+        if (packet.payload.size != 1)
+            throw InvalidPayloadException(packet, "Expected 1 byte, got ${packet.payload.size}")
 
-            packet.payload[0].toInt()
-        }
+        val pumpClientCipher = state.pumpClientCipher ?: throw IllegalStateException()
+        if (!packet.verifyAuthentication(pumpClientCipher))
+            throw PacketVerificationException(packet)
+
+        return packet.payload[0].toInt()
+    }
 }
 
 fun List<Byte>.toTransportLayerPacket(): TransportLayer.Packet {
