@@ -99,7 +99,7 @@ class ApplicationLayer {
     class InvalidServiceIDException(
         val tpLayerPacket: TransportLayer.Packet,
         val serviceID: Int
-    ) : ApplicationLayer.ExceptionBase("Invalid/unknown application layer packet service ID $serviceID")
+    ) : ExceptionBase("Invalid/unknown application layer packet service ID $serviceID")
 
     /**
      * Exception thrown when an application layer packet arrives with an invalid application layer command ID.
@@ -112,7 +112,7 @@ class ApplicationLayer {
         val tpLayerPacket: TransportLayer.Packet,
         val serviceID: ServiceID,
         val commandID: Int
-    ) : ApplicationLayer.ExceptionBase("Invalid/unknown application layer packet command ID $commandID (service ID: ${serviceID.name})")
+    ) : ExceptionBase("Invalid/unknown application layer packet command ID $commandID (service ID: ${serviceID.name})")
 
     /**
      * Exception thrown when a different application layer packet was expected than the one that arrived.
@@ -125,7 +125,7 @@ class ApplicationLayer {
     class IncorrectPacketException(
         val appLayerPacket: Packet,
         val expectedCommand: Command
-    ) : ComboException("Incorrect packet: expected ${expectedCommand.name} packet, got ${appLayerPacket.command.name} one")
+    ) : ExceptionBase("Incorrect packet: expected ${expectedCommand.name} packet, got ${appLayerPacket.command.name} one")
 
     /**
      * Exception thrown when something is wrong with an application layer packet's payload.
@@ -136,7 +136,7 @@ class ApplicationLayer {
     class InvalidPayloadException(
         val appLayerPacket: Packet,
         message: String
-    ) : ApplicationLayer.ExceptionBase(message)
+    ) : ExceptionBase(message)
 
     class State(
         val transportLayer: TransportLayer,

@@ -92,6 +92,17 @@ class TransportLayer(private val logger: Logger) {
     ) : ExceptionBase("Packet verification failed")
 
     /**
+     * Exception thrown when something is wrong with a transport layer packet's payload.
+     *
+     * @property packet Transport layer packet with the invalid payload.
+     * @property message Detail message.
+     */
+    class InvalidPayloadException(
+        val packet: Packet,
+        message: String
+    ) : ExceptionBase(message)
+
+    /**
      * Class containing data of a Combo transport layer packet.
      *
      * Communication with the Combo uses packets as the basic unit. Each packet
