@@ -75,8 +75,6 @@ Many issues like ordering imports alphabetically can be resolved automatically w
 
 == TODO
 
-* Thorough code review, also to make sure the code is abit more "kotlin-esque"
-* Application layer code
 * Base session management code ("session" here being the code that handles the
   correct sequence of packets for pairing, regular communcation etc.)
 * Display parser code
