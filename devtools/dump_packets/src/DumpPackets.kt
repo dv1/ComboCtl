@@ -63,27 +63,13 @@ fun main(vararg args: String) {
             val packet = framePayload.toTransportLayerPacket()
             packetLogger.log(LogLevel.DEBUG) {
                 val directionDesc = if (frameData.isOutgoingData) "<=== Outgoing" else "===> Incoming"
-                "$directionDesc packet:" +
-                "  version: ${"%02x".format(packet.version)}" +
-                "  command ID: ${packet.commandID.name}" +
-                "  sequence bit: ${packet.sequenceBit}" +
-                "  reliability bit: ${packet.reliabilityBit}" +
-                "  address: ${"%02x".format(packet.address)}" +
-                "  nonce: ${packet.nonce}" +
-                "  MAC: ${packet.machineAuthenticationCode}" +
-                "  payload: ${packet.payload.size} byte(s): ${packet.payload.toHexString()}"
+                "$directionDesc packet:  $packet"
             }
 
             if (packet.commandID == TransportLayer.CommandID.DATA) {
                 try {
                     val appLayerPacket = ApplicationLayer.Packet(packet)
-                    packetLogger.log(LogLevel.DEBUG) {
-                        "  Application layer packet: " +
-                        "  major/minor version: ${"%02x".format(appLayerPacket.version)}" +
-                        "  service ID: ${appLayerPacket.command.serviceID}" +
-                        "  command: ${appLayerPacket.command}" +
-                        "  payload: ${appLayerPacket.payload.size} byte(s): ${appLayerPacket.payload.toHexString()}"
-                    }
+                    packetLogger.log(LogLevel.DEBUG) { "  Application layer packet: $appLayerPacket" }
                 } catch (exc: ApplicationLayer.ExceptionBase) {
                     packetLogger.log(LogLevel.ERROR) { "Could not parse DATA packet as application layer packet: $exc" }
                 }

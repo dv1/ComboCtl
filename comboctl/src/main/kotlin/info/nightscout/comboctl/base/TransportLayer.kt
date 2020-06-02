@@ -273,6 +273,17 @@ class TransportLayer(private val logger: Logger) {
 
             return MachineAuthCode(macBytes)
         }
+
+        override fun toString(): String {
+            return "version: ${"%02x".format(version)}" +
+                "  command ID: ${commandID.name}" +
+                "  sequence bit: $sequenceBit" +
+                "  reliability bit: $reliabilityBit" +
+                "  address: ${"%02x".format(address)}" +
+                "  nonce: $nonce" +
+                "  MAC: $machineAuthenticationCode" +
+                "  payload: ${payload.size} byte(s): ${payload.toHexString()}"
+        }
     }
 
     class State {

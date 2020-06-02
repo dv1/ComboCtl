@@ -175,6 +175,13 @@ class ApplicationLayer {
                 appLayerPacketPayload
             )
         }
+
+        override fun toString(): String {
+            return "version: ${"%02x".format(version)}" +
+                "  service ID: ${command.serviceID}" +
+                "  command: $command" +
+                "  payload: ${payload.size} byte(s): ${payload.toHexString()}"
+        }
     }
 
     private fun incrementRTSequence(state: State) {
