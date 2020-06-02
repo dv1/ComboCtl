@@ -1327,6 +1327,9 @@ communicate with the Combo again, `AL_CTRL_CONNECT` must be sent
 first. Its two payload bytes contain a 16-bit little endian unsigned
 integer, set to 0x6003.
 
+#TODO: It is known that this needs to be called during pairing. However,
+it is unclear when and why it would be used beyond that.#
+
 #TODO: The integer actually seems to be set to 0x0003 by Ruffy instead.
 Clarify why.#
 

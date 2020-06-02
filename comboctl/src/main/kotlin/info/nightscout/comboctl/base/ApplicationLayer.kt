@@ -21,6 +21,8 @@ private const val SERVICE_ID_BYTE_OFFSET = 1
 private const val COMMAND_ID_BYTE_OFFSET = 2
 private const val PAYLOAD_BYTES_OFFSET = 4
 
+// Utility function to be able to throw an exception in case of
+// an invalid service or command ID even in the constructor below.
 private fun checkedGetCommand(
     appPacketBytes: ArrayList<Byte>,
     tpLayerPacket: TransportLayer.Packet
@@ -34,6 +36,23 @@ private fun checkedGetCommand(
         ?: throw ApplicationLayer.InvalidCommandIDException(tpLayerPacket, serviceID, commandID)
 }
 
+/**
+ * Combo application layer (AL) communication implementation.
+ *
+ * The application layer sits on top of the transport layer. Application layer
+ * packets are encapsulated in transport layer DATA packets.
+ *
+ * This deals with AL packets and processes. These are:
+ *
+ * - Generating and parsing AL packets
+ * - Pairing commands
+ * - Connection setup commands
+ * - Command mode and RT mode commands
+ *
+ * The nested State class contains the entire state of the application layer.
+ * Unlike the TransportLayer's State class, this one has no properties that
+ * need to be persistently stored.
+ */
 class ApplicationLayer {
     /**
      * Valid application layer command service IDs.
@@ -144,6 +163,42 @@ class ApplicationLayer {
         var currentRTSequence: Int = 0
     )
 
+    /**
+     * Class containing data of a Combo application layer packet.
+     *
+     * Just like the transport layer, the application layer also uses packets as the
+     * basic unit. Each application layer packet is contained in a transport layer
+     * DATA packet and contains a small header and a payload. It is easy to confuse
+     * its payload with the payload of the transport layer DATA packet, since this
+     * packet's data _is_ the payload of the DATA transport layer packet. In other
+     * words, within the payload of the DATA transport layer packet is _another_
+     * header (the application layer packet header), and after that, the actual
+     * application layer packet comes.
+     *
+     * Unlike transport layer packet data, application layer packet data does not
+     * include any CRC or MAC authentication metadata (since the underlying DATA
+     * packet already provides that).
+     *
+     * Also note that the application layer packet header contains a version byte.
+     * It is identical in structure to the version byte in the transport layer packet
+     * header, but something entirely separate.
+     *
+     * See "Application layer packet structure" in combo-comm-spec.adoc for details.
+     *
+     * Since these packets are stored in the payload of transport layer DATA packets,
+     * the transport layer DATA packet's reliability and sequence bits do need to
+     * be addressed. This is done by looking up the "reliable" boolean in the command
+     * enum value. For each valid command, there is one such boolean. It determines
+     * whether the reliability bit of the DATA TL packet will be set or cleared.
+     *
+     * @property command The command of this packet. This is a combination of a
+     *           service ID and a command ID, which together uniquely identify
+     *           the command.
+     * @property version Byte containing version numbers. The upper 4 bit contain the
+     *           major, the lower 4 bit the minor version number.
+     *           In all observed packets, this was set to 0x10.
+     * @property payload The application layer packet payload.
+     */
     data class Packet(
         val command: Command,
         val version: Byte = 0x10,
@@ -161,6 +216,13 @@ class ApplicationLayer {
             require(tpLayerPacket.commandID == TransportLayer.CommandID.DATA)
         }
 
+        /**
+         * Produces a transport layer DATA packet containing this application layer
+         * packet's data as its payload.
+         *
+         * @param appLayerState Application layer state used for generating the packet.
+         * @return Transport layer DATA packet.
+         */
         fun toTransportLayerPacket(appLayerState: State): TransportLayer.Packet {
             val appLayerPacketPayload = ArrayList<Byte>(PACKET_HEADER_SIZE + payload.size)
             appLayerPacketPayload.add(version)
@@ -184,12 +246,24 @@ class ApplicationLayer {
         }
     }
 
+    // Utility function to increment the RT sequence number with overflow check.
     private fun incrementRTSequence(state: State) {
         state.currentRTSequence++
         if (state.currentRTSequence > 65535)
             state.currentRTSequence = 0
     }
 
+    /**
+     * Creates a CTRL_CONNECT packet.
+     *
+     * This initiates a connection at the application layer. The transport
+     * layer must have been connected first with the transport layer's
+     * REQUEST_REGULAR_CONNECTION command.
+     *
+     * See the combo-comm-spec.adoc file for details about this packet.
+     *
+     * @return The produced packet.
+     */
     fun createCTRLConnectPacket(): Packet {
         val serialNumber = 12345
         val payload = byteArrayListOfInts(
@@ -204,6 +278,16 @@ class ApplicationLayer {
         )
     }
 
+    /**
+     * Creates a CTRL_GET_SERVICE_VERSION packet.
+     *
+     * This is used during the pairing process. It is not needed in
+     * regular connections.
+     *
+     * See the combo-comm-spec.adoc file for details about this packet.
+     *
+     * @return The produced packet.
+     */
     fun createCTRLGetServiceVersionPacket(serviceID: ServiceID): Packet {
         return Packet(
             command = Command.CTRL_GET_SERVICE_VERSION,
@@ -211,6 +295,16 @@ class ApplicationLayer {
         )
     }
 
+    /**
+     * Creates a CTRL_BIND packet.
+     *
+     * This is used during the pairing process. It is not needed in
+     * regular connections.
+     *
+     * See the combo-comm-spec.adoc file for details about this packet.
+     *
+     * @return The produced packet.
+     */
     fun createCTRLBindPacket(): Packet {
         // TODO: See the spec for this command. It is currently
         // unclear why the payload has to be 0x48.
@@ -220,6 +314,15 @@ class ApplicationLayer {
         )
     }
 
+    /**
+     * Creates a CTRL_DISCONNECT packet.
+     *
+     * This terminates the connection at the application layer.
+     *
+     * See the combo-comm-spec.adoc file for details about this packet.
+     *
+     * @return The produced packet.
+     */
     fun createCTRLDisconnectPacket(): Packet {
         // TODO: See the spec for this command. It is currently
         // unclear why the payload has to be 0x6003, and why
@@ -231,6 +334,15 @@ class ApplicationLayer {
         )
     }
 
+    /**
+     * Creates a CTRL_ACTIVATE_SERVICE packet.
+     *
+     * This activates the RT or command mode (depending on the argument).
+     *
+     * See the combo-comm-spec.adoc file for details about this packet.
+     *
+     * @return The produced packet.
+     */
     fun createCTRLActivateServicePacket(serviceID: ServiceID): Packet {
         return Packet(
             command = Command.CTRL_ACTIVATE_SERVICE,
@@ -238,10 +350,22 @@ class ApplicationLayer {
         )
     }
 
+    /**
+     * Creates a CTRL_DEACTIVATE_ALL_SERVICES packet.
+     *
+     * This deactivates any currently active service.
+     *
+     * See the combo-comm-spec.adoc file for details about this packet.
+     *
+     * @return The produced packet.
+     */
     fun createCTRLDeactivateAllServicesPacket(): Packet {
         return Packet(command = Command.CTRL_DEACTIVATE_ALL_SERVICES)
     }
 
+    /**
+     * Valid button codes that an RT_BUTTON_STATUS packet can contain in its payload.
+     */
     enum class RTButtonCode(val id: Int) {
         UP(0x30),
         DOWN(0xC0),
@@ -250,6 +374,15 @@ class ApplicationLayer {
         NO_BUTTON(0x00)
     }
 
+    /**
+     * Creates an RT_BUTTON_STATUS packet.
+     *
+     * The RT mode must have been activated before this can be sent to the Combo.
+     *
+     * See the combo-comm-spec.adoc file for details about this packet.
+     *
+     * @return The produced packet.
+     */
     fun createRTButtonStatusPacket(state: State, rtButtonCode: RTButtonCode, buttonStatusChanged: Boolean): Packet {
         val payload = byteArrayListOfInts(
             (state.currentRTSequence shr 0) and 0xFF,
@@ -266,6 +399,9 @@ class ApplicationLayer {
         )
     }
 
+    /**
+     * Valid display update reasons that an RT_DISPLAY packet can contain in its payload.
+     */
     enum class RTDisplayUpdateReason(val id: Int) {
         PUMP(0x48),
         DM(0xB7);
@@ -276,7 +412,10 @@ class ApplicationLayer {
         }
     }
 
-    data class RTDisplayContent(
+    /**
+     * Data class containing the fields of an RT_DISPLAY packet's payload.
+     */
+    data class RTDisplayPayload(
         val currentRTSequence: Int,
         val reason: RTDisplayUpdateReason,
         val index: Int,
@@ -284,7 +423,7 @@ class ApplicationLayer {
         val pixels: List<Byte>
     )
 
-    fun parseRTDisplayPacket(packet: Packet): RTDisplayContent {
+    fun parseRTDisplayPacket(packet: Packet): RTDisplayPayload {
         val payload = packet.payload
 
         val expectedPayloadSize = 5 + 96
@@ -307,7 +446,7 @@ class ApplicationLayer {
             else -> throw InvalidPayloadException(packet, "Invalid RT display update row $rowInt")
         }
 
-        return RTDisplayContent(
+        return RTDisplayPayload(
             currentRTSequence = (payload[0].toPosInt() shl 0) or (payload[1].toPosInt() shl 8),
             reason = reason,
             index = payload[3].toPosInt(),

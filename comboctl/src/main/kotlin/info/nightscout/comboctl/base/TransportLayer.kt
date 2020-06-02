@@ -30,6 +30,8 @@ private const val ADDRESS_BYTE_OFFSET = 4
 private const val NONCE_BYTES_OFFSET = 5
 private const val PAYLOAD_BYTES_OFFSET = NONCE_BYTES_OFFSET + NUM_NONCE_BYTES
 
+// Utility function to be able to throw an exception in case of
+// an invalid command ID even in the constructor below.
 private fun checkedGetCommandID(value: Int, bytes: List<Byte>): TransportLayer.CommandID =
     TransportLayer.CommandID.fromInt(value) ?: throw TransportLayer.InvalidCommandIDException(value, bytes)
 

@@ -82,7 +82,6 @@ fun generateWeakKeyFromPIN(PIN: PairingPIN): ByteArray {
     // Therefore, the first byte in the key is set to 50.
     for (i in 0 until PAIRING_PIN_SIZE) {
         val pinDigit = PIN[i]
-        require((pinDigit >= 0) && (pinDigit <= 9))
 
         val pinAsciiIndex = pinDigit + '0'.toInt()
         generatedKey[i] = pinAsciiIndex.toByte()
@@ -93,8 +92,6 @@ fun generateWeakKeyFromPIN(PIN: PairingPIN): ByteArray {
     // treated just like above, except that the ASCII index
     // is XORed with 0xFF.
     for (i in 0 until 6) {
-        // No need to perform require() checks here,
-        // since we did them above already.
         val pinDigit = PIN[i]
 
         val pinAsciiIndex = pinDigit + '0'.toInt()
