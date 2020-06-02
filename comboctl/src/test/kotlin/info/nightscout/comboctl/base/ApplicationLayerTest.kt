@@ -84,7 +84,7 @@ class ApplicationLayerTest {
         checkCreatedPacket(
             packet,
             ApplicationLayer.Command.CTRL_DISCONNECT,
-            byteArrayListOfInts(0x03, 0x60)
+            byteArrayListOfInts(0x03, 0x00)
         )
     }
 
