@@ -534,8 +534,7 @@ class TransportLayer(private val logger: Logger) {
      * @return The produced packet.
      */
     fun createAckResponsePacket(state: State, sequenceBit: Boolean): Packet {
-        return createMACAuthenticatedPacket(state, CommandID.ACK_RESPONSE, sequenceBit = sequenceBit,
-            reliabilityBit = true)
+        return createMACAuthenticatedPacket(state, CommandID.ACK_RESPONSE, sequenceBit = sequenceBit)
     }
 
     /**
