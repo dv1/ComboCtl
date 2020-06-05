@@ -264,6 +264,9 @@ suspend fun performPairing(
         logger,
         ApplicationLayer.Command.CTRL_SERVICE_VERSION_RESPONSE
     )
+    // NOTE: These two steps may not be necessary. See the
+    // "Application layer pairing" section in the spec.
+    /*
     sendApplicationLayerPacket(
         outgoingDataChannel,
         appLayerState,
@@ -277,6 +280,7 @@ suspend fun performPairing(
         logger,
         ApplicationLayer.Command.CTRL_SERVICE_VERSION_RESPONSE
     )
+    */
 
     // Next, send a BIND command and wait for the response.
     // (The response contains no meaningful payload.)

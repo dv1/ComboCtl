@@ -306,6 +306,8 @@ that establish an application layer binding between client and Combo.
 
 This completes the overall pairing process.
 
+NOTE: Steps 5 and 6 may not be necessary. Ruffy does not do them.
+
 The pairing is persistent. Once it has been completed, it does not have
 to be repeated until the client is un-paired in the Combo.
 
