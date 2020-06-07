@@ -22,7 +22,6 @@ import java.lang.IllegalStateException
 // 2 bytes with payload length
 // 1 byte with source and destination addresses
 private const val PACKET_HEADER_SIZE = 1 + 1 + 2 + 1 + NUM_NONCE_BYTES
-private const val MAX_VALID_PAYLOAD_SIZE = 65535
 
 private const val VERSION_BYTE_OFFSET = 0
 private const val SEQ_REL_CMD_BYTE_OFFSET = 1
@@ -37,24 +36,101 @@ private fun checkedGetCommandID(value: Int, bytes: List<Byte>): TransportLayer.C
     TransportLayer.CommandID.fromInt(value) ?: throw TransportLayer.InvalidCommandIDException(value, bytes)
 
 /**
+ * Maximum allowed size for transport layer packet payloads, in bytes.
+ */
+val MAX_VALID_TL_PAYLOAD_SIZE = 65535
+
+/**
  * Combo transport layer (TL) communication implementation.
  *
- * This deals with TL packets and processes. These are:
+ * This provides all the necessary primitives and processes to communicate
+ * at the transport layer. The TransportLayer class itself contains internal
+ * temporary states that only need to exist for the duration of a communication
+ * session with the Combo. In addition, external states exist that must be stored
+ * in a persistent fashion. The PersistentState interface is used for that purpose.
  *
- * - Generating and parsing TL packets
- * - Pairing commands
- * - Cipher management for authenticating packets
- * - Managing and incrementing the tx nonce in outgoing TL packets
+ * Callers create an instance of TransportLayer every time a new connection to
+ * the Combo is established, and destroyed afterwards (it is not reused). Callers
+ * also must provide the constructor an implementation of PersistentState.
  *
- * The nested State class contains the entire state of the transport layer.
- * All of its properties (except for currentSequenceFlag) must be stored
- * persistently once pairing with the Combo has been completed.
- * Storing the ciphers is accomplished by storing their "key" properties.
- * (See the section "What data to persistently store" in combo-comm-spec.adoc
- * (for more details about persistent storage.)
- * When the application is started again, these properties must be restored.
+ * Packets created by this class follow a specific order when pairing and when
+ * initiating a regular connection. This is important to keep in mind since the
+ * packet creation and parsing functions may update internal and external state.
+ * If the order from the spec is followed, state updates will happen as intended.
+ *
+ * This class is typically not directly touched by users. Instead, it is typically
+ * used by higher-level code that handles the pairing and regular connection processes.
  */
-class TransportLayer(private val logger: Logger) {
+class TransportLayer(private val logger: Logger, private val state: PersistentState) {
+    /**
+     * Interface for accessing states that must stored in a persistent manner.
+     *
+     * Implementations must store updated values immediately. If possible, they
+     * must be stored atomically.
+     *
+     * Initially, these values are not set (= the properties are set to null).
+     * All values are set during the pairing process. After pairing, the only
+     * value that keeps being updated is currentTxNonce (it is incremented every
+     * time a new packet is created and sent to the Combo).
+     *
+     * As for the ciphers, the 128-bit keys are what needs to be persistently stored.
+     */
+    interface PersistentState {
+        /**
+         * Client-pump cipher.
+         *
+         * This cipher is used for authenticating packets going to the Combo.
+         */
+        var clientPumpCipher: Cipher?
+
+        /**
+         * Pump-client cipher.
+         *
+         * This cipher is used for verifying packets coming from the Combo.
+         */
+        var pumpClientCipher: Cipher?
+
+        /**
+         * Current tx nonce.
+         *
+         * This 13-byte nonce is incremented every time a packet that goes
+         * to the Combo is generated, except during the pairing process,
+         * where the initial few packets use a nonce made of nullbytes.
+         * The first time this value is written to is when the ID_RESPONSE
+         * packet is generated (it is set to "nonce 1", that is, a nonce
+         * with its first byte set to 1 and the rest set to zero). After
+         * that, normal incrementing behavior commences.
+         */
+        var currentTxNonce: Nonce
+
+        /**
+         * The address byte of a previously received KEY_RESPONSE packet.
+         *
+         * The source and destination address values inside the address
+         * byte must have been reordered to match the order that outgoing
+         * packets expect. That is: Source address stored in the upper,
+         * destination address in the lower 4 bit of the byte.
+         * (In incoming packets - and KEY_RESPONSE is an incoming packet -
+         * these two are ordered the other way round.)
+         */
+        var keyResponseAddress: Byte?
+    }
+
+    /**
+     * Current sequence flag, used in reliable data packets.
+     *
+     * This flag gets toggled every time a reliable packet is sent.
+     */
+    private var currentSequenceFlag = false
+
+    /**
+     * Weak cipher generated from a pairing PIN.
+     *
+     * This is only needed for verifying and processing the
+     * KEY_RESPONSE packet.
+     */
+    private var weakCipher: Cipher? = null
+
     /**
      * Valid command IDs for Combo packets.
      */
@@ -69,6 +145,11 @@ class TransportLayer(private val logger: Logger) {
 
         companion object {
             private val values = CommandID.values()
+            /**
+             * Converts an int to a command ID.
+             *
+             * @return CommandID, or null if the int is not a valid ID.
+             */
             fun fromInt(value: Int) = values.firstOrNull { it.id == value }
         }
     }
@@ -80,16 +161,41 @@ class TransportLayer(private val logger: Logger) {
      */
     open class ExceptionBase(message: String) : ComboException(message)
 
+    /**
+     * Exception thrown when a transport layer packet arrives with an
+     * invalid application layer command ID.
+     *
+     * The packet is provided as bytes list since the Packet parses
+     * will refuse to parse a packet with an unknown ID. That's because
+     * an unknown ID may indicate that this is actually not packet data.
+     *
+     * @property commandID The invalid application layer command ID.
+     * @property packetBytes The bytes forming the invalid packet.
+     */
     class InvalidCommandIDException(
         val commandID: Int,
         val packetBytes: List<Byte>
     ) : ExceptionBase("Invalid/unknown transport layer packet command ID $commandID")
 
+    /**
+     * Exception thrown when a different transport layer packet was
+     * expected than the one that arrived.
+     *
+     * More precisely, the arrived packet's command ID is not the one that was expected.
+     *
+     * @property packet Transport layer packet that arrived.
+     * @property expectedCommandID The command ID that was expected in the packet.
+     */
     class IncorrectPacketException(
         val packet: TransportLayer.Packet,
         val expectedCommandID: CommandID
     ) : ExceptionBase("Incorrect packet: expected ${expectedCommandID.name} packet, got ${packet.commandID.name} one")
 
+    /**
+     * Exception thrown when a packet fails verification.
+     *
+     * @property packet Transport layer packet that was found to be faulty/corrupt.
+     */
     class PacketVerificationException(
         val packet: TransportLayer.Packet
     ) : ExceptionBase("Packet verification failed")
@@ -131,6 +237,8 @@ class TransportLayer(private val logger: Logger) {
      * @property machineAuthenticationCode Machine authentication code. Must be
      *           (re)calculated using [authenticate] if the packet uses MACs and
      *           it is being set up or its payload was modified.
+     * @throws IllegalArgumentException if the payload size exceeds
+     *         [MAX_VALID_TL_PAYLOAD_SIZE].
      */
     data class Packet(
         val commandID: CommandID,
@@ -143,9 +251,9 @@ class TransportLayer(private val logger: Logger) {
         var machineAuthenticationCode: MachineAuthCode = NullMachineAuthCode
     ) {
         init {
-            if (payload.size > MAX_VALID_PAYLOAD_SIZE) {
+            if (payload.size > MAX_VALID_TL_PAYLOAD_SIZE) {
                 throw IllegalArgumentException(
-                    "Payload size ${payload.size} exceeds allowed maximum of $MAX_VALID_PAYLOAD_SIZE bytes"
+                    "Payload size ${payload.size} exceeds allowed maximum of $MAX_VALID_TL_PAYLOAD_SIZE bytes"
                 )
             }
         }
@@ -168,10 +276,37 @@ class TransportLayer(private val logger: Logger) {
         ) {
         }
 
+        /**
+         * Deserializes a packet from a binary representation.
+         *
+         * This is needed for parsing packets coming from the Combo. However,
+         * packets coming from the Combo are framed, so it is important to
+         * make sure that the packet data was parsed using ComboFrameParser
+         * first. In other words, don't pass data coming through the Combo
+         * RFCOMM channel to this constructor directly.
+         *
+         * @param bytes Packet data to parse.
+         * @throws TransportLayer.InvalidCommandIDException if the packet data
+         *         contains a command ID that is unknown/unsupported.
+         */
         constructor(bytes: List<Byte>) :
             this(bytes, (bytes[PAYLOAD_LENGTH_BYTES_OFFSET + 1].toPosInt() shl 8) or bytes[PAYLOAD_LENGTH_BYTES_OFFSET + 0].toPosInt()) {
         }
 
+        /**
+         * Serializes a packet to a binary representation suitable for framing and sending.
+         *
+         * This is needed for sending packets to the Combo. This function produces
+         * data that can be framed using [toComboFrame]. The resulting framed
+         * data can then be transmitted to the Combo through the RFCOMM channel.
+         *
+         * The withMAC and withPayload arguments exist mainly to be able to
+         * produce packet data that is suitable for generating CRCs and MACs.
+         *
+         * @param withMAC Include the MAC bytes into the packet data.
+         * @param withPayload Include the payload bytes into the packet data.
+         * @return The serialized packet data.
+         */
         fun toByteList(withMAC: Boolean = true, withPayload: Boolean = true): ArrayList<Byte> {
             val bytes = ArrayList<Byte>(PACKET_HEADER_SIZE)
 
@@ -194,8 +329,12 @@ class TransportLayer(private val logger: Logger) {
             return bytes
         }
 
-        // CRC16
-
+        /**
+         * Computes a 2-byte payload that is the CRC-16-MCRF4XX checksum of the packet header.
+         *
+         * This erases any previously existing payload
+         * and resets the payload size to 2 bytes.
+         */
         fun computeCRC16Payload() {
             payload = byteArrayListOfInts(0, 0)
             val headerData = toByteList(withMAC = false, withPayload = false)
@@ -204,6 +343,13 @@ class TransportLayer(private val logger: Logger) {
             payload[1] = ((calculatedCRC16 shr 8) and 0xFF).toByte()
         }
 
+        /**
+         * Verifies the packet header data by computing its CRC-16-MCRF4XX checksum and
+         * comparing it against the one present as the packet's 2-byte payload.
+         *
+         * @return true if the CRC check succeeds, false if it fails (indicating data corruption).
+         * @throws InvalidPayloadException if the payload is not made of 2 bytes.
+         */
         fun verifyCRC16Payload(): Boolean {
             if (payload.size != 2) {
                 throw InvalidPayloadException(
@@ -217,12 +363,25 @@ class TransportLayer(private val logger: Logger) {
                 (payload[1] == ((calculatedCRC16 shr 8) and 0xFF).toByte())
         }
 
-        // Authentication
-
+        /**
+         * Authenticates the packet using the given cipher.
+         *
+         * Authentication means that a MAC is generated for this packet and stored
+         * in the packet's last 8 bytes. The MAC is generated using the given cipher.
+         *
+         * @param cipher Cipher to use for generating the MAC.
+         */
         fun authenticate(cipher: Cipher) {
             machineAuthenticationCode = calculateMAC(cipher)
         }
 
+        /**
+         * Verify the authenticity of the packet using the MAC.
+         *
+         * @param cipher Cipher to use for the verification.
+         * @return true if the packet is found to be valid, false otherwise
+         *         (indicating data corruption).
+         */
         fun verifyAuthentication(cipher: Cipher): Boolean = calculateMAC(cipher) == machineAuthenticationCode
 
         // This computes the MAC using Two-Fish and a modified RFC3610 CCM authentication
@@ -309,80 +468,6 @@ class TransportLayer(private val logger: Logger) {
         }
     }
 
-    class State {
-        /***********
-         * Ciphers *
-         ***********/
-
-        /**
-         * Client-pump cipher.
-         *
-         * This cipher is used for authenticating packets going to the Combo.
-         *
-         * Its 128-bit key is one of the values that must be stored persistently
-         * and restored when the application is reloaded.
-         */
-        var clientPumpCipher: Cipher? = null
-
-        /**
-         * Pump-client cipher.
-         *
-         * This cipher is used for verifying packets coming from the Combo.
-         *
-         * Its 128-bit key is one of the values that must be stored persistently
-         * and restored when the application is reloaded.
-         */
-        var pumpClientCipher: Cipher? = null
-
-        /*********
-         * Nonce *
-         *********/
-
-        /**
-         * Current tx nonce.
-         *
-         * This 13-byte nonce is incremented every time a packet that goes
-         * to the Combo is generated, except during the pairing process,
-         * where it is initially zero, and begins to be incremented when
-         * the ID_RESPONSE command is received from the Combo.
-         *
-         * This is one of the fields that must be stored persistently
-         * and restored when the application is reloaded.
-         */
-        var currentTxNonce = NullNonce
-
-        /**********************************
-         * Source & destination addresses *
-         **********************************/
-
-        /**
-         * The address byte of a previously received KEY_RESPONSE packet.
-         *
-         * The source and destination address values inside the address
-         * byte must have been reordered to match the order that outgoing
-         * packets expect. That is: Source address stored in the upper,
-         * destination address in the lower 4 bit of the byte.
-         * (In incoming packets - and KEY_RESPONSE is an incoming packet -
-         * these two are ordered the other way round.)
-         *
-         * This is one of the fields that must be stored persistently
-         * and restored when the application is reloaded.
-         * (This is also the reason why this property isn't private.)
-         */
-        var keyResponseAddress: Byte? = null
-            set(value) {
-                require(value != null)
-                field = value
-            }
-
-        /**
-         * Current sequence flag, used in reliable data packets.
-         *
-         * This flag gets toggled every time a reliable packet is sent.
-         */
-        var currentSequenceFlag = false
-    }
-
     // Base function for generating CRC-verified packets.
     // These packets only have the CRC itself as payload, and
     // are only used during the pairing process.
@@ -407,7 +492,6 @@ class TransportLayer(private val logger: Logger) {
     // been received, because only then will keyResponseAddress and
     // clientPumpCipher.key be set to valid values.
     private fun createMACAuthenticatedPacket(
-        state: State,
         commandID: CommandID,
         payload: ArrayList<Byte> = arrayListOf(),
         sequenceBit: Boolean = false,
@@ -431,6 +515,82 @@ class TransportLayer(private val logger: Logger) {
 
         return packet
     }
+
+    /**
+     * Called when the user enters the 10-digit PIN during the pairing process.
+     *
+     * Outside of the pairing process, this does not need to be called.
+     * It sets up the internal weak cipher that is needed for verifying
+     * and parsing the KEY_RESPONSE packet.
+     *
+     * Typically, this is called once the REQUEST_KEYS packet was sent
+     * to the Combo, because it is then when it will show the generated
+     * PIN on its display for the user to read.
+     *
+     * @param pairingPIN 10-digit PIN to use during the pairing process.
+     */
+    fun usePairingPIN(pairingPIN: PairingPIN) {
+        weakCipher = Cipher(generateWeakKeyFromPIN(pairingPIN))
+        logger.log(LogLevel.DEBUG) {
+            "Generated weak cipher key ${weakCipher!!.key.toHexString()} out of pairing PIN $pairingPIN"
+        }
+    }
+
+    /**
+     * Generic incoming packet verification function.
+     *
+     * This is the function intended for external callers to verify
+     * transport layer packets. It is "generic" in the sense that the
+     * caller does not have to specifically use CRC or MAC functions
+     * for verifications; this function picks the correct function
+     * based on the packet's command ID.
+     *
+     * Note that this is intended to be used for incoming packets
+     * _only_. (It does not make much sense to verify outgoing packets,
+     * since these are anyway generated by this same class.)
+     *
+     * @param packet Transport layer packet to verify.
+     * @return true if the packet is found to be valid, false otherwise
+     *         (indicating data corruption).
+     * @throws IllegalArgumentException if an outgoing packet was given.
+     * @throws IllegalStateException if the packet requires the weak
+     *         cipher and [usePairingPIN] was not called earlier, or if
+     *         the packet requires the pump-client cipher and the
+     *         KEY_RESPONSE packet was not parsed earlier.
+     */
+    fun verifyIncomingPacket(packet: Packet): Boolean =
+        when (packet.commandID) {
+            // These are _outgoing_ packets. If we reach this
+            // branch, the call is wrong.
+            CommandID.REQUEST_PAIRING_CONNECTION,
+            CommandID.REQUEST_KEYS,
+            CommandID.GET_AVAILABLE_KEYS,
+            CommandID.REQUEST_ID,
+            CommandID.REQUEST_REGULAR_CONNECTION ->
+                throw IllegalArgumentException()
+
+            // Packets that use no (known) verification
+            CommandID.PAIRING_CONNECTION_REQUEST_ACCEPTED,
+            CommandID.DISCONNECT -> true
+
+            // Packets that use MAC based verification with the weak cipher
+            CommandID.KEY_RESPONSE -> {
+                if (weakCipher == null)
+                    throw IllegalStateException()
+                packet.verifyAuthentication(weakCipher!!)
+            }
+
+            // Packets that use MAC based verification with the pump-client cipher
+            CommandID.ID_RESPONSE,
+            CommandID.REGULAR_CONNECTION_REQUEST_ACCEPTED,
+            CommandID.ACK_RESPONSE,
+            CommandID.DATA,
+            CommandID.ERROR_RESPONSE -> {
+                if (state.pumpClientCipher == null)
+                    throw IllegalStateException()
+                packet.verifyAuthentication(state.pumpClientCipher!!)
+            }
+        }
 
     /**
      * Creates a REQUEST_PAIRING_CONNECTION packet.
@@ -478,16 +638,15 @@ class TransportLayer(private val logger: Logger) {
      *
      * See the combo-comm-spec.adoc file for details about this packet.
      *
-     * @param state Current transport layer state. Will be updated.
      * @param bluetoothFriendlyName Bluetooth friendly name to use for this packet.
      *        Maximum length is 13 characters.
      *        See the Bluetooth specification, Vol. 3 part C section 3.2.2
      *        for details about Bluetooth friendly names.
      * @return The produced packet.
      */
-    fun createRequestIDPacket(state: State, bluetoothFriendlyName: String): Packet {
+    fun createRequestIDPacket(bluetoothFriendlyName: String): Packet {
         // The nonce is set to 1 in the REQUEST_ID packet, and
-        // get incremented from that moment onwards.
+        // gets incremented from that moment onwards.
         state.currentTxNonce = Nonce(byteArrayListOfInts(
             0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
         ))
@@ -507,7 +666,7 @@ class TransportLayer(private val logger: Logger) {
         for (i in 0 until numBTFriendlyNameBytes) payload.add(btFriendlyNameBytes[i])
         for (i in numBTFriendlyNameBytes until 13) payload.add(0.toByte())
 
-        return createMACAuthenticatedPacket(state, CommandID.REQUEST_ID, payload)
+        return createMACAuthenticatedPacket(CommandID.REQUEST_ID, payload)
     }
 
     /**
@@ -517,11 +676,18 @@ class TransportLayer(private val logger: Logger) {
      * in the latter phases of the pairing process. See the combo-comm-spec.adoc
      * file for details.
      *
-     * @param state Current transport layer state. Will be updated.
      * @return The produced packet.
      */
-    fun createRequestRegularConnectionPacket(state: State): Packet {
-        return createMACAuthenticatedPacket(state, CommandID.REQUEST_REGULAR_CONNECTION)
+    fun createRequestRegularConnectionPacket(): Packet {
+        // NOTE: Technically, this is not entirely correct, since currentSequenceFlag
+        // should be reset when the REGULAR_CONNECTION_REQUEST_ACCEPTED packet
+        // arrives, not when this is sent. However, in practice, this makes no
+        // difference, since this must be called in order to initiate a regular
+        // connection, and REGULAR_CONNECTION_REQUEST_ACCEPTED is always the
+        // response to this packet (unless an error occurs), so we might as well
+        // reset the currentSequenceFlag here.
+        currentSequenceFlag = false
+        return createMACAuthenticatedPacket(CommandID.REQUEST_REGULAR_CONNECTION)
     }
 
     /**
@@ -529,12 +695,11 @@ class TransportLayer(private val logger: Logger) {
      *
      * See the combo-comm-spec.adoc file for details about this packet.
      *
-     * @param state Current transport layer state. Will be updated.
      * @param sequenceBit Sequence bit to set in the ACK_RESPONSE packet.
      * @return The produced packet.
      */
-    fun createAckResponsePacket(state: State, sequenceBit: Boolean): Packet {
-        return createMACAuthenticatedPacket(state, CommandID.ACK_RESPONSE, sequenceBit = sequenceBit)
+    fun createAckResponsePacket(sequenceBit: Boolean): Packet {
+        return createMACAuthenticatedPacket(CommandID.ACK_RESPONSE, sequenceBit = sequenceBit)
     }
 
     /**
@@ -548,21 +713,32 @@ class TransportLayer(private val logger: Logger) {
      * reliability bit set. In that case, their sequence bits will be
      * alternating between being set and cleared.
      *
-     * @param state Current transport layer state. Will be updated.
      * @param reliabilityBit Reliability bit to set in the DATA packet.
      * @param payload Payload to assign to the DATA packet.
      * @return The produced packet.
      */
-    fun createDataPacket(state: State, reliabilityBit: Boolean, payload: ArrayList<Byte>): Packet {
+    fun createDataPacket(reliabilityBit: Boolean, payload: ArrayList<Byte>): Packet {
         val sequenceBit: Boolean
 
         if (reliabilityBit) {
-            sequenceBit = state.currentSequenceFlag
-            state.currentSequenceFlag = !state.currentSequenceFlag
-        } else sequenceBit = false
+            // The sequence flag needs to be flipped ifthe reliabilityBit
+            // is enabled. See the "Sequence and data reliability bits"
+            // section in the spec for details.
+            sequenceBit = currentSequenceFlag
+            currentSequenceFlag = !currentSequenceFlag
+        } else {
+            // If the reliablity bit is cleared, the sequence bit is
+            // always cleared as well. Note that this does not alter
+            // currentSequenceFlag.
+            sequenceBit = false
+        }
 
-        return createMACAuthenticatedPacket(state, CommandID.DATA, payload = payload, sequenceBit = sequenceBit,
-            reliabilityBit = reliabilityBit)
+        return createMACAuthenticatedPacket(
+            CommandID.DATA,
+            payload = payload,
+            sequenceBit = sequenceBit,
+            reliabilityBit = reliabilityBit
+        )
     }
 
     /**
@@ -573,17 +749,37 @@ class TransportLayer(private val logger: Logger) {
      * This will modify the client-pump and pump-client keys in the
      * specified state as well as its keyResponseAddress field.
      *
-     * @param state Current transport layer state. Will be updated.
-     * @param weakCipher Cipher used for decrypting the pump-client
-     *        and client-pump keys.
+     * [usePairingPIN] must have been called prior to calling this,
+     * otherwise there will be no weak cipher.
+     *
+     * Note that if the packet verification fails, and
+     * PacketVerificationException is thrown, it might be because
+     * the user entered the incorrect PIN. It is then valid to
+     * just call [usePairingPIN] again. This will update the internal
+     * weak cipher. Then, [parseKeyResponsePacket] can be called again,
+     * and the updated cipher will be used. If the correct PIN was
+     * entered, and the packet was not corrupted somehow during
+     * transit, then verification succeeds.
+     *
      * @param packet The packet that came from the Combo.
+     * @throws IllegalStateException if this is called before a PIN
+     *         was set by calling [usePairingPIN].
+     * @throws IncorrectPacketException if packet is not a
+     *         KEY_RESPONSE packet.
+     * @throws InvalidPayloadException if the payload size is not
+     *         the one expected from KEY_RESPONSE packets.
+     * @throws PacketVerificationException if the packet
+     *         verification fails.
      */
-    fun parseKeyResponsePacket(state: State, weakCipher: Cipher, packet: Packet) {
+    fun parseKeyResponsePacket(packet: Packet) {
+        if (weakCipher == null)
+            throw IllegalStateException()
+
         if (packet.commandID != CommandID.KEY_RESPONSE)
             throw IncorrectPacketException(packet, CommandID.KEY_RESPONSE)
         if (packet.payload.size != (CIPHER_KEY_SIZE * 2))
             throw InvalidPayloadException(packet, "Expected ${CIPHER_KEY_SIZE * 2} bytes, got ${packet.payload.size}")
-        if (!packet.verifyAuthentication(weakCipher))
+        if (!packet.verifyAuthentication(weakCipher!!))
             throw PacketVerificationException(packet)
 
         val encryptedPCKey = ByteArray(CIPHER_KEY_SIZE)
@@ -594,8 +790,8 @@ class TransportLayer(private val logger: Logger) {
             encryptedCPKey[i] = packet.payload[i + CIPHER_KEY_SIZE]
         }
 
-        state.pumpClientCipher = Cipher(weakCipher.decrypt(encryptedPCKey))
-        state.clientPumpCipher = Cipher(weakCipher.decrypt(encryptedCPKey))
+        state.pumpClientCipher = Cipher(weakCipher!!.decrypt(encryptedPCKey))
+        state.clientPumpCipher = Cipher(weakCipher!!.decrypt(encryptedCPKey))
 
         // Note: Source and destination addresses are reversed,
         // since they are set from the perspective of the pump.
@@ -603,6 +799,12 @@ class TransportLayer(private val logger: Logger) {
         val sourceAddress = addressInt and 0xF
         val destinationAddress = (addressInt shr 4) and 0xF
         state.keyResponseAddress = ((sourceAddress shl 4) or destinationAddress).toByte()
+
+        logger.log(LogLevel.DEBUG) {
+            "Address: ${"%02x".format(state.keyResponseAddress)}" +
+            "  decrypted client->pump key: ${state.clientPumpCipher!!.key.toHexString()}" +
+            "  decrypted pump->client key: ${state.pumpClientCipher!!.key.toHexString()}"
+        }
     }
 
     /**
@@ -625,11 +827,10 @@ class TransportLayer(private val logger: Logger) {
      * needed for operating the Combo, though they may be useful
      * for logging purposes.
      *
-     * @param state Current transport layer state. Will be updated.
      * @param packet The packet that came from the Combo.
      * @return The parsed IDs.
      */
-    fun parseIDResponsePacket(state: State, packet: Packet): ComboIDs {
+    fun parseIDResponsePacket(packet: Packet): ComboIDs {
         if (packet.commandID != CommandID.ID_RESPONSE)
             throw IncorrectPacketException(packet, CommandID.ID_RESPONSE)
         if (packet.payload.size != 17)
@@ -644,6 +845,8 @@ class TransportLayer(private val logger: Logger) {
             (packet.payload[2].toPosLong() shl 16) or
             (packet.payload[3].toPosLong() shl 24))
 
+        // The pump ID string can be up to 13 bytes long. If it
+        // is shorter, the unused bytes are filled with nullbytes.
         val pumpIDStrBuilder = StringBuilder()
         for (i in 0 until 13) {
             val pumpIDByte = packet.payload[4 + i]
@@ -664,11 +867,10 @@ class TransportLayer(private val logger: Logger) {
      * See the combo-comm-spec.adoc file for the currently known
      * list of possible error IDs.
      *
-     * @param state Current transport layer state..
      * @param packet The packet that came from the Combo.
      * @return The parsed error ID.
      */
-    private fun parseErrorResponsePacket(state: State, packet: Packet): Int {
+    private fun parseErrorResponsePacket(packet: Packet): Int {
         if (packet.commandID != CommandID.ERROR_RESPONSE)
             throw IncorrectPacketException(packet, CommandID.ERROR_RESPONSE)
         if (packet.payload.size != 1)
@@ -682,6 +884,15 @@ class TransportLayer(private val logger: Logger) {
     }
 }
 
+/**
+ * Produces a TransportLayer.Packet out of given data.
+ *
+ * This is just a convenience extension function that internally
+ * creates a TransportLayer.Packet instance and passes the data
+ * to its constructor.
+ *
+ * See the TransportLayer.Packet constructor for details.
+ */
 fun List<Byte>.toTransportLayerPacket(): TransportLayer.Packet {
     return TransportLayer.Packet(this)
 }

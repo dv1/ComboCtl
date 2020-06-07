@@ -132,13 +132,17 @@ class TransportLayerTest {
     }
 
     @Test
-    fun checkPairingSequenceProcessing() {
+    fun checkProducedPairingProcessPackets() {
         // Test the behavior of the transport layer code when it
-        // produces and consumes pairing setup packets. Packets
+        // produces and consumes pairing process packets. Packets
         // are produced by the create* functions, and would normally
         // be sent over Bluetooth to the Combo. Here, we simply
         // verify that the created packets are correct, and behave
         // as it they got sent right after the create* call.
+        //
+        // Note that pairing typically is not done by manually creating
+        // packets this way. Instead, higher level functions are used
+        // for this purpose in production code.
 
         val requestPairingConnectionPacket = TransportLayer.Packet(byteArrayListOfInts(
             0x10,
@@ -193,8 +197,8 @@ class TransportLayerTest {
             0x34, 0x35, 0x36, 0x37,
             0xab, 0xc6, 0x89, 0x7f, 0x14, 0x9b, 0xdf, 0x3b))
 
-        val tpLayer = TransportLayer(LoggerFactory(StderrLoggerBackend(), LogLevel.DEBUG).getLogger(LogCategory.TP_LAYER))
-        val tpLayerState = TransportLayer.State()
+        val tpLayerState = TestPersistentTLState()
+        val tpLayer = TransportLayer(LoggerFactory(StderrLoggerBackend(), LogLevel.DEBUG).getLogger(LogCategory.TP_LAYER), tpLayerState)
 
         // Send the first 3 pairing setup packets. After REQUEST_PAIRING_CONNECTION,
         // the Combo would normally send back PAIRING_CONNECTION_REQUEST_ACCEPTED,
@@ -205,7 +209,7 @@ class TransportLayerTest {
 
         // After REQUEST_KEYS is received, the user must enter the PIN shown on
         // the Combo. This PIN is used to create the weak key.
-        val weakCipher = Cipher(generateWeakKeyFromPIN(PairingPIN(intArrayOf(2, 6, 0, 6, 8, 1, 9, 2, 7, 3))))
+        tpLayer.usePairingPIN(PairingPIN(intArrayOf(2, 6, 0, 6, 8, 1, 9, 2, 7, 3)))
 
         // After the weak key was generated, the client has to send GET_AVAILABLE_KEYS
         // to the Combo to retrieve the client-pump and pump-client keys it generated.
@@ -214,7 +218,7 @@ class TransportLayerTest {
         // After sending GET_AVAILABLE_KEYS, the Combo will respond with KEY_RESPONSE.
         // We simulate this with keyResponsePacket. This packet must be parsed to get
         // the client-pump and pump-client keys as well as the key response addresses.
-        tpLayer.parseKeyResponsePacket(tpLayerState, weakCipher, keyResponsePacket)
+        tpLayer.parseKeyResponsePacket(keyResponsePacket)
         // Verify that the state has been updated with the correct addresses
         // and decrypted keys.
         assertEquals(0x10, tpLayerState.keyResponseAddress)
@@ -228,11 +232,11 @@ class TransportLayerTest {
             tpLayerState.pumpClientCipher!!.key)
 
         // After getting KEY_RESPONSE, the client must transmit REQUEST_ID.
-        val createdRequestIDPacket = tpLayer.createRequestIDPacket(tpLayerState, "Test 123")
+        val createdRequestIDPacket = tpLayer.createRequestIDPacket("Test 123")
         assertEquals(requestIDPacket, createdRequestIDPacket)
 
         // Parse ID_RESPONSE, the response to REQUEST_ID.
-        val ids = tpLayer.parseIDResponsePacket(tpLayerState, idResponsePacket)
+        val ids = tpLayer.parseIDResponsePacket(idResponsePacket)
         assertEquals(0x0001e240, ids.serverID)
         assertEquals("PUMP_01234567", ids.pumpID)
     }

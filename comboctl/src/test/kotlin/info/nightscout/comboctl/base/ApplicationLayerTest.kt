@@ -5,22 +5,27 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 
 class ApplicationLayerTest {
-    val tpLayer = TransportLayer(LoggerFactory(StderrLoggerBackend()).getLogger(LogCategory.TP_LAYER))
-    val tpLayerState = TransportLayer.State()
-    val appLayer = ApplicationLayer()
-    val appLayerState = ApplicationLayer.State(tpLayer, tpLayerState)
+    val loggerFactory = LoggerFactory(StderrLoggerBackend(), LogLevel.DEBUG)
+    lateinit var tpLayerState: TestPersistentTLState
+    lateinit var tpLayer: TransportLayer
+    lateinit var appLayer: ApplicationLayer
 
+    // Common checks for verifying that a newly created packet is OK.
     private fun checkCreatedPacket(
         packet: ApplicationLayer.Packet,
         command: ApplicationLayer.Command,
         appLayerPayload: ArrayList<Byte> = arrayListOf()
     ) {
-        val tpLayerPacket = packet.toTransportLayerPacket(appLayerState)
+        val tpLayerPacket = packet.toTransportLayerPacket(tpLayer)
 
+        // Verify the DATA packet header fields.
         assertEquals(0x10, tpLayerPacket.version)
         assertEquals(TransportLayer.CommandID.DATA, tpLayerPacket.commandID)
         assertEquals(tpLayerState.keyResponseAddress, tpLayerPacket.address)
 
+        // Verify application layer payload by recreating the corresponding
+        // transport layer DATA packet payload and comparing the recreation
+        // with the payload of the actual DATA packet.
         val payload = byteArrayListOfInts(
             0x10,
             command.serviceID.id,
@@ -33,6 +38,8 @@ class ApplicationLayerTest {
 
     @BeforeEach
     fun setup() {
+        tpLayerState = TestPersistentTLState()
+
         tpLayerState.keyResponseAddress = 0x10
         tpLayerState.clientPumpCipher = Cipher(byteArrayOfInts(
             0x5a, 0x25, 0x0b, 0x75, 0xa9, 0x02, 0x21, 0xfa,
@@ -40,6 +47,9 @@ class ApplicationLayerTest {
         tpLayerState.pumpClientCipher = Cipher(byteArrayOfInts(
             0x2a, 0xb0, 0xf2, 0x67, 0xc2, 0x7d, 0xcf, 0xaa,
             0x32, 0xb2, 0x48, 0x94, 0xe1, 0x6d, 0xe9, 0x5c))
+
+        tpLayer = TransportLayer(loggerFactory.getLogger(LogCategory.TP_LAYER), tpLayerState)
+        appLayer = ApplicationLayer()
     }
 
     @Test
@@ -109,12 +119,11 @@ class ApplicationLayerTest {
 
     @Test
     fun checkRTButtonStatusPacket() {
-        appLayerState.currentRTSequence = 0x1122
-        val packet = appLayer.createRTButtonStatusPacket(appLayerState, ApplicationLayer.RTButtonCode.UP, true)
+        val packet = appLayer.createRTButtonStatusPacket(ApplicationLayer.RTButtonCode.UP, true)
         checkCreatedPacket(
             packet,
             ApplicationLayer.Command.RT_BUTTON_STATUS,
-            byteArrayListOfInts(0x22, 0x11, ApplicationLayer.RTButtonCode.UP.id, 0xB7)
+            byteArrayListOfInts(0x00, 0x00, ApplicationLayer.RTButtonCode.UP.id, 0xB7)
         )
     }
 

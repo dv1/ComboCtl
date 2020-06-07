@@ -8,15 +8,14 @@ import org.junit.jupiter.api.Test
 
 class PairingSessionTest {
     val loggerFactory = LoggerFactory(StderrLoggerBackend(), LogLevel.DEBUG)
-    val tpLayer = TransportLayer(loggerFactory.getLogger(LogCategory.TP_LAYER))
-    val appLayer = ApplicationLayer()
-    lateinit var tpLayerState: TransportLayer.State
-    lateinit var appLayerState: ApplicationLayer.State
+    lateinit var tpLayer: TransportLayer
+    lateinit var appLayer: ApplicationLayer
 
     @BeforeEach
     fun setup() {
-        tpLayerState = TransportLayer.State()
-        appLayerState = ApplicationLayer.State(tpLayer, tpLayerState)
+        val tpLayerState = TestPersistentTLState()
+        tpLayer = TransportLayer(loggerFactory.getLogger(LogCategory.TP_LAYER), tpLayerState)
+        appLayer = ApplicationLayer()
     }
 
     @Test
@@ -290,7 +289,7 @@ class PairingSessionTest {
             // and the outgoingDataChannel will be close()d.
             performPairing(
                 appLayer,
-                appLayerState,
+                tpLayer,
                 testBtFriendlyName,
                 loggerFactory.getLogger(LogCategory.APP_LAYER),
                 { getPINDeferred -> getPINDeferred.complete(testPIN) },

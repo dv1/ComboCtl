@@ -15,7 +15,6 @@ package info.nightscout.comboctl.base
 // 1 byte with service ID
 // 2 bytes with command ID
 private const val PACKET_HEADER_SIZE = 1 + 1 + 2
-private const val MAX_VALID_PAYLOAD_SIZE = 65535 - PACKET_HEADER_SIZE
 
 private const val VERSION_BYTE_OFFSET = 0
 private const val SERVICE_ID_BYTE_OFFSET = 1
@@ -38,23 +37,36 @@ private fun checkedGetCommand(
 }
 
 /**
+ * Maximum allowed size for application layer packet payloads, in bytes.
+ */
+val MAX_VALID_AL_PAYLOAD_SIZE = 65535 - PACKET_HEADER_SIZE
+
+/**
  * Combo application layer (AL) communication implementation.
+ *
+ * This provides all the necessary primitives and processes to communicate
+ * at the application layer. The ApplicationLayer class itself contains internal
+ * temporary states that only need to exist for the duration of a communication
+ * session with the Combo.
+ *
+ * Callers create an instance of ApplicationLayer every time a new connection to
+ * the Combo is established, and destroyed afterwards (it is not reused).
  *
  * The application layer sits on top of the transport layer. Application layer
  * packets are encapsulated in transport layer DATA packets.
  *
- * This deals with AL packets and processes. These are:
- *
- * - Generating and parsing AL packets
- * - Pairing commands
- * - Connection setup commands
- * - Command mode and RT mode commands
- *
- * The nested State class contains the entire state of the application layer.
- * Unlike the TransportLayer's State class, this one has no properties that
- * need to be persistently stored.
+ * Just like with TransportLayer, the packet creation and parsing functions
+ * in this class may update internal and external state (both its own internal
+ * state and the internal&external state from the underlying transport layer).
+ * Consult the spec to see the correct sequence for pairing and for initiating
+ * regular connections.
  */
 class ApplicationLayer {
+    /**
+     * RT sequence number. Used in outgoing RT packets.
+     */
+    private var currentRTSequence: Int = 0
+
     /**
      * Valid application layer command service IDs.
      */
@@ -65,6 +77,11 @@ class ApplicationLayer {
 
         companion object {
             private val values = ServiceID.values()
+            /**
+             * Converts an int to a service ID.
+             *
+             * @return ServiceID, or null if the int is not a valid ID.
+             */
             fun fromInt(value: Int) = values.firstOrNull { it.id == value }
         }
     }
@@ -97,6 +114,11 @@ class ApplicationLayer {
         companion object {
             private val values = Command.values()
 
+            /**
+             * Returns the command that has a matching service ID and command ID.
+             *
+             * @return Command, or null if no matching command exists.
+             */
             fun fromIDs(serviceID: ServiceID, commandID: Int) = values.firstOrNull {
                 (it.serviceID == serviceID) && (it.commandID == commandID)
             }
@@ -158,12 +180,6 @@ class ApplicationLayer {
         message: String
     ) : ExceptionBase(message)
 
-    class State(
-        val transportLayer: TransportLayer,
-        val transportLayerState: TransportLayer.State,
-        var currentRTSequence: Int = 0
-    )
-
     /**
      * Class containing data of a Combo application layer packet.
      *
@@ -182,7 +198,7 @@ class ApplicationLayer {
      *
      * Also note that the application layer packet header contains a version byte.
      * It is identical in structure to the version byte in the transport layer packet
-     * header, but something entirely separate.
+     * header, but is something entirely separate.
      *
      * See "Application layer packet structure" in combo-comm-spec.adoc for details.
      *
@@ -199,6 +215,8 @@ class ApplicationLayer {
      *           major, the lower 4 bit the minor version number.
      *           In all observed packets, this was set to 0x10.
      * @property payload The application layer packet payload.
+     * @throws IllegalArgumentException if the payload size exceeds
+     *         [MAX_VALID_AL_PAYLOAD_SIZE].
      */
     data class Packet(
         val command: Command,
@@ -206,13 +224,19 @@ class ApplicationLayer {
         var payload: ArrayList<Byte> = ArrayList<Byte>(0)
     ) {
         init {
-            if (payload.size > MAX_VALID_PAYLOAD_SIZE) {
+            if (payload.size > MAX_VALID_AL_PAYLOAD_SIZE) {
                 throw IllegalArgumentException(
-                    "Payload size ${payload.size} exceeds allowed maximum of $MAX_VALID_PAYLOAD_SIZE bytes"
+                    "Payload size ${payload.size} exceeds allowed maximum of $MAX_VALID_AL_PAYLOAD_SIZE bytes"
                 )
             }
         }
 
+        /**
+         * Creates an application layer packet out of a transport layer DATA packet.
+         *
+         * @param tpLayerPacket The transport layer DATA packet.
+         * @throws IncorrectPacketException if the given packet is not a DATA packet.
+         */
         constructor(tpLayerPacket: TransportLayer.Packet) : this(
             command = checkedGetCommand(tpLayerPacket.payload, tpLayerPacket),
             version = tpLayerPacket.payload[VERSION_BYTE_OFFSET],
@@ -233,7 +257,7 @@ class ApplicationLayer {
          * @param appLayerState Application layer state used for generating the packet.
          * @return Transport layer DATA packet.
          */
-        fun toTransportLayerPacket(appLayerState: State): TransportLayer.Packet {
+        fun toTransportLayerPacket(transportLayer: TransportLayer): TransportLayer.Packet {
             val appLayerPacketPayload = ArrayList<Byte>(PACKET_HEADER_SIZE + payload.size)
             appLayerPacketPayload.add(version)
             appLayerPacketPayload.add(command.serviceID.id.toByte())
@@ -241,8 +265,7 @@ class ApplicationLayer {
             appLayerPacketPayload.add(((command.commandID shr 8) and 0xFF).toByte())
             appLayerPacketPayload.addAll(payload)
 
-            return appLayerState.transportLayer.createDataPacket(
-                appLayerState.transportLayerState,
+            return transportLayer.createDataPacket(
                 command.reliable,
                 appLayerPacketPayload
             )
@@ -257,10 +280,11 @@ class ApplicationLayer {
     }
 
     // Utility function to increment the RT sequence number with overflow check.
-    private fun incrementRTSequence(state: State) {
-        state.currentRTSequence++
-        if (state.currentRTSequence > 65535)
-            state.currentRTSequence = 0
+    // Used when new outgoing RT packets are generated.
+    private fun incrementRTSequence() {
+        currentRTSequence++
+        if (currentRTSequence > 65535)
+            currentRTSequence = 0
     }
 
     /**
@@ -335,7 +359,7 @@ class ApplicationLayer {
      */
     fun createCTRLDisconnectPacket(): Packet {
         // TODO: See the spec for this command. It is currently
-        // unclear why the payload has to be 0x6003, and why
+        // unclear why the payload should be 0x6003, and why
         // Ruffy sets this to 0x0003 instead. But since we know
         // that Ruffy works, we currently pick 0x0003.
         return Packet(
@@ -393,15 +417,15 @@ class ApplicationLayer {
      *
      * @return The produced packet.
      */
-    fun createRTButtonStatusPacket(state: State, rtButtonCode: RTButtonCode, buttonStatusChanged: Boolean): Packet {
+    fun createRTButtonStatusPacket(rtButtonCode: RTButtonCode, buttonStatusChanged: Boolean): Packet {
         val payload = byteArrayListOfInts(
-            (state.currentRTSequence shr 0) and 0xFF,
-            (state.currentRTSequence shr 8) and 0xFF,
+            (currentRTSequence shr 0) and 0xFF,
+            (currentRTSequence shr 8) and 0xFF,
             rtButtonCode.id,
             if (buttonStatusChanged) 0xB7 else 0x48
         )
 
-        incrementRTSequence(state)
+        incrementRTSequence()
 
         return Packet(
             command = Command.RT_BUTTON_STATUS,
@@ -418,6 +442,11 @@ class ApplicationLayer {
 
         companion object {
             private val values = RTDisplayUpdateReason.values()
+            /**
+             * Converts an int to an RTDisplayUpdateReason.
+             *
+             * @return RTDisplayUpdateReason, or null if the int is not a valid reason ID.
+             */
             fun fromInt(value: Int) = values.firstOrNull { it.id == value }
         }
     }
@@ -433,6 +462,14 @@ class ApplicationLayer {
         val pixels: List<Byte>
     )
 
+    /**
+     * Parses an RT_DISPLAY packet and extracts its payload.
+     *
+     * @param packet Application layer RT_DISPLAY packet to parse.
+     * @return The packet's parsed payload.
+     * @throws InvalidPayloadException if the payload size is not the expected size,
+     *         or if the payload contains an invalid display row ID or reason.
+     */
     fun parseRTDisplayPacket(packet: Packet): RTDisplayPayload {
         val payload = packet.payload
 
