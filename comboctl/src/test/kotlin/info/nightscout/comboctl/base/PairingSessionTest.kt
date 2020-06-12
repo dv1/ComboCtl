@@ -1,10 +1,28 @@
 package info.nightscout.comboctl.base
 
 import kotlinx.coroutines.*
-import kotlinx.coroutines.channels.*
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+
+class TestComboIO(
+    private val incomingPackets: List<TransportLayer.Packet>,
+    private val outgoingPackets: List<TransportLayer.Packet>
+) : ComboIO {
+    private val incomingIt = incomingPackets.iterator()
+    private val outgoingIt = outgoingPackets.iterator()
+
+    final override suspend fun send(dataToSend: List<Byte>) {
+        if (!outgoingIt.hasNext())
+            throw ComboException("No more")
+
+        val expectedOutgoingData = outgoingIt.next().toByteList()
+        assertEquals(expectedOutgoingData, dataToSend)
+    }
+
+    final override suspend fun receive(): List<Byte> =
+        if (incomingIt.hasNext()) incomingIt.next().toByteList() else throw ComboException("No more")
+}
 
 class PairingSessionTest {
     val loggerFactory = LoggerFactory(StderrLoggerBackend(), LogLevel.DEBUG)
@@ -25,8 +43,6 @@ class PairingSessionTest {
         // client). Check that the outgoing packets match those that Ruffy sent
         // to the Combo.
 
-        val incomingDataChannel = Channel<List<Byte>>()
-        val outgoingDataChannel = Channel<List<Byte>>()
         val testBtFriendlyName = "SHIELD Tablet"
         val testPIN = PairingPIN(intArrayOf(2, 6, 0, 6, 8, 1, 9, 2, 7, 3))
 
@@ -265,23 +281,9 @@ class PairingSessionTest {
                 machineAuthenticationCode = MachineAuthCode(byteArrayListOfInts(0x61, 0x12, 0x4C, 0xF7, 0x2A, 0x29, 0x6E, 0x34)))
         )
 
-        runBlocking {
-            // Feed recorded incoming packets into the incoming data channel,
-            // _and_ verify packets coming from the outgoing data channel.
-            // Do these two processes in separate coroutine scopes to simulate
-            // simultaneously operating devices (pump and client).
-            launch {
-                for (incomingPacket in incomingPackets) {
-                    incomingDataChannel.send(incomingPacket.toByteList())
-                }
-            }
-            launch {
-                for (expectedOutgoingPacket in expectedOutgoingPackets) {
-                    val outgoingPacket = outgoingDataChannel.receive().toTransportLayerPacket()
-                    assertEquals(expectedOutgoingPacket, outgoingPacket)
-                }
-            }
+        val testIO = TestComboIO(incomingPackets, expectedOutgoingPackets)
 
+        runBlocking {
             // performPairing() does the actual pairing, and is implemented
             // as a suspend function. It throws exceptions in case of errors.
             // If pairing completes successfully, the incoming data channel
@@ -293,8 +295,7 @@ class PairingSessionTest {
                 testBtFriendlyName,
                 loggerFactory.getLogger(LogCategory.APP_LAYER),
                 { getPINDeferred -> getPINDeferred.complete(testPIN) },
-                incomingDataChannel,
-                outgoingDataChannel
+                testIO
             )
 
             loggerFactory.getLogger(LogCategory.TP_LAYER).log(LogLevel.DEBUG) { "Test completed" }

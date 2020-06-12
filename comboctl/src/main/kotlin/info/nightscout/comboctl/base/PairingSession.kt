@@ -2,32 +2,30 @@ package info.nightscout.comboctl.base
 
 import kotlin.coroutines.*
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.channels.*
 
 // Utility functions.
 
 private suspend fun sendTransportLayerPacket(
-    outgoingDataChannel: SendChannel<List<Byte>>,
+    io: ComboIO,
     logger: Logger,
     packet: TransportLayer.Packet
 ) {
     logger.log(LogLevel.DEBUG) { "Sending transport layer ${packet.commandID.name} packet" }
-    outgoingDataChannel.send(packet.toByteList())
+    io.send(packet.toByteList())
 }
 
 private suspend fun sendApplicationLayerPacket(
-    outgoingDataChannel: SendChannel<List<Byte>>,
+    io: ComboIO,
     transportLayer: TransportLayer,
     logger: Logger,
     packet: ApplicationLayer.Packet
 ) {
     logger.log(LogLevel.DEBUG) { "Sending application layer ${packet.command.name} packet" }
-    outgoingDataChannel.send(packet.toTransportLayerPacket(transportLayer).toByteList())
+    io.send(packet.toTransportLayerPacket(transportLayer).toByteList())
 }
 
 private suspend fun receiveTransportLayerPacket(
-    incomingDataChannel: ReceiveChannel<List<Byte>>,
-    outgoingDataChannel: SendChannel<List<Byte>>,
+    io: ComboIO,
     transportLayer: TransportLayer,
     logger: Logger,
     expectedCommandID: TransportLayer.CommandID
@@ -37,7 +35,7 @@ private suspend fun receiveTransportLayerPacket(
     lateinit var tpLayerPacket: TransportLayer.Packet
 
     receivingPacket@ while (true) {
-        tpLayerPacket = TransportLayer.Packet(incomingDataChannel.receive())
+        tpLayerPacket = TransportLayer.Packet(io.receive())
 
         when (tpLayerPacket.commandID) {
             expectedCommandID -> break@receivingPacket
@@ -57,23 +55,21 @@ private suspend fun receiveTransportLayerPacket(
             "responding with ACK_RESPONSE packet; sequence bit: ${tpLayerPacket.sequenceBit}"
         }
         val ackResponsePacket = transportLayer.createAckResponsePacket(tpLayerPacket.sequenceBit)
-        outgoingDataChannel.send(ackResponsePacket.toByteList())
+        io.send(ackResponsePacket.toByteList())
     }
 
     return tpLayerPacket
 }
 
 private suspend fun receiveApplicationLayerPacket(
-    incomingDataChannel: ReceiveChannel<List<Byte>>,
-    outgoingDataChannel: SendChannel<List<Byte>>,
+    io: ComboIO,
     transportLayer: TransportLayer,
     logger: Logger,
     expectedCommand: ApplicationLayer.Command
 ): ApplicationLayer.Packet {
     logger.log(LogLevel.DEBUG) { "Waiting for application layer ${expectedCommand.name} packet" }
     val tpLayerPacket = receiveTransportLayerPacket(
-        incomingDataChannel,
-        outgoingDataChannel,
+        io,
         transportLayer,
         logger,
         TransportLayer.CommandID.DATA
@@ -92,16 +88,14 @@ suspend fun performPairing(
     bluetoothFriendlyName: String,
     logger: Logger,
     pairingPINCallback: (getPINDeferred: CompletableDeferred<PairingPIN>) -> Unit,
-    incomingDataChannel: ReceiveChannel<List<Byte>>,
-    outgoingDataChannel: SendChannel<List<Byte>>
+    io: ComboIO
 ) {
     // Initiate pairing and wait for the response.
     // (The response contains no meaningful payload.)
     logger.log(LogLevel.DEBUG) { "Sending pairing connection request" }
-    sendTransportLayerPacket(outgoingDataChannel, logger, transportLayer.createRequestPairingConnectionPacket())
+    sendTransportLayerPacket(io, logger, transportLayer.createRequestPairingConnectionPacket())
     receiveTransportLayerPacket(
-        incomingDataChannel,
-        outgoingDataChannel,
+        io,
         transportLayer,
         logger,
         TransportLayer.CommandID.PAIRING_CONNECTION_REQUEST_ACCEPTED
@@ -111,7 +105,7 @@ suspend fun performPairing(
     // This will cause the pump to generate and show a
     // 10-digit PIN.
     logger.log(LogLevel.DEBUG) { "Requesting the pump to generate and show the pairing PIN" }
-    sendTransportLayerPacket(outgoingDataChannel, logger, transportLayer.createRequestKeysPacket())
+    sendTransportLayerPacket(io, logger, transportLayer.createRequestKeysPacket())
 
     // Ask the user for the 10-digit PIN, and retrieve
     // the keys from the pump. In case the user did not
@@ -151,12 +145,11 @@ suspend fun performPairing(
         // generate the keys and show the PIN.)
         if (keyResponsePacket == null) {
             logger.log(LogLevel.DEBUG) { "Requesting the available pump-client and client-pump keys from the pump" }
-            sendTransportLayerPacket(outgoingDataChannel, logger, transportLayer.createGetAvailableKeysPacket())
+            sendTransportLayerPacket(io, logger, transportLayer.createGetAvailableKeysPacket())
 
             // Wait for the KEY_RESPONSE packet.
             keyResponsePacket = receiveTransportLayerPacket(
-                incomingDataChannel,
-                outgoingDataChannel,
+                io,
                 transportLayer,
                 logger,
                 TransportLayer.CommandID.KEY_RESPONSE
@@ -193,10 +186,9 @@ suspend fun performPairing(
     // values that aren't necessary for operating the pump. However,
     // it seems that we still have to request these IDs, otherwise
     // the pump reports an error. (TODO: Further verify this.)
-    sendTransportLayerPacket(outgoingDataChannel, logger, transportLayer.createRequestIDPacket(bluetoothFriendlyName))
+    sendTransportLayerPacket(io, logger, transportLayer.createRequestIDPacket(bluetoothFriendlyName))
     val tpLayerPacket: TransportLayer.Packet = receiveTransportLayerPacket(
-        incomingDataChannel,
-        outgoingDataChannel,
+        io,
         transportLayer,
         logger,
         TransportLayer.CommandID.ID_RESPONSE
@@ -214,10 +206,9 @@ suspend fun performPairing(
     // _transport layer_ connection.
     // Wait for the response and verify it.
     logger.log(LogLevel.DEBUG) { "Sending regular connection request" }
-    sendTransportLayerPacket(outgoingDataChannel, logger, transportLayer.createRequestRegularConnectionPacket())
+    sendTransportLayerPacket(io, logger, transportLayer.createRequestRegularConnectionPacket())
     receiveTransportLayerPacket(
-        incomingDataChannel,
-        outgoingDataChannel,
+        io,
         transportLayer,
         logger,
         TransportLayer.CommandID.REGULAR_CONNECTION_REQUEST_ACCEPTED
@@ -228,10 +219,9 @@ suspend fun performPairing(
     // Initiate application-layer connection and wait for the response.
     // (The response contains no meaningful payload.)
     logger.log(LogLevel.DEBUG) { "Initiating application layer connection" }
-    sendApplicationLayerPacket(outgoingDataChannel, transportLayer, logger, appLayer.createCTRLConnectPacket())
+    sendApplicationLayerPacket(io, transportLayer, logger, appLayer.createCTRLConnectPacket())
     receiveApplicationLayerPacket(
-        incomingDataChannel,
-        outgoingDataChannel,
+        io,
         transportLayer,
         logger,
         ApplicationLayer.Command.CTRL_CONNECT_RESPONSE
@@ -244,14 +234,13 @@ suspend fun performPairing(
     // TODO: Further verify this.
     logger.log(LogLevel.DEBUG) { "Requesting command mode service version" }
     sendApplicationLayerPacket(
-        outgoingDataChannel,
+        io,
         transportLayer,
         logger,
         appLayer.createCTRLGetServiceVersionPacket(ApplicationLayer.ServiceID.COMMAND_MODE)
     )
     receiveApplicationLayerPacket(
-        incomingDataChannel,
-        outgoingDataChannel,
+        io,
         transportLayer,
         logger,
         ApplicationLayer.Command.CTRL_SERVICE_VERSION_RESPONSE
@@ -260,14 +249,13 @@ suspend fun performPairing(
     // "Application layer pairing" section in the spec.
     /*
     sendApplicationLayerPacket(
-        outgoingDataChannel,
+        io,
         appLayerState,
         logger,
         appLayer.createCTRLGetServiceVersionPacket(ApplicationLayer.ServiceID.RT_MODE)
     )
     receiveApplicationLayerPacket(
-        incomingDataChannel,
-        outgoingDataChannel,
+        io,
         appLayerState,
         logger,
         ApplicationLayer.Command.CTRL_SERVICE_VERSION_RESPONSE
@@ -277,10 +265,9 @@ suspend fun performPairing(
     // Next, send a BIND command and wait for the response.
     // (The response contains no meaningful payload.)
     logger.log(LogLevel.DEBUG) { "Sending BIND command" }
-    sendApplicationLayerPacket(outgoingDataChannel, transportLayer, logger, appLayer.createCTRLBindPacket())
+    sendApplicationLayerPacket(io, transportLayer, logger, appLayer.createCTRLBindPacket())
     receiveApplicationLayerPacket(
-        incomingDataChannel,
-        outgoingDataChannel,
+        io,
         transportLayer,
         logger,
         ApplicationLayer.Command.CTRL_BIND_RESPONSE
@@ -291,10 +278,9 @@ suspend fun performPairing(
     // is necessary for the pairing process to succeed.)
     // Wait for the response and verify it.
     logger.log(LogLevel.DEBUG) { "Reconnecting regular connection" }
-    sendTransportLayerPacket(outgoingDataChannel, logger, transportLayer.createRequestRegularConnectionPacket())
+    sendTransportLayerPacket(io, logger, transportLayer.createRequestRegularConnectionPacket())
     receiveTransportLayerPacket(
-        incomingDataChannel,
-        outgoingDataChannel,
+        io,
         transportLayer,
         logger,
         TransportLayer.CommandID.REGULAR_CONNECTION_REQUEST_ACCEPTED
@@ -304,10 +290,8 @@ suspend fun performPairing(
 
     // Disconnect the application layer connection.
     logger.log(LogLevel.DEBUG) { "Disconnecting application layer connection" }
-    sendApplicationLayerPacket(outgoingDataChannel, transportLayer, logger, appLayer.createCTRLDisconnectPacket())
+    sendApplicationLayerPacket(io, transportLayer, logger, appLayer.createCTRLDisconnectPacket())
 
-    // Pairing complete. Close the send channel and cancel reception.
+    // Pairing complete.
     logger.log(LogLevel.DEBUG) { "Pairing finished successfully" }
-    incomingDataChannel.cancel()
-    outgoingDataChannel.close()
 }
