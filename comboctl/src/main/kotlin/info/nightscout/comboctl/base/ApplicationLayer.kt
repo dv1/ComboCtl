@@ -502,3 +502,71 @@ class ApplicationLayer {
         )
     }
 }
+
+// Convenience functions.
+
+/**
+ * Sends an application layer packet with the given IO object.
+ *
+ * This is a convenience function that logs the send call and
+ * converts the packet to a byte list that can be sent.
+ *
+ * @param io Combo IO object to use for sending.
+ * @param transportLayer TransportLayer instance needed for
+ *        converting the packet to a transport layer packet
+ *        prior to sending.
+ * @param logger Logger to use for logging the send operation.
+ * @param packet Packet that shall be sent.
+ */
+suspend fun sendApplicationLayerPacket(
+    io: ComboIO,
+    transportLayer: TransportLayer,
+    logger: Logger,
+    packet: ApplicationLayer.Packet
+) {
+    logger.log(LogLevel.DEBUG) { "Sending application layer ${packet.command.name} packet" }
+    io.send(packet.toTransportLayerPacket(transportLayer).toByteList())
+}
+
+/**
+ * Receives a transport layer packet with the given IO.
+ *
+ * This is a convenience function that logs the receive call and
+ * converts received byte list to a packet.
+ *
+ * It also checks if the received packet's command is what was
+ * expected. If it isn't, IncorrectPacketException is thrown.
+ * It also throws IncorrectPacketException if the underlying
+ * transport layer packet isn't a DATA packet.
+ *
+ * @param io Combo IO object to use for sending.
+ * @param transportLayer TransportLayer instance needed for
+ *        converting the received packet to a transport layer
+ *        that can then be used to generate the application
+ *        layer packet.
+ * @param logger Logger to use for logging the send operation.
+ * @param expectedCommand What command we expect in the received packet.
+ * @throws IncorrectPacketException if the received packet's command
+ *         does not match expectedCommand, or if the underlying
+ *         transport layer packet isn't a DATA packet.
+ */
+suspend fun receiveApplicationLayerPacket(
+    io: ComboIO,
+    transportLayer: TransportLayer,
+    logger: Logger,
+    expectedCommand: ApplicationLayer.Command
+): ApplicationLayer.Packet {
+    logger.log(LogLevel.DEBUG) { "Waiting for application layer ${expectedCommand.name} packet" }
+    val tpLayerPacket = receiveTransportLayerPacket(
+        io,
+        transportLayer,
+        logger,
+        TransportLayer.CommandID.DATA
+    )
+    val appLayerPacket = ApplicationLayer.Packet(tpLayerPacket)
+
+    if (appLayerPacket.command != expectedCommand)
+        throw ApplicationLayer.IncorrectPacketException(appLayerPacket, expectedCommand)
+
+    return appLayerPacket
+}

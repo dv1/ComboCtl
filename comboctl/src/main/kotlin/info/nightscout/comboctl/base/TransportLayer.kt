@@ -896,3 +896,88 @@ class TransportLayer(private val logger: Logger, private val state: PersistentSt
 fun List<Byte>.toTransportLayerPacket(): TransportLayer.Packet {
     return TransportLayer.Packet(this)
 }
+
+// Convenience functions.
+
+/**
+ * Sends a transport layer packet with the given IO object.
+ *
+ * This is a convenience function that logs the send call and
+ * converts the packet to a byte list that can be sent.
+ *
+ * @param io Combo IO object to use for sending.
+ * @param logger Logger to use for logging the send operation.
+ * @param packet Packet that shall be sent.
+ */
+suspend fun sendTransportLayerPacket(
+    io: ComboIO,
+    logger: Logger,
+    packet: TransportLayer.Packet
+) {
+    logger.log(LogLevel.DEBUG) { "Sending transport layer ${packet.commandID.name} packet" }
+    io.send(packet.toByteList())
+}
+
+/**
+ * Receives a transport layer packet with the given IO.
+ *
+ * This is a convenience function that logs the receive call and
+ * converts received byte list to a packet.
+ *
+ * This function stops until a packet is received that isn't
+ * an ACK_RESPONSE packet. If an ACK_RESPONSE packet is received,
+ * that packet is discarded, and the function keeps listening.
+ * (ACK_RESPONSE packets are intermittently sent by the pump,
+ * regardless of what other operations are going on, but don't
+ * seem to require responses.)
+ *
+ * It also checks if the received packet's command ID is what was
+ * expected. If it isn't, IncorrectPacketException is thrown.
+ *
+ * Finally, if the reliability bit is set, then this immediately
+ * responds with an ACK_RESPONSE packet whose sequence flag is
+ * set to match that of the received packet. (Unlike the ACK_RESPONSE
+ * packet mentioned above, this one goes from the client to the
+ * pump, and has a different purpose. In the spec, consult the section
+ * "Sequence and data reliability bits" for more details.)
+ *
+ * @param io Combo IO object to use for sending.
+ * @param logger Logger to use for logging the send operation.
+ * @param expectedCommandID What command ID we expect in the received packet.
+ * @throws IncorrectPacketException if the received packet's command ID
+ *         does not match expectedCommandID.
+ */
+suspend fun receiveTransportLayerPacket(
+    io: ComboIO,
+    transportLayer: TransportLayer,
+    logger: Logger,
+    expectedCommandID: TransportLayer.CommandID
+): TransportLayer.Packet {
+    logger.log(LogLevel.DEBUG) { "Waiting for transport layer ${expectedCommandID.name} packet" }
+
+    lateinit var tpLayerPacket: TransportLayer.Packet
+
+    receivingPacket@ while (true) {
+        tpLayerPacket = TransportLayer.Packet(io.receive())
+
+        when (tpLayerPacket.commandID) {
+            expectedCommandID -> break@receivingPacket
+            TransportLayer.CommandID.ACK_RESPONSE -> logger.log(LogLevel.DEBUG) { "Got ACK_RESPONSE packet; ignoring" }
+            else -> throw TransportLayer.IncorrectPacketException(tpLayerPacket, expectedCommandID)
+        }
+    }
+
+    // Packets with the reliability flag set must be immediately
+    // responded to with an ACK_RESPONSE packet whose sequence bit
+    // must match that of the received packet.
+    if (tpLayerPacket.reliabilityBit) {
+        logger.log(LogLevel.DEBUG) {
+            "Got a transport layer ${tpLayerPacket.commandID.name} packet with its reliability bit set; " +
+            "responding with ACK_RESPONSE packet; sequence bit: ${tpLayerPacket.sequenceBit}"
+        }
+        val ackResponsePacket = transportLayer.createAckResponsePacket(tpLayerPacket.sequenceBit)
+        io.send(ackResponsePacket.toByteList())
+    }
+
+    return tpLayerPacket
+}
