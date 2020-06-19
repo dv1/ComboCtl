@@ -32,22 +32,22 @@ fun byteArrayListOfInts(vararg ints: Int) = ArrayList<Byte>(ints.map { it.toByte
 /**
  * Produces a hexadecimal string representation of the bytes in the array.
  *
- * The string is formatted with one whitespace between the bytes. For example,
- * the byte array 0x8F, 0xBC results in "8F BC".
+ * The string is formatted with a separator (one whitespace character by default)
+ * between the bytes. For example, the byte array 0x8F, 0xBC results in "8F BC".
  *
  * @return The string representation.
  */
-fun ByteArray.toHexString() = this.joinToString(separator = " ") { "%02X".format(it) }
+fun ByteArray.toHexString(separator: String = " ") = this.joinToString(separator) { "%02X".format(it) }
 
 /**
  * Produces a hexadecimal string representation of the bytes in the list.
  *
- * The string is formatted with one whitespace between the bytes. For example,
- * the byte list 0x8F, 0xBC results in "8F BC".
+ * The string is formatted with a separator (one whitespace character by default)
+ * between the bytes. For example, the byte list 0x8F, 0xBC results in "8F BC".
  *
  * @return The string representation.
  */
-fun List<Byte>.toHexString() = this.joinToString(separator = " ") { "%02X".format(it) }
+fun List<Byte>.toHexString(separator: String = " ") = this.joinToString(separator) { "%02X".format(it) }
 
 /**
  * Produces a hexadecimal string describing the "surroundings" of a byte in a list.
