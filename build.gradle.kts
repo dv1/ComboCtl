@@ -18,6 +18,12 @@ ktlint {
 }
 
 allprojects {
+    val projectPath = project.path.split(":")
+    if (projectPath.any { it.endsWith("-cpp") }) {
+        logger.info("Not applying common Java/Kotlin plugins and settings to project \"${project.name}\" (path \"${project.path}\")")
+        return@allprojects
+    }
+
     repositories {
         jcenter()
     }
