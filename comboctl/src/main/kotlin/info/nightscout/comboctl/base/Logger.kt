@@ -10,7 +10,8 @@ enum class LogCategory(val str: String) {
     CIPHER("CIPHER"),
     FRAME("FRAME"),
     PACKET("PACKET"),
-    TP_LAYER("TP_LAYER")
+    TP_LAYER("TP_LAYER"),
+    BLUETOOTH("BLUETOOTH")
 }
 
 /**
