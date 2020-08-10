@@ -1,0 +1,3 @@
+https://github.com/dv1/jni.hpp
+(A fork of https://github.com/mapbox/jni.hpp)
+Git HEAD 572226ef82dec4bd1ad5b3f938e0f0ca8004a2de
