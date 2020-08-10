@@ -1,7 +1,6 @@
 package info.nightscout.comboctl.linux_bluez
 
 import info.nightscout.comboctl.base.*
-import kotlinx.coroutines.*
 
 // Callback wrappers. We need these to be able to invoke
 // our callbacks from C++. We can't invoke the function
@@ -32,11 +31,11 @@ class BlueZInterface : BluetoothInterface {
 
     // Base class overrides.
 
-    final external override fun shutdown()
+    external override fun shutdown()
 
     // This isn't directly external, since we have to wrap
     // the function literals in the wrapper classes first.
-    final override fun startDiscovery(
+    override fun startDiscovery(
         sdpServiceName: String,
         sdpServiceProvider: String,
         sdpServiceDescription: String,
@@ -56,13 +55,13 @@ class BlueZInterface : BluetoothInterface {
         )
     }
 
-    final external override fun stopDiscovery()
+    external override fun stopDiscovery()
 
     // This isn't directly external, since we have to convert
     // the Bluetooth address to a bytearray first.
-    final override fun unpairDevice(deviceAddress: BluetoothAddress) = unpairDeviceImpl(deviceAddress.toByteArray())
+    override fun unpairDevice(deviceAddress: BluetoothAddress) = unpairDeviceImpl(deviceAddress.toByteArray())
 
-    final override fun getDevice(deviceAddress: BluetoothAddress): BluetoothDevice {
+    override fun getDevice(deviceAddress: BluetoothAddress): BluetoothDevice {
         val nativeDevicePtr = getDeviceImpl(deviceAddress.toByteArray())
         return BlueZDevice(nativeDevicePtr, deviceAddress)
     }
@@ -79,14 +78,17 @@ class BlueZInterface : BluetoothInterface {
         filterDevice: BluetoothDeviceBooleanReturnCallback
     )
 
-    external fun unpairDeviceImpl(deviceAddress: ByteArray)
+    private external fun unpairDeviceImpl(deviceAddress: ByteArray)
 
     private external fun getDeviceImpl(deviceAddress: ByteArray): Long
 
     // jni.hpp specifics.
 
-    protected external fun initialize()
-    protected external fun finalize()
+    private external fun initialize()
+    private external fun finalize()
 
+    // NOTE: This is never used in Kotlin code
+    // but it is needed by jni.hpp for the C++
+    // bindings, so don't remove nativePtr.
     private var nativePtr: Long = 0
 }

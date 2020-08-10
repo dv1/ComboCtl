@@ -6,7 +6,7 @@ const val NUM_BLUETOOTH_ADDRESS_BYTES = 6
  * Class containing a 6-byte Bluetooth address.
  *
  * The address bytes are stored in the printed order.
- * For example, a Blutooth address 11:22:33:44:55:66
+ * For example, a Bluetooth address 11:22:33:44:55:66
  * is stored as a 0x11, 0x22, 0x33, 0x44, 0x55, 0x66
  * array, with 0x11 being the first byte. This is how
  * Android stores Bluetooth address bytes. Note though
@@ -44,4 +44,4 @@ data class BluetoothAddress(private val addressBytes: List<Byte>) : Iterable<Byt
  */
 fun ByteArray.toBluetoothAddress() = BluetoothAddress(this.toList())
 
-fun String.toBluetoothAddress() = BluetoothAddress(this.split(":").map { it -> it.toInt(radix = 16).toByte() })
+fun String.toBluetoothAddress() = BluetoothAddress(this.split(":").map { it.toInt(radix = 16).toByte() })

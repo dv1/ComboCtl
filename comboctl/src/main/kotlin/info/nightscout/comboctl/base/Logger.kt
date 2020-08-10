@@ -197,5 +197,5 @@ class LoggerFactory(val backend: LoggerBackend, private val defaultLogLevelThres
     fun getLogger(category: LogCategory) = loggers[category.ordinal]
 }
 
-// Typealias to be able to just type "Logger" as if Logger were a top-level class.
+// typealias to be able to just type "Logger" as if Logger were a top-level class.
 typealias Logger = LoggerFactory.Logger

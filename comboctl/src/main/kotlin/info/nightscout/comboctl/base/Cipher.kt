@@ -8,7 +8,7 @@ const val CIPHER_BLOCK_SIZE = 16
 /**
  * Class for en- and decrypting packets going to and coming from the Combo.
  *
- * The packets are encryptd using the Twofish symmetric block cipher.
+ * The packets are encrypted using the Twofish symmetric block cipher.
  * It en- and decrypts blocks of 128 bits (16 bytes). Key size too is 128 bits.
  *
  * @property key The 128-bit key for en- and decrypting. Initially set to null.

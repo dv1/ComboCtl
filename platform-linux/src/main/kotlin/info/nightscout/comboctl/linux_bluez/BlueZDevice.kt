@@ -2,12 +2,13 @@ package info.nightscout.comboctl.linux_bluez
 
 import info.nightscout.comboctl.base.BluetoothAddress
 import info.nightscout.comboctl.base.BluetoothDevice
+import info.nightscout.comboctl.base.BluetoothInterface
 
 /**
  * Class representing a Bluetooth device accessible through BlueZ.
  *
  * Users typically do not instantiate this directly. Instead,
- * [BlueZInterface]'s implementation of [BluetoothInterfaces.connect]
+ * [BlueZInterface]'s implementation of [BluetoothInterface.getDevice]
  * instantiates and returns this (as a [BluetoothDevice]).
  *
  * The nativeDevicePtr is an opaque pointer to the internal
@@ -15,7 +16,7 @@ import info.nightscout.comboctl.base.BluetoothDevice
  * bound to BlueZDevice) that holds the data about the BlueZ
  * device and its RFCOMM socket.
  */
-class BlueZDevice(nativeDevicePtr: Long, final override val address: BluetoothAddress) : BluetoothDevice() {
+class BlueZDevice(nativeDevicePtr: Long, override val address: BluetoothAddress) : BluetoothDevice() {
     init {
         // This calls the constructor of the native C++ class.
         initialize()
@@ -28,14 +29,14 @@ class BlueZDevice(nativeDevicePtr: Long, final override val address: BluetoothAd
 
     // These aren't directly external, since we have to convert
     // the byte lists to bytearrays first.
-    final override fun blockingSend(dataToSend: List<Byte>) = sendImpl(dataToSend.toByteArray())
-    final override fun blockingReceive(): List<Byte> = receiveImpl().toList()
+    override fun blockingSend(dataToSend: List<Byte>) = sendImpl(dataToSend.toByteArray())
+    override fun blockingReceive(): List<Byte> = receiveImpl().toList()
 
-    final external override fun connect()
-    final external override fun disconnect()
+    external override fun connect()
+    external override fun disconnect()
 
-    final external override fun cancelSend()
-    final external override fun cancelReceive()
+    external override fun cancelSend()
+    external override fun cancelReceive()
 
     // Private external C++ functions.
 
@@ -46,8 +47,11 @@ class BlueZDevice(nativeDevicePtr: Long, final override val address: BluetoothAd
 
     // jni.hpp specifics.
 
-    protected external fun initialize()
-    protected external fun finalize()
+    private external fun initialize()
+    private external fun finalize()
 
+    // NOTE: This is never used in Kotlin code
+    // but it is needed by jni.hpp for the C++
+    // bindings, so don't remove nativePtr.
     private var nativePtr: Long = 0
 }

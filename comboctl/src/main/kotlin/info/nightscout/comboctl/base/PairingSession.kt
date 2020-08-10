@@ -1,6 +1,5 @@
 package info.nightscout.comboctl.base
 
-import kotlin.coroutines.*
 import kotlinx.coroutines.CompletableDeferred
 
 suspend fun performPairing(

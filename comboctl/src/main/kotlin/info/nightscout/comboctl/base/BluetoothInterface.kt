@@ -10,7 +10,7 @@ package info.nightscout.comboctl.base
  * 2. Connect to a Bluetooth device and enable RFCOMM-based blocking IO with it.
  *
  * The constructor must set up all necessary platform specific
- * resources. Later, to explicitely shut down the Bluetooth
+ * resources. Later, to explicitly shut down the Bluetooth
  * interface immediately, [shutdown] can be called. (Typically
  * this function is called from within a finally block).
  */
@@ -20,12 +20,12 @@ interface BluetoothInterface {
      *
      * Previously connected devices can be used even after shutting down.
      * That is, [BluetoothDevice] instances previously returned
-     * by [connect] are not invalidated by this function.
+     * by [getDevice] are not invalidated by this function.
      *
      * After this call, this BluetoothInterface instance cannot be
      * used anymore.
      *
-     * If discovery is ongoing, this implicitely calls stopDiscovery().
+     * If discovery is ongoing, this implicitly calls stopDiscovery().
      *
      * A repeated call will do nothing.
      */

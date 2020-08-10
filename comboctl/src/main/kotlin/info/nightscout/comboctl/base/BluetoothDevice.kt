@@ -25,7 +25,7 @@ abstract class BluetoothDevice : BlockingComboIO() {
     abstract fun connect()
 
     /**
-     * Explicitely disconnect the device's RFCOMM connection now.
+     * Explicitly disconnect the device's RFCOMM connection now.
      *
      * After this call, this BluetoothDevice instance cannot be
      * used anymore.
