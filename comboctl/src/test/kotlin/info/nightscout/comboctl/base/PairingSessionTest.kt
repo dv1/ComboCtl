@@ -22,6 +22,10 @@ class TestComboIO(
 
     final override suspend fun receive(): List<Byte> =
         if (incomingIt.hasNext()) incomingIt.next().toByteList() else throw ComboException("No more")
+
+    final override fun cancelSend() = Unit
+
+    final override fun cancelReceive() = Unit
 }
 
 class PairingSessionTest {

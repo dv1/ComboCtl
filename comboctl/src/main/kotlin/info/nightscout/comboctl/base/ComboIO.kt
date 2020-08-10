@@ -28,6 +28,8 @@ interface ComboIO {
      * having been sent.
      *
      * @param dataToSend The data to send. Must not be empty.
+     * @throws CancellationException if cancelled by [cancelSend].
+     * @throws ComboIOException if sending fails.
      */
     suspend fun send(dataToSend: List<Byte>)
 
@@ -39,8 +41,44 @@ interface ComboIO {
      * an error, like when a connection is closed.
      *
      * @return Received block of bytes. This is never empty.
+     * @throws CancellationException if cancelled by [cancelReceive].
+     * @throws ComboIOException if receiving fails.
      */
     suspend fun receive(): List<Byte>
+
+    /**
+     * Cancels a currently suspended send call.
+     *
+     * The send call resumes immediately and throws a [CancellationException],
+     * and the specified data is not send.
+     *
+     * Canceling is atomic - either, none of the specified data is sent, or,
+     * if sending already started when the cancel call was made, all of the data
+     * is sent. (In the latter case, no [CancellationException] happens, since
+     * the send operation was successfully completed.)
+     *
+     * If no send call is ongoing, this does nothing.
+     */
+    fun cancelSend()
+
+    /**
+     * Cancels a currently suspended receive call.
+     *
+     * The receive call resumes immediately and throws a [CancellationException],
+     * and nothing is received.
+     *
+     * If the subclass implements some sort of internal receive aggregation buffer
+     * (for example to accumulate enough data to parse a full frame), this buffer
+     * must be cleared when the receive call is canceled.
+     *
+     * Canceling is atomic - either, no data is received, or, if receiving
+     * already started when the cancel call was made, it finishes, and is
+     * returned to the caller. (In the latter case, no [CancellationException]
+     * happens, since the receive operation was successfully completed.)
+     *
+     * If no receive call is ongoing, this does nothing.
+     */
+    fun cancelReceive()
 }
 
 /**
@@ -69,13 +107,16 @@ abstract class BlockingComboIO : ComboIO {
      * Blocks the calling thread until the given block of bytes is fully sent.
      *
      * In case of an error, or some other reason why sending
-     * cannot be done (like a closed connection), an exception
+     * cannot be done (like a cancellation), an exception
      * is thrown.
      *
-     * If an exception is thrown, the data is to be considered not
-     * having been sent.
+     * This function sends atomically. Either, the entire data
+     * is sent, or none of it is sent (the latter happens in
+     * case of an exception).
      *
      * @param dataToSend The data to send. Must not be empty.
+     * @throws CancellationException if cancelled by [cancelSend].
+     * @throws ComboIOException if sending fails.
      */
     abstract fun blockingSend(dataToSend: List<Byte>)
 
@@ -83,10 +124,13 @@ abstract class BlockingComboIO : ComboIO {
      * Blocks the calling thread until a given block of bytes is received.
      *
      * In case of an error, or some other reason why receiving
-     * cannot be done (like a closed connection), an exception
+     * cannot be done (like a cancellation), an exception
      * is thrown.
      *
      * @return Received block of bytes. This is never empty.
+     *
+     * @throws CancellationException if cancelled by [cancelReceive].
+     * @throws ComboIOException if receiving fails.
      */
     abstract fun blockingReceive(): List<Byte>
 }
@@ -107,16 +151,32 @@ class FramedComboIO(private val io: ComboIO) : ComboIO {
     override suspend fun send(dataToSend: List<Byte>) = io.send(dataToSend.toComboFrame())
 
     override suspend fun receive(): List<Byte> {
-        while (true) {
-            val parseResult = frameParser.parseFrame()
-            if (parseResult == null) {
-                frameParser.pushData(io.receive())
-                continue
-            }
+        try {
+            // Loop until a full frame is parsed, an
+            // error occurs, or the job is canceled.
+            // In the latter two cases, an exception
+            // is thrown, so we won't end up in an
+            // infinite loop here.
+            while (true) {
+                val parseResult = frameParser.parseFrame()
+                if (parseResult == null) {
+                    frameParser.pushData(io.receive())
+                    continue
+                }
 
-            return parseResult
+                return parseResult
+            }
+        } catch (e: CancellationException) {
+            frameParser.reset()
+            throw e
+        } catch (e: ComboIOException) {
+            frameParser.reset()
+            throw e
         }
     }
+
+    override fun cancelSend() = io.cancelSend()
+    override fun cancelReceive() = io.cancelReceive()
 
     /**
      * Resets the internal frame parser.
