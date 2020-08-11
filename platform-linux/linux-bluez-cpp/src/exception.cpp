@@ -14,7 +14,7 @@ exception::exception(std::string const &what)
 
 
 invalid_call_exception::invalid_call_exception(std::string const &what)
-    : exception(what)
+	: exception(what)
 {
 }
 

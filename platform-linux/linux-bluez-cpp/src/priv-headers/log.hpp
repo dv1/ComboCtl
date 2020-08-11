@@ -7,10 +7,10 @@
 
 
 #define LOG(LEVEL, ...) \
-    do { \
-        std::string str = fmt::format(__VA_ARGS__); \
-        ::comboctl::do_log(::comboctl::log_level::LEVEL, __FILE__, __LINE__, std::move(str)); \
-    } while (false)
+	do { \
+		std::string str = fmt::format(__VA_ARGS__); \
+		::comboctl::do_log(::comboctl::log_level::LEVEL, __FILE__, __LINE__, std::move(str)); \
+	} while (false)
 
 
 namespace comboctl
@@ -19,12 +19,12 @@ namespace comboctl
 
 enum class log_level
 {
-    trace,
-    debug,
-    info,
-    warn,
-    error,
-    fatal
+	trace,
+	debug,
+	info,
+	warn,
+	error,
+	fatal
 };
 
 std::string_view to_string(log_level level);

@@ -488,9 +488,11 @@ void rfcomm_connection::send(void const *src, int num_bytes)
 
 	do
 	{
+		gchar const *src_bytes = reinterpret_cast<gchar const *>(src) + (num_bytes - remaining_bytes_to_send);
+
 		gssize num_bytes_sent = g_socket_send(
 			m_socket,
-			reinterpret_cast<gchar const *>(src),
+			src_bytes,
 			remaining_bytes_to_send,
 			m_send_cancellable,
 			&gerror
