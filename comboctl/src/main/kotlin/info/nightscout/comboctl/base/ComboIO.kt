@@ -192,6 +192,12 @@ class FramedComboIO(private val io: ComboIO) : ComboIO {
     private val frameParser = ComboFrameParser()
 }
 
+/**
+ * Base class for exceptions related to IO operations from/to the Combo.
+ *
+ * @param message The detail message.
+ * @param cause Throwable that further describes the cause of the exception.
+ */
 open class ComboIOException(message: String?, cause: Throwable?) : ComboException(message, cause) {
     constructor(message: String) : this(message, null)
     constructor(cause: Throwable) : this(null, cause)

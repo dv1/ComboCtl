@@ -122,6 +122,18 @@ interface BluetoothInterface {
      */
     fun unpairDevice(deviceAddress: BluetoothAddress)
 
-    // can throw BluetoothException if the device cannot be accessed
+    /**
+     * Creates and returns a BluetoothDevice for the given address.
+     *
+     * This merely creates a new BluetoothDevice instance. It does
+     * not connect to the device. Use [BluetoothDevice.connect]
+     * for that purpose.
+     *
+     * NOTE: Creating multiple instances to the same device is
+     * possible, but untested.
+     *
+     * @return BluetoothDevice instance for the device with the
+     *         given address
+     */
     fun getDevice(deviceAddress: BluetoothAddress): BluetoothDevice
 }
