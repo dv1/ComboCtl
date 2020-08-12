@@ -53,6 +53,12 @@ namespace jni
                 GetArrayRegion(env, SafeDereference(env, this->get()), start, buf);
                }
 
+            template < class T >
+            void GetRegion(JNIEnv& env, jsize start, jsize len, T* buf) const
+               {
+                GetArrayRegion(env, SafeDereference(env, this->get()), start, len, buf);
+               }
+
             template < class Array >
             void SetRegion(JNIEnv& env, jsize start, const Array& buf)
                {

@@ -191,10 +191,18 @@ public:
 			m_intermediate_send_buffer.resize(length);
 
 		// This copies the bytes from the JNI array into our send buffer.
-		data.GetRegion(env, 0, m_intermediate_send_buffer);
+		// Note that we don't just pass m_intermediate_send_buffer
+		// to GetRegion(). Instead, we pass a pointer & length. This is
+		// because the code above only expands m_intermediate_send_buffer.
+		// If length is shorter than the existing size of that buffer,
+		// it won't be resized. (This is intentional, to avoid unnecessary
+		// reallocations.) If we passed m_intermediate_send_buffer to
+		// GetRegion(), it may end up being instructed to copy more bytes
+		// than there are available.
+		data.GetRegion(env, 0, length, reinterpret_cast<jni::jbyte *>(m_intermediate_send_buffer.data()));
 
 		// Now send the bytes over RFCOMM.
-		call_with_jni_rethrow(env, [&]() { m_device->send(&m_intermediate_send_buffer[0], m_intermediate_send_buffer.size()); });
+		call_with_jni_rethrow(env, [&]() { m_device->send(&m_intermediate_send_buffer[0], length); });
 	}
 
 	jni::Local<jni::Array<jni::jbyte>> receive_impl(jni::JNIEnv &env)
