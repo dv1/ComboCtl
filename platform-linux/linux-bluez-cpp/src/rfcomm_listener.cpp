@@ -132,7 +132,7 @@ void rfcomm_listener::listen(unsigned int rfcomm_channel)
 
 	if (!g_socket_listen(rfcomm_gsocket, &gerror))
 	{
-		LOG(error, "Could not setting RFCOMM GSocket to listen: {}", gerror->message);
+		LOG(error, "Could not set RFCOMM GSocket to listen: {}", gerror->message);
 		throw gerror_exception(gerror);
 	}
 
