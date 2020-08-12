@@ -19,6 +19,12 @@ extensions.configure<CppLibrary> {
 val glibCflagsStdout = ByteArrayOutputStream()
 val glibLibsStdout = ByteArrayOutputStream()
 
+fun getGccAndClangCflags(): List<String> {
+    return listOf("-Wextra", "-Wall", "-O0", "-g3", "-ggdb", "-fPIC", "-DPIC", "-std=c++17") +
+    glibCflagsStdout.toString().trim().split(" ") +
+    listOf("-I/usr/lib/jvm/java-11-openjdk-amd64/include", "-I/usr/lib/jvm/java-11-openjdk-amd64/include/linux")
+}
+
 task<Exec>("glib2PkgConfigCflags") {
     commandLine("pkg-config", "--cflags", "glib-2.0", "gio-2.0")
     standardOutput = glibCflagsStdout
@@ -33,7 +39,8 @@ tasks.withType(CppCompile::class.java).configureEach {
     dependsOn("glib2PkgConfigCflags")
     compilerArgs.addAll(toolChain.map { toolChain ->
         when (toolChain) {
-            is Gcc, is Clang -> listOf("-Wextra", "-Wall", "-O0", "-g3", "-ggdb", "-fPIC", "-DPIC", "-std=c++17") + glibCflagsStdout.toString().trim().split(" ") + listOf("-I/usr/lib/jvm/java-11-openjdk-amd64/include", "-I/usr/lib/jvm/java-11-openjdk-amd64/include/linux")
+            // TODO: Remove hardcoded JNI include paths
+            is Gcc, is Clang -> getGccAndClangCflags()
             else -> listOf()
         }
     })
