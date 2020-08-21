@@ -101,13 +101,15 @@ suspend fun performPairing(
     logger.log(LogLevel.DEBUG) { "Reading keys and source/destination addresses from KEY_RESPONSE packet" }
     transportLayer.parseKeyResponsePacket(keyResponsePacket!!)
 
+    lateinit var tpLayerPacket: TransportLayer.Packet
+
     // We got the keys. Next step is to ask the pump for IDs.
     // The ID_RESPONSE response packet contains purely informational
     // values that aren't necessary for operating the pump. However,
     // it seems that we still have to request these IDs, otherwise
     // the pump reports an error. (TODO: Further verify this.)
     sendTransportLayerPacket(io, logger, transportLayer.createRequestIDPacket(bluetoothFriendlyName))
-    val tpLayerPacket: TransportLayer.Packet = receiveTransportLayerPacket(
+    tpLayerPacket = receiveTransportLayerPacket(
         io,
         transportLayer,
         logger,
@@ -127,7 +129,7 @@ suspend fun performPairing(
     // Wait for the response and verify it.
     logger.log(LogLevel.DEBUG) { "Sending regular connection request" }
     sendTransportLayerPacket(io, logger, transportLayer.createRequestRegularConnectionPacket())
-    receiveTransportLayerPacket(
+    tpLayerPacket = receiveTransportLayerPacket(
         io,
         transportLayer,
         logger,
@@ -199,7 +201,7 @@ suspend fun performPairing(
     // Wait for the response and verify it.
     logger.log(LogLevel.DEBUG) { "Reconnecting regular connection" }
     sendTransportLayerPacket(io, logger, transportLayer.createRequestRegularConnectionPacket())
-    receiveTransportLayerPacket(
+    tpLayerPacket = receiveTransportLayerPacket(
         io,
         transportLayer,
         logger,
