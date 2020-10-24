@@ -9,7 +9,9 @@ package info.nightscout.comboctl.base
  * Initially, these values are not set (= the properties are set to null).
  * All values are set during the pairing process. After pairing, the only
  * value that keeps being updated is currentTxNonce (it is incremented every
- * time a new packet is created and sent to the Combo).
+ * time a new packet is created and sent to the Combo). A state with its
+ * values unset is considered isValid; [PersistentState.isValid] will return
+ * false then.
  *
  * As for the ciphers, the 128-bit keys are what needs to be persistently stored.
  */
@@ -60,3 +62,16 @@ interface PersistentState {
      */
     fun reset()
 }
+
+/**
+ * Checks whether or not a [PersistentState] is valid.
+ *
+ * Only a valid state can be used for regular connections.
+ * States become valid by getting filled with valid data. This
+ * is typically done when pairing with a device or when restoring
+ * previously saved state data.
+ */
+fun PersistentState.isValid() =
+    (clientPumpCipher != null) &&
+    (pumpClientCipher != null) &&
+    (keyResponseAddress != null)
