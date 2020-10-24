@@ -94,6 +94,16 @@ class DisplayFrameAssembler {
             return null
     }
 
+    /**
+     * Main assembly function.
+     *
+     * This is an overloaded variant of [processRTDisplayPayload] that accepts
+     * an [ApplicationLayer.RTDisplayPayload] instance instead of the individual
+     * index, row, pixels arguments.
+     */
+    fun processRTDisplayPayload(rtDisplayPayload: ApplicationLayer.RTDisplayPayload): DisplayFrame? =
+        processRTDisplayPayload(rtDisplayPayload.index, rtDisplayPayload.row, rtDisplayPayload.pixels)
+
     private fun reset() {
         rtDisplayFrameRows.fill(null)
         numRowsLeftUnset = 4
