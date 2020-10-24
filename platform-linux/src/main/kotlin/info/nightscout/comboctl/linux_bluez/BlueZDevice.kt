@@ -16,7 +16,11 @@ import info.nightscout.comboctl.base.BluetoothInterface
  * bound to BlueZDevice) that holds the data about the BlueZ
  * device and its RFCOMM socket.
  */
-class BlueZDevice(nativeDevicePtr: Long, override val address: BluetoothAddress) : BluetoothDevice() {
+class BlueZDevice(
+    bluetoothInterface: BluetoothInterface,
+    nativeDevicePtr: Long,
+    override val address: BluetoothAddress
+) : BluetoothDevice(bluetoothInterface) {
     init {
         // This calls the constructor of the native C++ class.
         initialize()

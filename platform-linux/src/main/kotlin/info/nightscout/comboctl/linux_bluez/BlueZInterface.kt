@@ -81,7 +81,7 @@ class BlueZInterface : BluetoothInterface {
 
     override fun getDevice(deviceAddress: BluetoothAddress): BluetoothDevice {
         val nativeDevicePtr = getDeviceImpl(deviceAddress.toByteArray())
-        return BlueZDevice(nativeDevicePtr, deviceAddress)
+        return BlueZDevice(this, nativeDevicePtr, deviceAddress)
     }
 
     // Private external C++ functions.
