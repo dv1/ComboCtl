@@ -29,9 +29,27 @@ class BlueZInterface : BluetoothInterface {
         initialize()
     }
 
-    // Base class overrides.
+    /**
+     * Immediately shuts down the interface.
+     *
+     * This function is necessary to make sure BlueZ is shut down properly.
+     * It removes the custom BlueZ authentication agent and cleans up
+     * any DBus objects and connections that might have been created.
+     *
+     * Previously connected devices can be used even after shutting down,
+     * but only to a limited degree. Their own functions for connecting,
+     * disconnecting, sending, and receiving still work. However, any
+     * calls to this interface's functions will either cause a no-op
+     * (if it is a function that shuts down or stops or disconnects from
+     * from something) or throw an [IllegalStateException].
+     *
+     * If discovery is ongoing, this implicitly calls stopDiscovery().
+     *
+     * A repeated call will do nothing.
+     */
+    external fun shutdown()
 
-    external override fun shutdown()
+    // Base class overrides.
 
     // This isn't directly external, since we have to wrap
     // the function literals in the wrapper classes first.

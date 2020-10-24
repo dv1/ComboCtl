@@ -9,28 +9,9 @@ package info.nightscout.comboctl.base
  *    (An SDP service is temporarily set up during discovery.)
  * 2. Connect to a Bluetooth device and enable RFCOMM-based blocking IO with it.
  *
- * The constructor must set up all necessary platform specific
- * resources. Later, to explicitly shut down the Bluetooth
- * interface immediately, [shutdown] can be called. (Typically
- * this function is called from within a finally block).
+ * The constructor must set up all necessary platform specific resources.
  */
 interface BluetoothInterface {
-    /**
-     * Immediately shuts down this interface.
-     *
-     * Previously connected devices can be used even after shutting down.
-     * That is, [BluetoothDevice] instances previously returned
-     * by [getDevice] are not invalidated by this function.
-     *
-     * After this call, this BluetoothInterface instance cannot be
-     * used anymore.
-     *
-     * If discovery is ongoing, this implicitly calls stopDiscovery().
-     *
-     * A repeated call will do nothing.
-     */
-    fun shutdown()
-
     /**
      * Starts discovery of Bluetooth devices that haven't been paired yet.
      *

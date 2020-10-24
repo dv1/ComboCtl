@@ -23,6 +23,9 @@ namespace
 {
 
 
+// TODO: Throw IllegalStateException when the interface is shut down.
+
+
 //////////////////
 // Utility code //
 //////////////////
