@@ -29,14 +29,13 @@ class PairingSessionTest {
         final override fun cancelReceive() = Unit
     }
 
-    val loggerFactory = LoggerFactory(StderrLoggerBackend(), LogLevel.DEBUG)
     lateinit var tpLayer: TransportLayer
     lateinit var appLayer: ApplicationLayer
 
     @BeforeEach
     fun setup() {
         val tpLayerState = TestPersistentTLState()
-        tpLayer = TransportLayer(loggerFactory.getLogger(LogCategory.TP_LAYER), tpLayerState)
+        tpLayer = TransportLayer(tpLayerState)
         appLayer = ApplicationLayer()
     }
 
@@ -289,7 +288,6 @@ class PairingSessionTest {
 
         runBlocking {
             val highLevelIO = HighLevelIO(
-                loggerFactory.getLogger(LogCategory.APP_LAYER),
                 tpLayer,
                 appLayer,
                 testIO,
@@ -306,7 +304,7 @@ class PairingSessionTest {
                 { getPINDeferred -> getPINDeferred.complete(testPIN) }
             )
 
-            loggerFactory.getLogger(LogCategory.TP_LAYER).log(LogLevel.DEBUG) { "Test completed" }
+            System.err.println("Test completed")
         }
     }
 }

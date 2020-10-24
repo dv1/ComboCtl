@@ -4,6 +4,8 @@ import info.nightscout.comboctl.base.*
 import java.io.BufferedInputStream
 import java.io.IOException
 
+private val logger = Logger.get("RuffyDatadumpReader")
+
 /**
  * Reads binary data dumps produced by the datadump Ruffy fork.
  *
@@ -28,9 +30,8 @@ import java.io.IOException
  * display data).
  *
  * @property inputStream The buffered input stream to read binary data from.
- * @property logger Logger to use for internal logging.
  */
-class RuffyDatadumpReader(val inputStream: BufferedInputStream, val logger: Logger) {
+class RuffyDatadumpReader(val inputStream: BufferedInputStream) {
     data class FrameData(var frameData: List<Byte>, var isOutgoingData: Boolean)
 
     /**
@@ -53,12 +54,12 @@ class RuffyDatadumpReader(val inputStream: BufferedInputStream, val logger: Logg
             if (numRead < 0) {
                 // numRead < 0 is not an error; according to the BufferedInputStream
                 // docs, it indicates a normal end-of-file.
-                logger.log(LogLevel.DEBUG) { "End of file reached" }
+                logger(LogLevel.DEBUG) { "End of file reached" }
                 return null
             } else if (numRead != 4) {
                 // We need 4 bytes to read the full integer. Fewer bytes indicate
                 // incomplete data, which is invalid.
-                logger.log(LogLevel.ERROR) { "Did only read $numRead/4 length byte(s)" }
+                logger(LogLevel.ERROR) { "Did only read $numRead/4 length byte(s)" }
                 return null
             }
 
@@ -71,11 +72,11 @@ class RuffyDatadumpReader(val inputStream: BufferedInputStream, val logger: Logg
             // The topmost bit indicates whether or not this is outgoing data.
             isOutgoingData = (lengthBytes[3].toPosInt() and 0x80) != 0
         } catch (e: IOException) {
-            logger.log(LogLevel.ERROR, e) { "Could not read length byte(s)" }
+            logger(LogLevel.ERROR) { "Could not read length byte(s): $e" }
             return null
         }
 
-        logger.log(LogLevel.DEBUG) { "Attempting to read frame data with $frameDataLength byte(s)" }
+        logger(LogLevel.DEBUG) { "Attempting to read frame data with $frameDataLength byte(s)" }
 
         // Now try to read the actual frame data.
         try {
@@ -83,15 +84,15 @@ class RuffyDatadumpReader(val inputStream: BufferedInputStream, val logger: Logg
             val numRead = inputStream.read(bytes, 0, frameDataLength)
 
             if (numRead < 0) {
-                logger.log(LogLevel.ERROR) { "End of file reached even though frame data bytes were expected" }
+                logger(LogLevel.ERROR) { "End of file reached even though frame data bytes were expected" }
             } else if (numRead != frameDataLength) {
-                logger.log(LogLevel.ERROR) { "Did only read $numRead/$frameDataLength frame data byte(s)" }
+                logger(LogLevel.ERROR) { "Did only read $numRead/$frameDataLength frame data byte(s)" }
                 return null
             }
 
             frameData = bytes.toList()
         } catch (e: IOException) {
-            logger.log(LogLevel.ERROR, e) { "Could not read frame data byte(s)" }
+            logger(LogLevel.ERROR) { "Could not read frame data byte(s): $e" }
             return null
         }
 

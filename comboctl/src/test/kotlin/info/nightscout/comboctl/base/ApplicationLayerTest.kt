@@ -5,7 +5,6 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 
 class ApplicationLayerTest {
-    val loggerFactory = LoggerFactory(StderrLoggerBackend(), LogLevel.DEBUG)
     lateinit var tpLayerState: TestPersistentTLState
     lateinit var tpLayer: TransportLayer
     lateinit var appLayer: ApplicationLayer
@@ -48,7 +47,7 @@ class ApplicationLayerTest {
             0x2a, 0xb0, 0xf2, 0x67, 0xc2, 0x7d, 0xcf, 0xaa,
             0x32, 0xb2, 0x48, 0x94, 0xe1, 0x6d, 0xe9, 0x5c))
 
-        tpLayer = TransportLayer(loggerFactory.getLogger(LogCategory.TP_LAYER), tpLayerState)
+        tpLayer = TransportLayer(tpLayerState)
         appLayer = ApplicationLayer()
     }
 

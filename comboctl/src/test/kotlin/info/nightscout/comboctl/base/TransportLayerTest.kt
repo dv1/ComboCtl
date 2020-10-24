@@ -198,7 +198,7 @@ class TransportLayerTest {
             0xab, 0xc6, 0x89, 0x7f, 0x14, 0x9b, 0xdf, 0x3b))
 
         val tpLayerState = TestPersistentTLState()
-        val tpLayer = TransportLayer(LoggerFactory(StderrLoggerBackend(), LogLevel.DEBUG).getLogger(LogCategory.TP_LAYER), tpLayerState)
+        val tpLayer = TransportLayer(tpLayerState)
 
         // Send the first 3 pairing setup packets. After REQUEST_PAIRING_CONNECTION,
         // the Combo would normally send back PAIRING_CONNECTION_REQUEST_ACCEPTED,

@@ -2,6 +2,8 @@ package info.nightscout.comboctl.base
 
 import java.lang.IllegalStateException
 
+private val logger = Logger.get("TransportLayer")
+
 // Transport layer packet structure:
 //
 //   1. 4 bits    : Packet major version (always set to 0x01)
@@ -61,7 +63,7 @@ val MAX_VALID_TL_PAYLOAD_SIZE = 65535
  * This class is typically not directly touched by users. Instead, it is typically
  * used by higher-level code that handles the pairing and regular connection processes.
  */
-class TransportLayer(private val logger: Logger, private val state: PersistentState) {
+class TransportLayer(private val state: PersistentState) {
     /**
      * Current sequence flag, used in reliable data packets.
      *
@@ -427,7 +429,7 @@ class TransportLayer(private val logger: Logger, private val state: PersistentSt
             machineAuthenticationCode = NullMachineAuthCode
         )
         packet.computeCRC16Payload()
-        logger.log(LogLevel.DEBUG) {
+        logger(LogLevel.DEBUG) {
             "Computed CRC16 payload 0x%02X%02X".format(packet.payload[1].toPosInt(), packet.payload[0].toPosInt())
         }
         return packet
@@ -477,7 +479,7 @@ class TransportLayer(private val logger: Logger, private val state: PersistentSt
      */
     fun usePairingPIN(pairingPIN: PairingPIN) {
         weakCipher = Cipher(generateWeakKeyFromPIN(pairingPIN))
-        logger.log(LogLevel.DEBUG) {
+        logger(LogLevel.DEBUG) {
             "Generated weak cipher key ${weakCipher!!.key.toHexString()} out of pairing PIN $pairingPIN"
         }
     }
@@ -746,7 +748,7 @@ class TransportLayer(private val logger: Logger, private val state: PersistentSt
         val destinationAddress = (addressInt shr 4) and 0xF
         state.keyResponseAddress = ((sourceAddress shl 4) or destinationAddress).toByte()
 
-        logger.log(LogLevel.DEBUG) {
+        logger(LogLevel.DEBUG) {
             "Address: ${"%02x".format(state.keyResponseAddress)}" +
             "  decrypted client->pump key: ${state.clientPumpCipher!!.key.toHexString()}" +
             "  decrypted pump->client key: ${state.pumpClientCipher!!.key.toHexString()}"
@@ -852,15 +854,13 @@ fun List<Byte>.toTransportLayerPacket(): TransportLayer.Packet {
  * converts the packet to a byte list that can be sent.
  *
  * @param io Combo IO object to use for sending.
- * @param logger Logger to use for logging the send operation.
  * @param packet Packet that shall be sent.
  */
 suspend fun sendTransportLayerPacket(
     io: ComboIO,
-    logger: Logger,
     packet: TransportLayer.Packet
 ) {
-    logger.log(LogLevel.DEBUG) { "Sending transport layer ${packet.commandID.name} packet" }
+    logger(LogLevel.DEBUG) { "Sending transport layer ${packet.commandID.name} packet" }
     io.send(packet.toByteList())
 }
 
@@ -888,7 +888,6 @@ suspend fun sendTransportLayerPacket(
  * "Sequence and data reliability bits" for more details.)
  *
  * @param io Combo IO object to use for sending.
- * @param logger Logger to use for logging the send operation.
  * @param expectedCommandID What command ID we expect in the received packet.
  * @throws IncorrectPacketException if the received packet's command ID
  *         does not match expectedCommandID.
@@ -896,10 +895,9 @@ suspend fun sendTransportLayerPacket(
 suspend fun receiveTransportLayerPacket(
     io: ComboIO,
     transportLayer: TransportLayer,
-    logger: Logger,
     expectedCommandID: TransportLayer.CommandID
 ): TransportLayer.Packet {
-    logger.log(LogLevel.DEBUG) { "Waiting for transport layer ${expectedCommandID.name} packet" }
+    logger(LogLevel.DEBUG) { "Waiting for transport layer ${expectedCommandID.name} packet" }
 
     lateinit var tpLayerPacket: TransportLayer.Packet
 
@@ -908,7 +906,7 @@ suspend fun receiveTransportLayerPacket(
 
         when (tpLayerPacket.commandID) {
             expectedCommandID -> break@receivingPacket
-            TransportLayer.CommandID.ACK_RESPONSE -> logger.log(LogLevel.DEBUG) { "Got ACK_RESPONSE packet; ignoring" }
+            TransportLayer.CommandID.ACK_RESPONSE -> logger(LogLevel.DEBUG) { "Got ACK_RESPONSE packet; ignoring" }
             else -> throw TransportLayer.IncorrectPacketException(tpLayerPacket, expectedCommandID)
         }
     }

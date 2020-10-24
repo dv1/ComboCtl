@@ -6,6 +6,9 @@ import java.io.BufferedInputStream
 import java.io.File
 import java.io.IOException
 
+private val frameLogger = Logger.get("Frame")
+private val packetLogger = Logger.get("Packet")
+
 // Tool for dumping Combo transport layer packet information to stdout.
 //
 // It can be run from the command line like this:
@@ -18,20 +21,16 @@ fun main(vararg args: String) {
         return
     }
 
-    val loggerFactory = LoggerFactory(StderrLoggerBackend(), LogLevel.DEBUG)
-    val frameLogger = loggerFactory.getLogger(LogCategory.FRAME)
-    val packetLogger = loggerFactory.getLogger(LogCategory.PACKET)
-
     val inputStream: BufferedInputStream
 
     try {
         inputStream = File(args[0]).inputStream().buffered()
     } catch (e: IOException) {
-        frameLogger.log(LogLevel.ERROR, e) { "Could not open file" }
+        frameLogger(LogLevel.ERROR) { "Could not open file" }
         return
     }
 
-    val datadumpReader = RuffyDatadumpReader(inputStream, frameLogger)
+    val datadumpReader = RuffyDatadumpReader(inputStream)
 
     // The data dump contains both incoming and outgoing frame data
     // in an interleaved fashion. These two types of data need to
@@ -43,7 +42,7 @@ fun main(vararg args: String) {
     while (true) {
         val frameData = datadumpReader.readFrameData()
         if (frameData == null) {
-            frameLogger.log(LogLevel.DEBUG) { "No frame data was read; stopping" }
+            frameLogger(LogLevel.DEBUG) { "No frame data was read; stopping" }
             break
         }
 
@@ -51,33 +50,32 @@ fun main(vararg args: String) {
         frameParser.pushData(frameData.frameData)
         val framePayload = frameParser.parseFrame()
         if (framePayload == null) {
-            frameLogger.log(LogLevel.DEBUG) { "No frame payload was parsed; skipping" }
+            frameLogger(LogLevel.DEBUG) { "No frame payload was parsed; skipping" }
             continue
         }
 
-        frameLogger.log(LogLevel.DEBUG) {
+        frameLogger(LogLevel.DEBUG) {
             "Got ${if (frameData.isOutgoingData) "outgoing" else "incoming"} frame payload with ${framePayload.size} byte(s)"
         }
 
         try {
             val packet = framePayload.toTransportLayerPacket()
-            packetLogger.log(LogLevel.DEBUG) {
-                val directionDesc = if (frameData.isOutgoingData) "<=== Outgoing" else "===> Incoming"
-                "$directionDesc packet:  $packet"
+            packetLogger(LogLevel.DEBUG) {
+                "${if (frameData.isOutgoingData) "<=== Outgoing" else "===> Incoming"} packet:  $packet"
             }
 
             if (packet.commandID == TransportLayer.CommandID.DATA) {
                 try {
                     val appLayerPacket = ApplicationLayer.Packet(packet)
-                    packetLogger.log(LogLevel.DEBUG) { "  Application layer packet: $appLayerPacket" }
+                    packetLogger(LogLevel.DEBUG) { "  Application layer packet: $appLayerPacket" }
                 } catch (exc: ApplicationLayer.ExceptionBase) {
-                    packetLogger.log(LogLevel.ERROR) { "Could not parse DATA packet as application layer packet: $exc" }
+                    packetLogger(LogLevel.ERROR) { "Could not parse DATA packet as application layer packet: $exc" }
                 }
             }
         } catch (exc: TransportLayer.InvalidCommandIDException) {
-            packetLogger.log(LogLevel.ERROR) { exc.message ?: "<got InvalidCommandIDException with no message>" }
+            packetLogger(LogLevel.ERROR) { exc.message ?: "<got InvalidCommandIDException with no message>" }
         } catch (exc: ComboException) {
-            packetLogger.log(LogLevel.ERROR) { "Caught ComboException: $exc" }
+            packetLogger(LogLevel.ERROR) { "Caught ComboException: $exc" }
         }
     }
 }

@@ -32,7 +32,6 @@ class HighLevelIOTest {
         assertEquals(appLayerPacket.payload[3], (if (buttonStatusChangedFlag) 0xB7 else 0x48).toByte())
     }
 
-    val loggerFactory = LoggerFactory(StderrLoggerBackend(), LogLevel.DEBUG)
     private lateinit var tpLayerState: TestPersistentTLState
     private lateinit var tpLayer: TransportLayer
     private lateinit var appLayer: ApplicationLayer
@@ -51,11 +50,10 @@ class HighLevelIOTest {
             0x2a, 0xb0, 0xf2, 0x67, 0xc2, 0x7d, 0xcf, 0xaa,
             0x32, 0xb2, 0x48, 0x94, 0xe1, 0x6d, 0xe9, 0x5c))
 
-        tpLayer = TransportLayer(loggerFactory.getLogger(LogCategory.TP_LAYER), tpLayerState)
+        tpLayer = TransportLayer(tpLayerState)
         appLayer = ApplicationLayer()
         testIO = TestComboIO()
         highLevelIO = HighLevelIO(
-            loggerFactory.getLogger(LogCategory.APP_LAYER),
             tpLayer,
             appLayer,
             testIO,

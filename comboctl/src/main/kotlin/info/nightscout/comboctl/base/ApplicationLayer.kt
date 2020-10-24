@@ -1,5 +1,7 @@
 package info.nightscout.comboctl.base
 
+private val logger = Logger.get("ApplicationLayer")
+
 // Application layer packet structure (excluding the additional transport layer packet metadata):
 //
 // 1. 4 bits  : Application layer major version (always set to 0x01)
@@ -515,16 +517,14 @@ class ApplicationLayer {
  * @param transportLayer TransportLayer instance needed for
  *        converting the packet to a transport layer packet
  *        prior to sending.
- * @param logger Logger to use for logging the send operation.
  * @param packet Packet that shall be sent.
  */
 suspend fun sendApplicationLayerPacket(
     io: ComboIO,
     transportLayer: TransportLayer,
-    logger: Logger,
     packet: ApplicationLayer.Packet
 ) {
-    logger.log(LogLevel.DEBUG) { "Sending application layer ${packet.command.name} packet" }
+    logger(LogLevel.DEBUG) { "Sending application layer ${packet.command.name} packet" }
     io.send(packet.toTransportLayerPacket(transportLayer).toByteList())
 }
 
@@ -544,7 +544,6 @@ suspend fun sendApplicationLayerPacket(
  *        converting the received packet to a transport layer
  *        that can then be used to generate the application
  *        layer packet.
- * @param logger Logger to use for logging the send operation.
  * @param expectedCommand What command we expect in the received packet.
  * @throws IncorrectPacketException if the received packet's command
  *         does not match expectedCommand, or if the underlying
@@ -553,14 +552,12 @@ suspend fun sendApplicationLayerPacket(
 suspend fun receiveApplicationLayerPacket(
     io: ComboIO,
     transportLayer: TransportLayer,
-    logger: Logger,
     expectedCommand: ApplicationLayer.Command
 ): ApplicationLayer.Packet {
-    logger.log(LogLevel.DEBUG) { "Waiting for application layer ${expectedCommand.name} packet" }
+    logger(LogLevel.DEBUG) { "Waiting for application layer ${expectedCommand.name} packet" }
     val tpLayerPacket = receiveTransportLayerPacket(
         io,
         transportLayer,
-        logger,
         TransportLayer.CommandID.DATA
     )
     val appLayerPacket = ApplicationLayer.Packet(tpLayerPacket)

@@ -3,6 +3,8 @@ package info.nightscout.comboctl.base
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 
+private val logger = Logger.get("HighLevelIO")
+
 /**
  * Class for high-level IO operations.
  *
@@ -37,7 +39,6 @@ import kotlinx.coroutines.channels.Channel
  * since this would also block the data-receiving coroutine.
  */
 class HighLevelIO(
-    private val logger: Logger,
     public val transportLayer: TransportLayer,
     public val applicationLayer: ApplicationLayer,
     private val io: ComboIO,
@@ -78,14 +79,14 @@ class HighLevelIO(
     ) {
         // Initiate pairing and wait for the response.
         // (The response contains no meaningful payload.)
-        logger.log(LogLevel.DEBUG) { "Sending pairing connection request" }
+        logger(LogLevel.DEBUG) { "Sending pairing connection request" }
         sendPacket(transportLayer.createRequestPairingConnectionPacket())
         receivePacket(TransportLayer.CommandID.PAIRING_CONNECTION_REQUEST_ACCEPTED)
 
         // Initiate pump-client and client-pump keys request.
         // This will cause the pump to generate and show a
         // 10-digit PIN.
-        logger.log(LogLevel.DEBUG) { "Requesting the pump to generate and show the pairing PIN" }
+        logger(LogLevel.DEBUG) { "Requesting the pump to generate and show the pairing PIN" }
         sendPacket(transportLayer.createRequestKeysPacket())
 
         // Ask the user for the 10-digit PIN, and retrieve
@@ -109,11 +110,11 @@ class HighLevelIO(
             // world then has to complete the deferred once
             // the user entered the PIN (typically through some
             // sort of UI).
-            logger.log(LogLevel.DEBUG) { "Waiting for the PIN to be provided" }
+            logger(LogLevel.DEBUG) { "Waiting for the PIN to be provided" }
             val getPINDeferred = CompletableDeferred<PairingPIN>()
             pairingPINCallback.invoke(getPINDeferred)
             pin = getPINDeferred.await()
-            logger.log(LogLevel.DEBUG) { "Provided PIN: $pin" }
+            logger(LogLevel.DEBUG) { "Provided PIN: $pin" }
 
             // Pass the PIN to the transport layer so it can internally
             // generate a weak cipher out of it.
@@ -125,12 +126,12 @@ class HighLevelIO(
             // message sent earlier above only causes the pump to
             // generate the keys and show the PIN.)
             if (keyResponsePacket == null) {
-                logger.log(LogLevel.DEBUG) { "Requesting the available pump-client and client-pump keys from the pump" }
+                logger(LogLevel.DEBUG) { "Requesting the available pump-client and client-pump keys from the pump" }
                 sendPacket(transportLayer.createGetAvailableKeysPacket())
 
                 // Wait for the KEY_RESPONSE packet.
                 keyResponsePacket = receivePacket(TransportLayer.CommandID.KEY_RESPONSE)
-                logger.log(LogLevel.DEBUG) { "KEY_RESPONSE packet with the keys inside received" }
+                logger(LogLevel.DEBUG) { "KEY_RESPONSE packet with the keys inside received" }
             }
 
             // If the KEY_RESPONSE packet could not be verified,
@@ -144,7 +145,7 @@ class HighLevelIO(
             // that we got here, but will try to verify it again
             // with the newly generated weak cipher.
             if (!transportLayer.verifyIncomingPacket(keyResponsePacket)) {
-                logger.log(LogLevel.WARN) {
+                logger(LogLevel.WARN) {
                     "Could not authenticate KEY_RESPONSE packet; perhaps user entered PIN incorrectly; asking again for PIN"
                 }
             } else
@@ -154,7 +155,7 @@ class HighLevelIO(
         // KEY_RESPONSE packet was received and verified, and the
         // pairing PIN was passed to the transport layer. We can
         // now decrypt the pump-client and client-pump keys.
-        logger.log(LogLevel.DEBUG) { "Reading keys and source/destination addresses from KEY_RESPONSE packet" }
+        logger(LogLevel.DEBUG) { "Reading keys and source/destination addresses from KEY_RESPONSE packet" }
         transportLayer.parseKeyResponsePacket(keyResponsePacket!!)
 
         lateinit var tpLayerPacket: TransportLayer.Packet
@@ -169,7 +170,7 @@ class HighLevelIO(
         if (!transportLayer.verifyIncomingPacket(tpLayerPacket))
             throw TransportLayer.PacketVerificationException(tpLayerPacket)
         val comboIDs = transportLayer.parseIDResponsePacket(tpLayerPacket)
-        logger.log(LogLevel.DEBUG) {
+        logger(LogLevel.DEBUG) {
             "Received IDs: server ID: ${comboIDs.serverID} pump ID: ${comboIDs.pumpID}"
         }
 
@@ -178,7 +179,7 @@ class HighLevelIO(
         // application layer. For this to happen, we need a regular
         // _transport layer_ connection.
         // Wait for the response and verify it.
-        logger.log(LogLevel.DEBUG) { "Sending regular connection request" }
+        logger(LogLevel.DEBUG) { "Sending regular connection request" }
         sendPacket(transportLayer.createRequestRegularConnectionPacket())
         tpLayerPacket = receivePacket(TransportLayer.CommandID.REGULAR_CONNECTION_REQUEST_ACCEPTED)
         if (!transportLayer.verifyIncomingPacket(tpLayerPacket))
@@ -186,7 +187,7 @@ class HighLevelIO(
 
         // Initiate application-layer connection and wait for the response.
         // (The response contains no meaningful payload.)
-        logger.log(LogLevel.DEBUG) { "Initiating application layer connection" }
+        logger(LogLevel.DEBUG) { "Initiating application layer connection" }
         sendPacket(applicationLayer.createCTRLConnectPacket())
         receivePacket(ApplicationLayer.Command.CTRL_CONNECT_RESPONSE)
 
@@ -195,7 +196,7 @@ class HighLevelIO(
         // the version numbers, but apparently we _have_ to query them,
         // otherwise the pump considers it an error.
         // TODO: Further verify this.
-        logger.log(LogLevel.DEBUG) { "Requesting command mode service version" }
+        logger(LogLevel.DEBUG) { "Requesting command mode service version" }
         sendPacket(applicationLayer.createCTRLGetServiceVersionPacket(ApplicationLayer.ServiceID.COMMAND_MODE))
         receivePacket(ApplicationLayer.Command.CTRL_SERVICE_VERSION_RESPONSE)
         // NOTE: These two steps may not be necessary. See the
@@ -207,7 +208,7 @@ class HighLevelIO(
 
         // Next, send a BIND command and wait for the response.
         // (The response contains no meaningful payload.)
-        logger.log(LogLevel.DEBUG) { "Sending BIND command" }
+        logger(LogLevel.DEBUG) { "Sending BIND command" }
         sendPacket(applicationLayer.createCTRLBindPacket())
         receivePacket(ApplicationLayer.Command.CTRL_BIND_RESPONSE)
 
@@ -215,18 +216,18 @@ class HighLevelIO(
         // transport layer now. (Unclear why, but it seems this
         // is necessary for the pairing process to succeed.)
         // Wait for the response and verify it.
-        logger.log(LogLevel.DEBUG) { "Reconnecting regular connection" }
+        logger(LogLevel.DEBUG) { "Reconnecting regular connection" }
         sendPacket(transportLayer.createRequestRegularConnectionPacket())
         tpLayerPacket = receivePacket(TransportLayer.CommandID.REGULAR_CONNECTION_REQUEST_ACCEPTED)
         if (!transportLayer.verifyIncomingPacket(tpLayerPacket))
             throw TransportLayer.PacketVerificationException(tpLayerPacket)
 
         // Disconnect the application layer connection.
-        logger.log(LogLevel.DEBUG) { "Disconnecting application layer connection" }
+        logger(LogLevel.DEBUG) { "Disconnecting application layer connection" }
         sendPacket(applicationLayer.createCTRLDisconnectPacket())
 
         // Pairing complete.
-        logger.log(LogLevel.DEBUG) { "Pairing finished successfully" }
+        logger(LogLevel.DEBUG) { "Pairing finished successfully" }
     }
 
     suspend fun connect(backgroundReceiveScope: CoroutineScope) {
@@ -243,20 +244,20 @@ class HighLevelIO(
                 runReceiveLoop()
             }
 
-            logger.log(LogLevel.DEBUG) { "Sending regular connection request" }
+            logger(LogLevel.DEBUG) { "Sending regular connection request" }
 
             sendPacket(transportLayer.createRequestRegularConnectionPacket())
             tpLayerPacket = receivePacket(TransportLayer.CommandID.REGULAR_CONNECTION_REQUEST_ACCEPTED)
             if (!transportLayer.verifyIncomingPacket(tpLayerPacket))
                 throw TransportLayer.PacketVerificationException(tpLayerPacket)
 
-            logger.log(LogLevel.DEBUG) { "Initiating application layer connection" }
+            logger(LogLevel.DEBUG) { "Initiating application layer connection" }
             sendPacket(applicationLayer.createCTRLConnectPacket())
             receivePacket(ApplicationLayer.Command.CTRL_CONNECT_RESPONSE)
 
             activateMode(Mode.REMOTE_TERMINAL)
 
-            logger.log(LogLevel.INFO) { "Application layer connected" }
+            logger(LogLevel.INFO) { "Application layer connected" }
         } catch (e: Exception) {
             disconnect()
         }
@@ -264,7 +265,7 @@ class HighLevelIO(
 
     suspend fun disconnect() {
         if (receiveLoopJob == null) {
-            logger.log(LogLevel.DEBUG) {
+            logger(LogLevel.DEBUG) {
                 "Attempted to connect even though a receive job is running (-> we are already disconnected); ignoring call"
             }
             return
@@ -273,25 +274,25 @@ class HighLevelIO(
         receiveLoopJob!!.cancel()
         receiveLoopJob = null
 
-        logger.log(LogLevel.DEBUG) { "Deactivating all services" }
+        logger(LogLevel.DEBUG) { "Deactivating all services" }
         sendPacket(applicationLayer.createCTRLDeactivateAllServicesPacket())
         receivePacket(ApplicationLayer.Command.CTRL_ALL_SERVICES_DEACTIVATED)
 
-        logger.log(LogLevel.DEBUG) { "Sending disconnect packet" }
+        logger(LogLevel.DEBUG) { "Sending disconnect packet" }
         sendPacket(applicationLayer.createCTRLDisconnectPacket())
 
-        logger.log(LogLevel.INFO) { "Application layer disconnected" }
+        logger(LogLevel.INFO) { "Application layer disconnected" }
     }
 
     suspend fun switchToMode(newMode: Mode) {
         // TODO: This is experimental. Switching modes has not been attempted yet.
 
         if (currentMode == newMode) {
-            logger.log(LogLevel.DEBUG) { "Ignoring redundant mode change since the ${currentMode.str} is already active" }
+            logger(LogLevel.DEBUG) { "Ignoring redundant mode change since the ${currentMode.str} is already active" }
             return
         }
 
-        logger.log(LogLevel.DEBUG) { "Deactivating all services before activating the ${currentMode.str} mode" }
+        logger(LogLevel.DEBUG) { "Deactivating all services before activating the ${currentMode.str} mode" }
         sendPacket(applicationLayer.createCTRLDeactivateAllServicesPacket())
         receivePacket(ApplicationLayer.Command.CTRL_ALL_SERVICES_DEACTIVATED)
 
@@ -323,7 +324,7 @@ class HighLevelIO(
 
     suspend fun startLongRTButtonPress(button: Button, scope: CoroutineScope) {
         if (currentLongRTPressJob != null) {
-            logger.log(LogLevel.DEBUG) {
+            logger(LogLevel.DEBUG) {
                 "Long RT button press job already running, and button press state is PRESSED; ignoring redundant call"
             }
             return
@@ -334,7 +335,7 @@ class HighLevelIO(
 
     suspend fun stopLongRTButtonPress() {
         if (currentLongRTPressJob == null) {
-            logger.log(LogLevel.DEBUG) {
+            logger(LogLevel.DEBUG) {
                 "No long RT button press job running, and button press state is RELEASED; ignoring redundant call"
             }
             return
@@ -346,17 +347,17 @@ class HighLevelIO(
     // Private functions
 
     private suspend fun sendPacket(packet: TransportLayer.Packet) {
-        logger.log(LogLevel.DEBUG) { "Sending transport layer ${packet.commandID.name} packet" }
+        logger(LogLevel.DEBUG) { "Sending transport layer ${packet.commandID.name} packet" }
         io.send(packet.toByteList())
     }
 
     private suspend fun sendPacket(packet: ApplicationLayer.Packet) {
-        logger.log(LogLevel.DEBUG) { "Sending application layer ${packet.command.name} packet" }
+        logger(LogLevel.DEBUG) { "Sending application layer ${packet.command.name} packet" }
         io.send(packet.toTransportLayerPacket(transportLayer).toByteList())
     }
 
     private suspend fun receivePacket(expectedCommandID: TransportLayer.CommandID? = null): TransportLayer.Packet {
-        logger.log(LogLevel.DEBUG) {
+        logger(LogLevel.DEBUG) {
             if (expectedCommandID == null)
                 "Waiting for transport layer packet"
             else
@@ -372,7 +373,7 @@ class HighLevelIO(
             // responded to with an ACK_RESPONSE packet whose sequence bit
             // must match that of the received packet.
             if (tpLayerPacket.reliabilityBit) {
-                logger.log(LogLevel.DEBUG) {
+                logger(LogLevel.DEBUG) {
                     "Got a transport layer ${tpLayerPacket.commandID.name} packet with its reliability bit set; " +
                     "responding with ACK_RESPONSE packet; sequence bit: ${tpLayerPacket.sequenceBit}"
                 }
@@ -381,13 +382,13 @@ class HighLevelIO(
                 try {
                     io.send(ackResponsePacket.toByteList())
                 } catch (e: Exception) {
-                    logger.log(LogLevel.ERROR) { "Error while sending ACK_RESPONSE transport layer packet: $e" }
+                    logger(LogLevel.ERROR) { "Error while sending ACK_RESPONSE transport layer packet: $e" }
                     throw e
                 }
             }
 
             when (tpLayerPacket.commandID) {
-                TransportLayer.CommandID.ACK_RESPONSE -> logger.log(LogLevel.DEBUG) { "Got ACK_RESPONSE packet; ignoring" }
+                TransportLayer.CommandID.ACK_RESPONSE -> logger(LogLevel.DEBUG) { "Got ACK_RESPONSE packet; ignoring" }
                 TransportLayer.CommandID.ERROR_RESPONSE -> processErrorResponse(transportLayer.parseErrorResponsePacket(tpLayerPacket))
                 else -> {
                     if ((expectedCommandID != null) && (tpLayerPacket.commandID != expectedCommandID))
@@ -402,12 +403,12 @@ class HighLevelIO(
     }
 
     suspend fun receivePacket(expectedCommand: ApplicationLayer.Command): ApplicationLayer.Packet {
-        logger.log(LogLevel.DEBUG) {
+        logger(LogLevel.DEBUG) {
             "Waiting for application layer ${expectedCommand.name} packet (will arrive in a transport layer DATA packet)"
         }
         val tpLayerPacket = receivePacket(TransportLayer.CommandID.DATA)
 
-        logger.log(LogLevel.DEBUG) { "Parsing DATA packet as application layer packet" }
+        logger(LogLevel.DEBUG) { "Parsing DATA packet as application layer packet" }
         return ApplicationLayer.Packet(tpLayerPacket)
     }
 
@@ -424,7 +425,7 @@ class HighLevelIO(
             // handle in this when statement.
             when (tpLayerPacket.commandID) {
                 TransportLayer.CommandID.DATA -> processTpLayerDataPacket(tpLayerPacket)
-                else -> logger.log(LogLevel.WARN) {
+                else -> logger(LogLevel.WARN) {
                     "Cannot process ${tpLayerPacket.commandID.name} packet coming from the Combo; ignoring packet"
                 }
             }
@@ -436,10 +437,10 @@ class HighLevelIO(
 
         // Parse the transport layer DATA packet as an application layer packet.
         try {
-            logger.log(LogLevel.DEBUG) { "Parsing DATA packet as application layer packet" }
+            logger(LogLevel.DEBUG) { "Parsing DATA packet as application layer packet" }
             appLayerPacket = ApplicationLayer.Packet(tpLayerPacket)
         } catch (e: ApplicationLayer.ExceptionBase) {
-            logger.log(LogLevel.ERROR) { "Could not parse DATA packet as application layer packet: $e" }
+            logger(LogLevel.ERROR) { "Could not parse DATA packet as application layer packet: $e" }
             throw e
         }
 
@@ -464,7 +465,7 @@ class HighLevelIO(
     }
 
     private suspend fun activateMode(newMode: Mode) {
-        logger.log(LogLevel.DEBUG) { "Activating ${newMode.str} mode" }
+        logger(LogLevel.DEBUG) { "Activating ${newMode.str} mode" }
 
         sendPacket(
             applicationLayer.createCTRLActivateServicePacket(
@@ -483,7 +484,7 @@ class HighLevelIO(
         val currentJob = currentLongRTPressJob
 
         if (!pressing) {
-            logger.log(LogLevel.DEBUG) { "Releasing ${currentLongRTPressedButton.str} RT button" }
+            logger(LogLevel.DEBUG) { "Releasing ${currentLongRTPressedButton.str} RT button" }
             currentJob!!.cancel()
             currentLongRTPressJob = null
             return
@@ -510,7 +511,7 @@ class HighLevelIO(
                     }
 
                     while (true) {
-                        logger.log(LogLevel.DEBUG) {
+                        logger(LogLevel.DEBUG) {
                             "Sending long RT ${button.str} button press; status changed = $buttonStatusChanged"
                         }
 
@@ -521,7 +522,7 @@ class HighLevelIO(
                         buttonStatusChanged = false
                     }
                 } finally {
-                    logger.log(LogLevel.DEBUG) { "Long RT ${button.str} button press canceled" }
+                    logger(LogLevel.DEBUG) { "Long RT ${button.str} button press canceled" }
                     sendPacket(applicationLayer.createRTButtonStatusPacket(ApplicationLayer.RTButtonCode.NO_BUTTON, true))
                 }
             } finally {
