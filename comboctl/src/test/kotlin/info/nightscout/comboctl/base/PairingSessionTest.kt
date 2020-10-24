@@ -5,30 +5,30 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 
-class TestComboIO(
-    private val incomingPackets: List<TransportLayer.Packet>,
-    private val outgoingPackets: List<TransportLayer.Packet>
-) : ComboIO {
-    private val incomingIt = incomingPackets.iterator()
-    private val outgoingIt = outgoingPackets.iterator()
+class PairingSessionTest {
+    private class TestComboIO(
+        private val incomingPackets: List<TransportLayer.Packet>,
+        private val outgoingPackets: List<TransportLayer.Packet>
+    ) : ComboIO {
+        private val incomingIt = incomingPackets.iterator()
+        private val outgoingIt = outgoingPackets.iterator()
 
-    final override suspend fun send(dataToSend: List<Byte>) {
-        if (!outgoingIt.hasNext())
-            throw ComboException("No more")
+        final override suspend fun send(dataToSend: List<Byte>) {
+            if (!outgoingIt.hasNext())
+                throw ComboException("No more")
 
-        val expectedOutgoingData = outgoingIt.next().toByteList()
-        assertEquals(expectedOutgoingData, dataToSend)
+            val expectedOutgoingData = outgoingIt.next().toByteList()
+            assertEquals(expectedOutgoingData, dataToSend)
+        }
+
+        final override suspend fun receive(): List<Byte> =
+            if (incomingIt.hasNext()) incomingIt.next().toByteList() else throw ComboException("No more")
+
+        final override fun cancelSend() = Unit
+
+        final override fun cancelReceive() = Unit
     }
 
-    final override suspend fun receive(): List<Byte> =
-        if (incomingIt.hasNext()) incomingIt.next().toByteList() else throw ComboException("No more")
-
-    final override fun cancelSend() = Unit
-
-    final override fun cancelReceive() = Unit
-}
-
-class PairingSessionTest {
     val loggerFactory = LoggerFactory(StderrLoggerBackend(), LogLevel.DEBUG)
     lateinit var tpLayer: TransportLayer
     lateinit var appLayer: ApplicationLayer
@@ -288,18 +288,22 @@ class PairingSessionTest {
         val testIO = TestComboIO(incomingPackets, expectedOutgoingPackets)
 
         runBlocking {
+            val highLevelIO = HighLevelIO(
+                loggerFactory.getLogger(LogCategory.APP_LAYER),
+                tpLayer,
+                appLayer,
+                testIO,
+                { Unit }
+            )
+
             // performPairing() does the actual pairing, and is implemented
             // as a suspend function. It throws exceptions in case of errors.
             // If pairing completes successfully, the incoming data channel
             // will have its reception canceled (cancel() will be called),
             // and the outgoingDataChannel will be close()d.
-            performPairing(
-                appLayer,
-                tpLayer,
+            highLevelIO.performPairing(
                 testBtFriendlyName,
-                loggerFactory.getLogger(LogCategory.APP_LAYER),
-                { getPINDeferred -> getPINDeferred.complete(testPIN) },
-                testIO
+                { getPINDeferred -> getPINDeferred.complete(testPIN) }
             )
 
             loggerFactory.getLogger(LogCategory.TP_LAYER).log(LogLevel.DEBUG) { "Test completed" }

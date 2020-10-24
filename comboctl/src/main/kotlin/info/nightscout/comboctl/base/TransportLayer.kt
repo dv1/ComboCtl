@@ -816,7 +816,7 @@ class TransportLayer(private val logger: Logger, private val state: PersistentSt
      * @param packet The packet that came from the Combo.
      * @return The parsed error ID.
      */
-    private fun parseErrorResponsePacket(packet: Packet): Int {
+    fun parseErrorResponsePacket(packet: Packet): Int {
         if (packet.commandID != CommandID.ERROR_RESPONSE)
             throw IncorrectPacketException(packet, CommandID.ERROR_RESPONSE)
         if (packet.payload.size != 1)
@@ -911,18 +911,6 @@ suspend fun receiveTransportLayerPacket(
             TransportLayer.CommandID.ACK_RESPONSE -> logger.log(LogLevel.DEBUG) { "Got ACK_RESPONSE packet; ignoring" }
             else -> throw TransportLayer.IncorrectPacketException(tpLayerPacket, expectedCommandID)
         }
-    }
-
-    // Packets with the reliability flag set must be immediately
-    // responded to with an ACK_RESPONSE packet whose sequence bit
-    // must match that of the received packet.
-    if (tpLayerPacket.reliabilityBit) {
-        logger.log(LogLevel.DEBUG) {
-            "Got a transport layer ${tpLayerPacket.commandID.name} packet with its reliability bit set; " +
-            "responding with ACK_RESPONSE packet; sequence bit: ${tpLayerPacket.sequenceBit}"
-        }
-        val ackResponsePacket = transportLayer.createAckResponsePacket(tpLayerPacket.sequenceBit)
-        io.send(ackResponsePacket.toByteList())
     }
 
     return tpLayerPacket
