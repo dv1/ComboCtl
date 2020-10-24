@@ -266,6 +266,27 @@ void adapter::remove_device(bluetooth_address const &device_address)
 }
 
 
+std::string adapter::get_name() const
+{
+	GVariant *variant = g_dbus_proxy_get_cached_property(m_adapter_proxy, "Name");
+	if (variant == nullptr)
+		throw io_exception("DBus Adapter object has no Name property");
+
+	gsize name_cstr_size = 0;
+	gchar const *name_cstr = g_variant_get_string(variant, &name_cstr_size);
+	if (name_cstr == nullptr)
+	{
+		throw io_exception("DBus Adapter object has Name property that is not a string");
+	}
+
+	std::string name(name_cstr, name_cstr_size);
+
+	LOG(debug, "Got friendly name for Bluetooth adapter: \"{}\"", name);
+
+	return name;
+}
+
+
 void adapter::send_discovery_call(bool do_start)
 {
 	GError *error = nullptr;

@@ -122,4 +122,9 @@ interface BluetoothInterface {
      *         a Bluetooth subsystem that has been shut down.
      */
     fun getDevice(deviceAddress: BluetoothAddress): BluetoothDevice
+
+    /**
+     * Returns the friendly (= human-readable) name for the adapter.
+     */
+    fun getAdapterFriendlyName(): String
 }

@@ -102,6 +102,11 @@ public:
 	 */
 	void remove_device(bluetooth_address const &device_address);
 
+	/**
+	 * Returns the friendly (= human-readable) name for the adapter.
+	 */
+	std::string get_name() const;
+
 
 private:
 	void send_discovery_call(bool do_start);

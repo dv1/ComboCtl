@@ -622,4 +622,10 @@ bluez_bluetooth_device_uptr bluez_interface::get_device(bluetooth_address device
 }
 
 
+std::string bluez_interface::get_adapter_friendly_name() const
+{
+	return m_priv->m_adapter.get_name();
+}
+
+
 } // namespace comboctl end

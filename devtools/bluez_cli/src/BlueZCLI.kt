@@ -115,6 +115,7 @@ class MainApp(private val mainScope: CoroutineScope) {
                         (deviceAddress[2] == 0x2F.toByte())
                     }
                 )
+                printLine("BT friendly name: ${bluezInterface.getAdapterFriendlyName()}")
             } catch (e: IllegalStateException) {
                 printLine("Attempted to start discovery even though it is running already")
             } catch (e: BluetoothException) {

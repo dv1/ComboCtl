@@ -346,6 +346,11 @@ public:
 		call_with_jni_rethrow(env, [&]() { m_iface.stop_discovery(); });
 	}
 
+	jni::Local<jni::String> get_adapter_friendly_name(jni::JNIEnv &env)
+	{
+		return jni::Make<jni::String>(env, m_iface.get_adapter_friendly_name());
+	}
+
 	void unpair_device_impl(jni::JNIEnv &env, jni::Array<jni::jbyte> const &device_address)
 	{
 		comboctl::bluetooth_address address = to_bt_address(env, device_address);
@@ -406,6 +411,7 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*)
 			"finalize",
 			METHOD(&bluez_interface_jni::shutdown, "shutdown"),
 			METHOD(&bluez_interface_jni::stop_discovery, "stopDiscovery"),
+			METHOD(&bluez_interface_jni::get_adapter_friendly_name, "getAdapterFriendlyName"),
 			METHOD(&bluez_interface_jni::start_discovery_impl, "startDiscoveryImpl"),
 			METHOD(&bluez_interface_jni::unpair_device_impl, "unpairDeviceImpl"),
 			METHOD(&bluez_interface_jni::get_device_impl, "getDeviceImpl")

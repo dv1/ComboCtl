@@ -84,6 +84,8 @@ class BlueZInterface : BluetoothInterface {
         return BlueZDevice(this, nativeDevicePtr, deviceAddress)
     }
 
+    external override fun getAdapterFriendlyName(): String
+
     // Private external C++ functions.
 
     private external fun startDiscoveryImpl(

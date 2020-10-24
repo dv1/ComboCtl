@@ -291,6 +291,11 @@ public:
 	 */
 	bluez_bluetooth_device_uptr get_device(bluetooth_address device_address);
 
+    /**
+     * Returns the friendly (= human-readable) name for the adapter.
+     */
+	std::string get_adapter_friendly_name() const;
+
 
 private:
 	void setup();
