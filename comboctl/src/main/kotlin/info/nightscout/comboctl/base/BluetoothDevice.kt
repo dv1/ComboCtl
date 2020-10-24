@@ -17,18 +17,23 @@ abstract class BluetoothDevice(val bluetoothInterface: BluetoothInterface) : Blo
     /**
      * Set up the device's RFCOMM connection.
      *
+     * This function blocks until the connection is set up or an error occurs.
+     *
      * @throws BluetoothException if connection fails due to an underlying
      *         Bluetooth issue.
      * @throws ComboIOException if connection fails due to an underlying
-     *         IO issue.
+     *         IO issue and if the device was unpaired.
+     * @throws IllegalStateException if this object is in a state
+     *         that does not permit connecting, such as a device
+     *         that has been shut down.
      */
     abstract fun connect()
 
     /**
      * Explicitly disconnect the device's RFCOMM connection now.
      *
-     * After this call, this BluetoothDevice instance cannot be
-     * used anymore.
+     * After this call, this BluetoothDevice instance cannot be user
+     * anymore until it is reconnected via a new [connect] call.
      */
     abstract fun disconnect()
 

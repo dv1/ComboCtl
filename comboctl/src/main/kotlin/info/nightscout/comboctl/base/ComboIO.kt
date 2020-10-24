@@ -30,6 +30,9 @@ interface ComboIO {
      * @param dataToSend The data to send. Must not be empty.
      * @throws CancellationException if cancelled by [cancelSend].
      * @throws ComboIOException if sending fails.
+     * @throws IllegalStateException if this object is in a state
+     *         that does not permit sending, such as a device
+     *         that has been shut down or isn't connected.
      */
     suspend fun send(dataToSend: List<Byte>)
 
@@ -43,6 +46,9 @@ interface ComboIO {
      * @return Received block of bytes. This is never empty.
      * @throws CancellationException if cancelled by [cancelReceive].
      * @throws ComboIOException if receiving fails.
+     * @throws IllegalStateException if this object is in a state
+     *         that does not permit receiving, such as a device
+     *         that has been shut down or isn't connected.
      */
     suspend fun receive(): List<Byte>
 
@@ -117,6 +123,9 @@ abstract class BlockingComboIO : ComboIO {
      * @param dataToSend The data to send. Must not be empty.
      * @throws CancellationException if cancelled by [cancelSend].
      * @throws ComboIOException if sending fails.
+     * @throws IllegalStateException if this object is in a state
+     *         that does not permit sending, such as a device
+     *         that has been shut down or isn't connected.
      */
     abstract fun blockingSend(dataToSend: List<Byte>)
 
@@ -131,6 +140,9 @@ abstract class BlockingComboIO : ComboIO {
      *
      * @throws CancellationException if cancelled by [cancelReceive].
      * @throws ComboIOException if receiving fails.
+     * @throws IllegalStateException if this object is in a state
+     *         that does not permit receiving, such as a device
+     *         that has been shut down or isn't connected.
      */
     abstract fun blockingReceive(): List<Byte>
 }

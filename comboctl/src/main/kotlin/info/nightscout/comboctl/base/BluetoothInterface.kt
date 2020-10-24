@@ -73,7 +73,9 @@ interface BluetoothInterface {
      *        detected as gone are not reported as such.
      *        Default callback just lets everything pass through.
      * @throws IllegalStateException if this is called again after
-     *         discovery has been started already.
+     *         discovery has been started already, or if the interface
+     *         is in a state in which discovery is not possible, such as
+     *         a Bluetooth subsystem that has been shut down.
      * @throws BluetoothException if discovery fails due to an underlying
      *         Bluetooth issue.
      */
@@ -115,6 +117,9 @@ interface BluetoothInterface {
      *
      * @return BluetoothDevice instance for the device with the
      *         given address
+     * @throws IllegalStateException if the interface is in a state
+     *         in which accessing devices is not possible, such as
+     *         a Bluetooth subsystem that has been shut down.
      */
     fun getDevice(deviceAddress: BluetoothAddress): BluetoothDevice
 }
