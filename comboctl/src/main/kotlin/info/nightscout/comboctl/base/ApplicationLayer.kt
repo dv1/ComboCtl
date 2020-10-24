@@ -540,10 +540,6 @@ suspend fun sendApplicationLayerPacket(
  * transport layer packet isn't a DATA packet.
  *
  * @param io Combo IO object to use for sending.
- * @param transportLayer TransportLayer instance needed for
- *        converting the received packet to a transport layer
- *        that can then be used to generate the application
- *        layer packet.
  * @param expectedCommand What command we expect in the received packet.
  * @throws IncorrectPacketException if the received packet's command
  *         does not match expectedCommand, or if the underlying
@@ -551,13 +547,11 @@ suspend fun sendApplicationLayerPacket(
  */
 suspend fun receiveApplicationLayerPacket(
     io: ComboIO,
-    transportLayer: TransportLayer,
     expectedCommand: ApplicationLayer.Command
 ): ApplicationLayer.Packet {
     logger(LogLevel.DEBUG) { "Waiting for application layer ${expectedCommand.name} packet" }
     val tpLayerPacket = receiveTransportLayerPacket(
         io,
-        transportLayer,
         TransportLayer.CommandID.DATA
     )
     val appLayerPacket = ApplicationLayer.Packet(tpLayerPacket)

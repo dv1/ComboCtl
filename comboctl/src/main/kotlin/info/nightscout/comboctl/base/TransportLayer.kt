@@ -894,7 +894,6 @@ suspend fun sendTransportLayerPacket(
  */
 suspend fun receiveTransportLayerPacket(
     io: ComboIO,
-    transportLayer: TransportLayer,
     expectedCommandID: TransportLayer.CommandID
 ): TransportLayer.Packet {
     logger(LogLevel.DEBUG) { "Waiting for transport layer ${expectedCommandID.name} packet" }
