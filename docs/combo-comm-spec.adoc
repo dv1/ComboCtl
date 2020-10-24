@@ -733,6 +733,62 @@ The following data has to be stored in a persistent manner:
   the `TL_KEY_RESPONSE` packet
 
 
+== Error handling
+
+These subsections describe how to handle errors in various
+situations to make sure the system does not end up in some
+undefined state.
+
+
+=== Incorrect PIN entered during the pairing phase
+
+If during the pairing process as describd in "Transport layer pairing"
+the user enters an incorrect PIN, pairing does not immediately have
+to be restarted, since the PIN merely defines what the weak key will
+look like, and the weak key is what we use to validate the received
+`TL_KEY_RESPONSE`. An incorrect PIN leads to a validation failure.
+
+So, if in step 5 in "Transport layer pairing" the `TL_KEY_RESPONSE`
+packet can't be validated, the user needs to be notified that either
+the PIN was entered incorrectly or a communication error occurred,
+and that the user needs to reenter the PIN.
+
+The procedure goes as follows:
+
+1. If `TL_KEY_RESPONSE` validation succeeds, go on with the pairing
+   process, otherwise go to step 2.
+
+2. The user is informed that the PIN might have been entered incorrectly,
+   and is requested again to enter the PIN.
+
+3. If the user reenters the PIN, go back to step 4. If the connection
+   to the Combo fails in the meantime (perhaps due to some timeout or
+   because the user gets out of range), or if the user cancels the PIN
+   request, go to step 5.
+
+4. Regenerate the weak key based on the newly entered PIN. Then go
+   back to step 1 to try to revalidate the packet.
+
+5. If this step is reached, the pairing has to be aborted. Wipe any
+   contents from the persistent state. Then, the Bluetooth pairing
+   previously established to the Combo must be undone.
+
+
+=== Connection loss or packet validation errors during the pairing phase
+
+In these cases, step 5 from the subsection above must be implemented.
+The pairing process requires an intact connection and uncorrupted packets.
+The user needs to be told that there was a connection problem and that the
+pairing must be repeated.
+
+
+=== Connection loss or packet validation errors during a normal connection
+
+In these cases, the connection must be terminated, and the user must be
+informed about this, with the added recommendation that the user should
+consider re-pairing if these connection problems persist.
+
+
 
 == Application layer structures and protocols
 
@@ -1470,6 +1526,9 @@ sequence needs to be performed:
    0x48 ("status did not change") instead. Then go back to step 2.
 5. Send the `AL_RT_BUTTON_STATUS` command with the status byte
    set to 0xB7 ("status did change") and the button code NoButton.
+
+#TODO: Can multiple buttons be held down at the same time?
+#And can held down buttons and singular button pressed be mixed?
 
 
 === `AL_RT_DISPLAY` :
