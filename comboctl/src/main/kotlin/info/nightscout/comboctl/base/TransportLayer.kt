@@ -524,7 +524,7 @@ class TransportLayer(private val state: PersistentState) {
             // Packets that use MAC based verification with the weak cipher
             CommandID.KEY_RESPONSE -> {
                 if (weakCipher == null)
-                    throw IllegalStateException()
+                    throw IllegalStateException("Cannot verify KEY_RESPONSE packet without a weak cipher")
                 packet.verifyAuthentication(weakCipher!!)
             }
 
@@ -535,7 +535,7 @@ class TransportLayer(private val state: PersistentState) {
             CommandID.DATA,
             CommandID.ERROR_RESPONSE -> {
                 if (state.pumpClientCipher == null)
-                    throw IllegalStateException()
+                    throw IllegalStateException("Cannot verify ${packet.commandID} packet without a pump-client cipher")
                 packet.verifyAuthentication(state.pumpClientCipher!!)
             }
         }
