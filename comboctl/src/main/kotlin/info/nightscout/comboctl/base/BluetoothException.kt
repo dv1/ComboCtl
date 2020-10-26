@@ -6,7 +6,7 @@ package info.nightscout.comboctl.base
  * @param message The detail message.
  * @param cause Throwable that further describes the cause of the exception.
  */
-open class BluetoothException(message: String?, cause: Throwable?) : ComboException(message, cause) {
+open class BluetoothException(message: String?, cause: Throwable?) : ComboIOException(message, cause) {
     constructor(message: String) : this(message, null)
     constructor(cause: Throwable) : this(null, cause)
 }
