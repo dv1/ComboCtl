@@ -485,6 +485,11 @@ class TransportLayer(private val state: PersistentState) {
     }
 
     /**
+     * Checks whether or not the transport layer's [PersistentState] is valid.
+     */
+    fun persistentStateIsValid() = state.isValid()
+
+    /**
      * Generic incoming packet verification function.
      *
      * This is the function intended for external callers to verify
