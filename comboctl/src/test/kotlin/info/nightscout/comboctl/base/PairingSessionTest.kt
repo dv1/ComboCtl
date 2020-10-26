@@ -21,8 +21,16 @@ class PairingSessionTest {
             assertEquals(expectedOutgoingData, dataToSend)
         }
 
-        final override suspend fun receive(): List<Byte> =
-            if (incomingIt.hasNext()) incomingIt.next().toByteList() else throw ComboException("No more")
+        final override suspend fun receive(): List<Byte> {
+            // TODO: This is a workaround for a race condition.
+            // Packets are "received" irrespective of what the
+            // client code is actually doing. For example, this
+            // "receives" the KEY_RESPONSE code even when the
+            // client didn't send GET_AVAILABLE_KEYS. Fix the
+            // test by establishing dependencies between packets.
+            delay(500)
+            return (if (incomingIt.hasNext()) incomingIt.next().toByteList() else throw ComboException("No more"))
+        }
 
         final override fun cancelSend() = Unit
 
@@ -300,8 +308,9 @@ class PairingSessionTest {
             // will have its reception canceled (cancel() will be called),
             // and the outgoingDataChannel will be close()d.
             highLevelIO.performPairing(
+                this,
                 testBtFriendlyName,
-                { getPINDeferred -> getPINDeferred.complete(testPIN) }
+                { _, getPINDeferred -> getPINDeferred.complete(testPIN) }
             )
 
             System.err.println("Test completed")
