@@ -228,7 +228,7 @@ class Pump(
      * If an exception is thrown, the connection attempt is rolled
      * back. The device is in a disconnected state afterwards.
      *
-     * This internally uses [HighLevelIO.connection], but also
+     * This internally uses [HighLevelIO.connect], but also
      * handles the Bluetooth connection setup. Also, it terminates
      * the Bluetooth connection in case of an exception.
      *
@@ -264,10 +264,11 @@ class Pump(
      *
      * If no connection is running, this does nothing.
      *
-     * Other than the usual [CancellationException] that is present
-     * in all suspending functions, this throws no exceptions.
+     * Other than the usual [kotlinx.coroutines.CancellationException]
+     * that is present in all suspending functions, this throws no
+     * exceptions.
      *
-     * This internally uses [HighLevelIO.connection], but also
+     * This internally uses [HighLevelIO.connect], but also
      * handles the Bluetooth connection teardown.
      */
     suspend fun disconnect() {

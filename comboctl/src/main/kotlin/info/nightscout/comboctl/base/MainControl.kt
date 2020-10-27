@@ -54,12 +54,12 @@ class MainControl(
      * pairing data (cipher keys etc.), and a regular connection can
      * be established with the pump.
      *
-     * [backgroundReceiveScope]'s context needs to be associated with
-     * the same thread this function is called in. Otherwise, the receive
-     * loop may run in a different thread than this function, potentially
-     * leading to race conditions.
+     * [backgroundDiscoveryEventScope]'s context needs to be associated
+     * with the same thread this function is called in. Otherwise, the
+     * receive loop may run in a different thread than this function,
+     * potentially leading to race conditions.
      *
-     * @param backgroundReceiveScope [CoroutineScope] to run the
+     * @param backgroundDiscoveryEventScope [CoroutineScope] to run the
      *        background pairing activities in.
      * @param onNewPump Optional callback to notify callers about a new
      *        pump. It is not required to set this for a successful

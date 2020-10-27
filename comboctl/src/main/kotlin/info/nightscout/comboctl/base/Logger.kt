@@ -21,7 +21,7 @@ interface LoggerBackend {
      * these in its output in whatever way it wishes.
      *
      * In addition, a throwable can be logged in case the log line
-     * was caused by one. The [LoggerFactory.Logger.log] call may have provided
+     * was caused by one. The [SingleTagLogger.invoke] call may have provided
      * only a message string, or a throwable, or both, which is why both of these
      * arguments are nullable.
      *
