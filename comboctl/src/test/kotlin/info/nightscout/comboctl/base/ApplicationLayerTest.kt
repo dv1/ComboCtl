@@ -54,7 +54,7 @@ class ApplicationLayerTest {
     @Test
     fun checkCTRLConnectPacket() {
         val packet = appLayer.createCTRLConnectPacket()
-        val serialNumber: Int = 12345
+        val serialNumber = Constants.APPLICATION_LAYER_CONNECT_SERIAL_NUMBER
         checkCreatedPacket(
             packet,
             ApplicationLayer.Command.CTRL_CONNECT,

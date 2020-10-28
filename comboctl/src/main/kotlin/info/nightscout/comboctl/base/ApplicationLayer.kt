@@ -301,7 +301,7 @@ class ApplicationLayer {
      * @return The produced packet.
      */
     fun createCTRLConnectPacket(): Packet {
-        val serialNumber = 12345
+        val serialNumber = Constants.APPLICATION_LAYER_CONNECT_SERIAL_NUMBER
         val payload = byteArrayListOfInts(
             (serialNumber shr 0) and 0xFF,
             (serialNumber shr 8) and 0xFF,
