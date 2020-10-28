@@ -20,7 +20,7 @@ class TransportLayerTest {
         )
 
         // The actual parsing.
-        var packet = packetDataWithCRCPayload.toTransportLayerPacket()
+        val packet = packetDataWithCRCPayload.toTransportLayerPacket()
 
         // Check the individual properties.
 

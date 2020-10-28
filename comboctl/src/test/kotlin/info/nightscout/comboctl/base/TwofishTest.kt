@@ -72,7 +72,7 @@ class TwofishTest {
             }
         }
 
-        val testVectors = arrayOf<TestVector>(
+        val testVectors = arrayOf(
             TestVector(
                 key = "00000000000000000000000000000000",
                 plaintext = "00000000000000000000000000000000",

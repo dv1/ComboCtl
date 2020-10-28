@@ -9,16 +9,16 @@ class HighLevelIOTest {
     private class TestComboIO : ComboIO {
         val sentPacketData = mutableListOf<List<Byte>>()
 
-        final override suspend fun send(dataToSend: List<Byte>) {
+        override suspend fun send(dataToSend: List<Byte>) {
             sentPacketData.add(dataToSend)
         }
 
-        final override suspend fun receive(): List<Byte> =
+        override suspend fun receive(): List<Byte> =
             throw ComboException("No more")
 
-        final override fun cancelSend() = Unit
+        override fun cancelSend() = Unit
 
-        final override fun cancelReceive() = Unit
+        override fun cancelReceive() = Unit
     }
 
     private fun checkRTButtonStatusPacketData(
@@ -61,7 +61,7 @@ class HighLevelIOTest {
         )
     }
 
-    fun checkLongRTButtonPressPacketSequence(appLayerButtonCode: ApplicationLayer.RTButtonCode) {
+    private fun checkLongRTButtonPressPacketSequence(appLayerButtonCode: ApplicationLayer.RTButtonCode) {
         assertTrue(testIO.sentPacketData.size >= 3)
 
         checkRTButtonStatusPacketData(

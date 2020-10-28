@@ -5,9 +5,9 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 
 class ApplicationLayerTest {
-    lateinit var tpLayerState: TestPersistentTLState
-    lateinit var tpLayer: TransportLayer
-    lateinit var appLayer: ApplicationLayer
+    private lateinit var tpLayerState: TestPersistentTLState
+    private lateinit var tpLayer: TransportLayer
+    private lateinit var appLayer: ApplicationLayer
 
     // Common checks for verifying that a newly created packet is OK.
     private fun checkCreatedPacket(

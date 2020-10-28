@@ -12,9 +12,9 @@ import kotlinx.coroutines.*
 //     java -Djava.library.path="platform-linux/linux-bluez-cpp/build/lib/main/debug" -jar devtools/bluez_cli/build/libs/bluez_cli-standalone.jar
 
 class MainApp(private val mainScope: CoroutineScope) {
-    val cli: CommandLineInterface
-    val bluezInterface: BlueZInterface
-    val connectedBluetoothDevices = mutableMapOf<BluetoothAddress, BluetoothDevice>()
+    private val cli: CommandLineInterface
+    private val bluezInterface: BlueZInterface
+    private val connectedBluetoothDevices = mutableMapOf<BluetoothAddress, BluetoothDevice>()
 
     init {
         cli = CommandLineInterface(
@@ -22,15 +22,15 @@ class MainApp(private val mainScope: CoroutineScope) {
                 "quit" to CommandEntry(
                     0,
                     "Quits the program",
-                    "") { _ -> quit() },
+                    "") { quit() },
                 "startDiscovery" to CommandEntry(
                     0,
                     "Starts Bluetooth discovery in the background",
-                    "") { _ -> startDiscovery() },
+                    "") { startDiscovery() },
                 "stopDiscovery" to CommandEntry(
                     0,
                     "Stops Bluetooth discovery",
-                    "") { _ -> stopDiscovery() },
+                    "") { stopDiscovery() },
                 "connectDevice" to CommandEntry(
                     1,
                     "Connects to a Bluetooth device with the given address",
@@ -86,7 +86,7 @@ class MainApp(private val mainScope: CoroutineScope) {
         cli.run("cmd> ")
     }
 
-    fun printLine(line: String) = cli.printLine(line)
+    private fun printLine(line: String) = cli.printLine(line)
 
     // Command handlers
 
@@ -137,7 +137,7 @@ class MainApp(private val mainScope: CoroutineScope) {
         }
 
         val device = bluezInterface.getDevice(deviceAddress)
-        connectedBluetoothDevices.put(deviceAddress, device)
+        connectedBluetoothDevices[deviceAddress] = device
 
         mainScope.launch {
             try {

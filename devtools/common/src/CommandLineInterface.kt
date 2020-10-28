@@ -4,7 +4,6 @@ import info.nightscout.comboctl.base.*
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.math.max
 import kotlinx.coroutines.*
-import kotlinx.coroutines.sync.*
 import org.jline.reader.*
 import org.jline.reader.impl.*
 import org.jline.reader.impl.completer.*
@@ -169,14 +168,14 @@ class CommandLineInterface(private val commands: CommandsMap, private val onStop
 
         // Custom callbacks necessary for avoiding a race condition.
         // See the lineMutex description above for details.
-        cmdlineReader.getWidgets().put(LineReader.CALLBACK_INIT, Widget {
+        cmdlineReader.widgets[LineReader.CALLBACK_INIT] = Widget {
             lineMutex.unlock()
             true
-        })
-        cmdlineReader.getWidgets().put(LineReader.CALLBACK_FINISH, Widget {
+        }
+        cmdlineReader.widgets[LineReader.CALLBACK_FINISH] = Widget {
             lineMutex.lock()
             true
-        })
+        }
 
         for ((name, entry) in commands)
             longestCommandName = max(longestCommandName, name.length)
@@ -205,15 +204,15 @@ class CommandLineInterface(private val commands: CommandsMap, private val onStop
             // If isReading() returns true, the line reader is in the
             // "active" mode. See the lineMutex description above
             // for details.
-            if (cmdlineReader.isReading()) {
+            if (cmdlineReader.isReading) {
                 cmdlineReader.callWidget(LineReader.CLEAR)
-                cmdlineReader.getTerminal().writer().println(line)
+                cmdlineReader.terminal.writer().println(line)
                 cmdlineReader.callWidget(LineReader.REDRAW_LINE)
                 cmdlineReader.callWidget(LineReader.REDISPLAY)
-                cmdlineReader.getTerminal().writer().flush()
+                cmdlineReader.terminal.writer().flush()
             } else {
-                cmdlineReader.getTerminal().writer().println(line)
-                cmdlineReader.getTerminal().writer().flush()
+                cmdlineReader.terminal.writer().println(line)
+                cmdlineReader.terminal.writer().flush()
             }
         } finally {
             try {
@@ -310,7 +309,7 @@ class CommandLineInterface(private val commands: CommandsMap, private val onStop
     }
 
     private fun printHelp() {
-        if (!commands.isEmpty()) {
+        if (commands.isNotEmpty()) {
             printLine("List of available commands:")
             printLine("")
             for ((name, entry) in commands) {

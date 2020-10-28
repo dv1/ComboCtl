@@ -86,12 +86,12 @@ class DisplayFrameAssembler {
 
         rtDisplayFrameRows[row] = pixels
 
-        if (numRowsLeftUnset == 0) {
+        return if (numRowsLeftUnset == 0) {
             val displayFrame = assembleDisplayFrame()
             currentIndex = null
-            return displayFrame
+            displayFrame
         } else
-            return null
+            null
     }
 
     /**

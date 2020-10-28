@@ -208,7 +208,7 @@ void adapter::start_discovery(
 
 	LOG(debug, "Got list of DBus objects currently managed by BlueZ");
 
-	// We are ready to iterate over the enumeratd objects. Get
+	// We are ready to iterate over the enumerated objects. Get
 	// an iterator out of the retval GVariant and look at
 	// each enumerated object to see if it has the relevant
 	// Bluetooth device interface.

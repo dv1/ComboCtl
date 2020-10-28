@@ -55,8 +55,8 @@ private val logger = Logger.get("HighLevelIO")
  *        fresh new display frame.
  */
 class HighLevelIO(
-    public val transportLayer: TransportLayer,
-    public val applicationLayer: ApplicationLayer,
+    private val transportLayer: TransportLayer,
+    private val applicationLayer: ApplicationLayer,
     private val io: ComboIO,
     private val onNewDisplayFrame: (displayFrame: DisplayFrame) -> Unit
 ) {

@@ -187,7 +187,7 @@ class ComboFrameTest {
     }
 
     @Test
-    fun parseInvalidEscapeByteCombinatio() {
+    fun parseInvalidEscapeByteCombination() {
         // In frame data, the escape byte 0x77 is followed by the byte 0xDD
         // or 0xEE (the escaped form of bytes 0xCC and 0x77, respectively).
         // Any other byte immediately following 0x77 is invalid, since no

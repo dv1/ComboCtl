@@ -281,7 +281,7 @@ class Pump(
      * that is present in all suspending functions, this throws no
      * exceptions.
      *
-     * This internally uses [HighLevelIO.connect], but also
+     * This internally uses [HighLevelIO.disconnect], but also
      * handles the Bluetooth connection teardown.
      */
     suspend fun disconnect() {
@@ -397,7 +397,7 @@ class Pump(
     private suspend fun disconnectBTDeviceAndCatchExceptions() {
         // Disconnect the Bluetooth device and catch exceptions.
         // disconnectBTDeviceAndCatchExceptions() is a function that gets called
-        // in catch and finally blocks, so propagating  exceptions
+        // in catch and finally blocks, so propagating exceptions
         // here would only complicate matters, because disconnect()
         // gets called in catch blocks.
         try {

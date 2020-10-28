@@ -40,7 +40,7 @@ private fun checkedGetCommandID(value: Int, bytes: List<Byte>): TransportLayer.C
 /**
  * Maximum allowed size for transport layer packet payloads, in bytes.
  */
-val MAX_VALID_TL_PAYLOAD_SIZE = 65535
+const val MAX_VALID_TL_PAYLOAD_SIZE = 65535
 
 /**
  * Combo transport layer (TL) communication implementation.
@@ -135,7 +135,7 @@ class TransportLayer(private val state: PersistentState) {
      * @property expectedCommandID The command ID that was expected in the packet.
      */
     class IncorrectPacketException(
-        val packet: TransportLayer.Packet,
+        val packet: Packet,
         val expectedCommandID: CommandID
     ) : ExceptionBase("Incorrect packet: expected ${expectedCommandID.name} packet, got ${packet.commandID.name} one")
 
@@ -145,7 +145,7 @@ class TransportLayer(private val state: PersistentState) {
      * @property packet Transport layer packet that was found to be faulty/corrupt.
      */
     class PacketVerificationException(
-        val packet: TransportLayer.Packet
+        val packet: Packet
     ) : ExceptionBase("Packet verification failed")
 
     /**
@@ -195,7 +195,7 @@ class TransportLayer(private val state: PersistentState) {
         val reliabilityBit: Boolean = false,
         val address: Byte = 0,
         val nonce: Nonce = NullNonce,
-        var payload: ArrayList<Byte> = ArrayList<Byte>(0),
+        var payload: ArrayList<Byte> = ArrayList(0),
         var machineAuthenticationCode: MachineAuthCode = NullMachineAuthCode
     ) {
         init {
@@ -221,8 +221,7 @@ class TransportLayer(private val state: PersistentState) {
             machineAuthenticationCode = MachineAuthCode(
                 bytes.subList(PAYLOAD_BYTES_OFFSET + payloadSize, PAYLOAD_BYTES_OFFSET + payloadSize + NUM_MAC_BYTES)
             )
-        ) {
-        }
+        )
 
         /**
          * Deserializes a packet from a binary representation.
@@ -238,8 +237,7 @@ class TransportLayer(private val state: PersistentState) {
          *         contains a command ID that is unknown/unsupported.
          */
         constructor(bytes: List<Byte>) :
-            this(bytes, (bytes[PAYLOAD_LENGTH_BYTES_OFFSET + 1].toPosInt() shl 8) or bytes[PAYLOAD_LENGTH_BYTES_OFFSET + 0].toPosInt()) {
-        }
+            this(bytes, (bytes[PAYLOAD_LENGTH_BYTES_OFFSET + 1].toPosInt() shl 8) or bytes[PAYLOAD_LENGTH_BYTES_OFFSET + 0].toPosInt())
 
         /**
          * Serializes a packet to a binary representation suitable for framing and sending.

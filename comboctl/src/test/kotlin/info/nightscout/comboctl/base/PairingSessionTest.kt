@@ -7,13 +7,13 @@ import org.junit.jupiter.api.Test
 
 class PairingSessionTest {
     private class TestComboIO(
-        private val incomingPackets: List<TransportLayer.Packet>,
-        private val outgoingPackets: List<TransportLayer.Packet>
+        incomingPackets: List<TransportLayer.Packet>,
+        outgoingPackets: List<TransportLayer.Packet>
     ) : ComboIO {
         private val incomingIt = incomingPackets.iterator()
         private val outgoingIt = outgoingPackets.iterator()
 
-        final override suspend fun send(dataToSend: List<Byte>) {
+        override suspend fun send(dataToSend: List<Byte>) {
             if (!outgoingIt.hasNext())
                 throw ComboException("No more")
 
@@ -21,7 +21,7 @@ class PairingSessionTest {
             assertEquals(expectedOutgoingData, dataToSend)
         }
 
-        final override suspend fun receive(): List<Byte> {
+        override suspend fun receive(): List<Byte> {
             // TODO: This is a workaround for a race condition.
             // Packets are "received" irrespective of what the
             // client code is actually doing. For example, this
@@ -32,13 +32,13 @@ class PairingSessionTest {
             return (if (incomingIt.hasNext()) incomingIt.next().toByteList() else throw ComboException("No more"))
         }
 
-        final override fun cancelSend() = Unit
+        override fun cancelSend() = Unit
 
-        final override fun cancelReceive() = Unit
+        override fun cancelReceive() = Unit
     }
 
-    lateinit var tpLayer: TransportLayer
-    lateinit var appLayer: ApplicationLayer
+    private lateinit var tpLayer: TransportLayer
+    private lateinit var appLayer: ApplicationLayer
 
     @BeforeEach
     fun setup() {
@@ -57,7 +57,7 @@ class PairingSessionTest {
         val testBtFriendlyName = "SHIELD Tablet"
         val testPIN = PairingPIN(intArrayOf(2, 6, 0, 6, 8, 1, 9, 2, 7, 3))
 
-        val expectedOutgoingPackets = listOf<TransportLayer.Packet>(
+        val expectedOutgoingPackets = listOf(
             TransportLayer.Packet(
                 commandID = TransportLayer.CommandID.REQUEST_PAIRING_CONNECTION,
                 version = 0x10.toByte(),
@@ -178,7 +178,7 @@ class PairingSessionTest {
                 machineAuthenticationCode = MachineAuthCode(byteArrayListOfInts(0x9D, 0xF4, 0x0F, 0x24, 0x44, 0xE3, 0x52, 0x03)))
         )
 
-        val incomingPackets = listOf<TransportLayer.Packet>(
+        val incomingPackets = listOf(
             TransportLayer.Packet(
                 commandID = TransportLayer.CommandID.PAIRING_CONNECTION_REQUEST_ACCEPTED,
                 version = 0x10.toByte(),

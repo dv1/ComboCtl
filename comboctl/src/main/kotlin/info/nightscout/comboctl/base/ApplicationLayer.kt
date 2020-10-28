@@ -41,7 +41,7 @@ private fun checkedGetCommand(
 /**
  * Maximum allowed size for application layer packet payloads, in bytes.
  */
-val MAX_VALID_AL_PAYLOAD_SIZE = 65535 - PACKET_HEADER_SIZE
+const val MAX_VALID_AL_PAYLOAD_SIZE = 65535 - PACKET_HEADER_SIZE
 
 /**
  * Combo application layer (AL) communication implementation.
@@ -223,7 +223,7 @@ class ApplicationLayer {
     data class Packet(
         val command: Command,
         val version: Byte = 0x10,
-        var payload: ArrayList<Byte> = ArrayList<Byte>(0)
+        var payload: ArrayList<Byte> = ArrayList(0)
     ) {
         init {
             if (payload.size > MAX_VALID_AL_PAYLOAD_SIZE) {
@@ -256,7 +256,7 @@ class ApplicationLayer {
          * Produces a transport layer DATA packet containing this application layer
          * packet's data as its payload.
          *
-         * @param appLayerState Application layer state used for generating the packet.
+         * @param transportLayer TransportLayer instance used for generating the packet.
          * @return Transport layer DATA packet.
          */
         fun toTransportLayerPacket(transportLayer: TransportLayer): TransportLayer.Packet {

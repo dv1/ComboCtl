@@ -8,7 +8,7 @@ package info.nightscout.comboctl.base
  *
  * Subclass instances are created by BluetoothInterface subclasses.
  */
-abstract class BluetoothDevice(val bluetoothInterface: BluetoothInterface) : BlockingComboIO() {
+abstract class BluetoothDevice(private val bluetoothInterface: BluetoothInterface) : BlockingComboIO() {
     /**
      * The device's Bluetooth address.
      */

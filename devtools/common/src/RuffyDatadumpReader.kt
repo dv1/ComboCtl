@@ -31,7 +31,7 @@ private val logger = Logger.get("RuffyDatadumpReader")
  *
  * @property inputStream The buffered input stream to read binary data from.
  */
-class RuffyDatadumpReader(val inputStream: BufferedInputStream) {
+class RuffyDatadumpReader(private val inputStream: BufferedInputStream) {
     data class FrameData(var frameData: List<Byte>, var isOutgoingData: Boolean)
 
     /**

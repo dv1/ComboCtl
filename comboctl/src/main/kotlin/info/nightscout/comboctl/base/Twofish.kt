@@ -32,7 +32,7 @@ object Twofish {
     private const val SK_ROTL = 9
 
     // Fixed 8x8 permutation S-boxes
-    private val P = arrayOf<IntArray>(
+    private val P = arrayOf(
         intArrayOf(
             // p0
             0xA9, 0x67, 0xB3, 0xE8,
@@ -372,7 +372,25 @@ object Twofish {
      * [blockEncrypt] and [blockDecrypt] expect an instance of this class,
      * not a key directly.
      */
-    data class KeyObject(val sBox: IntArray, val subKeys: IntArray)
+    data class KeyObject(val sBox: IntArray, val subKeys: IntArray) {
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (javaClass != other?.javaClass) return false
+
+            other as KeyObject
+
+            if (!sBox.contentEquals(other.sBox)) return false
+            if (!subKeys.contentEquals(other.subKeys)) return false
+
+            return true
+        }
+
+        override fun hashCode(): Int {
+            var result = sBox.contentHashCode()
+            result = 31 * result + subKeys.contentHashCode()
+            return result
+        }
+    }
 
     /**
      * Processes a Two-fish key and stores the computed values in the returned object.
@@ -429,10 +447,10 @@ object Twofish {
         }
 
         // fully expand the table for speed
-        var k0 = sBoxKey[0]
-        var k1 = sBoxKey[1]
-        var k2 = sBoxKey[2]
-        var k3 = sBoxKey[3]
+        val k0 = sBoxKey[0]
+        val k1 = sBoxKey[1]
+        val k2 = sBoxKey[2]
+        val k3 = sBoxKey[3]
         val sBox = IntArray(4 * 256)
 
         for (i in 0 until 256) {
