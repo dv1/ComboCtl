@@ -401,7 +401,9 @@ class Pump(
         // here would only complicate matters, because disconnect()
         // gets called in catch blocks.
         try {
-            bluetoothDevice.disconnect()
+            withContext(Dispatchers.IO) {
+                bluetoothDevice.disconnect()
+            }
         } catch (e: Exception) {
             logger(LogLevel.ERROR) {
                 "Caught exception during Bluetooth device disconnect; not propagating; exception: $e"
