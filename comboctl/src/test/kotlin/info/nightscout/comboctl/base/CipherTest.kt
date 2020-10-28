@@ -1,8 +1,8 @@
 package info.nightscout.comboctl.base
 
+import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.text.Charsets
-import org.junit.jupiter.api.Assertions.assertArrayEquals
-import org.junit.jupiter.api.Test
 
 class CipherTest {
     @Test
@@ -12,14 +12,14 @@ class CipherTest {
         val PIN = PairingPIN(intArrayOf(0, 1, 2, 3, 4, 5, 6, 7, 8, 9))
 
         try {
-            val expectedWeakKey = byteArrayOfInts(
+            val expectedWeakKey = byteArrayListOfInts(
                 0x30, 0x31, 0x32, 0x33,
                 0x34, 0x35, 0x36, 0x37,
                 0x38, 0x39, 0xcf, 0xce,
                 0xcd, 0xcc, 0xcb, 0xca
             )
             val actualWeakKey = generateWeakKeyFromPIN(PIN)
-            assertArrayEquals(expectedWeakKey, actualWeakKey)
+            assertEquals(expectedWeakKey, actualWeakKey.toList())
         } catch (ex: Exception) {
             ex.printStackTrace()
             throw Error("Unexpected exception: $ex")
@@ -42,16 +42,16 @@ class CipherTest {
 
         val cipher = Cipher(key)
 
-        val expectedEncryptedData = byteArrayOfInts(
+        val expectedEncryptedData = byteArrayListOfInts(
             0xb3, 0x58, 0x09, 0xd0,
             0xe3, 0xb4, 0xa0, 0x2e,
             0x1a, 0xbb, 0x6b, 0x1a,
             0xfa, 0xeb, 0x31, 0xc8
         )
         val actualEncryptedData = cipher.encrypt(inputData)
-        assertArrayEquals(expectedEncryptedData, actualEncryptedData)
+        assertEquals(expectedEncryptedData, actualEncryptedData.toList())
 
         val decryptedData = cipher.decrypt(actualEncryptedData)
-        assertArrayEquals(inputData, decryptedData)
+        assertEquals(inputData.toList(), decryptedData.toList())
     }
 }

@@ -40,7 +40,9 @@ allprojects {
 
         implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.3.7")
 
-        testImplementation("org.junit.jupiter:junit-jupiter:5.6.2")
+        testImplementation(kotlin("test-common"))
+        testImplementation(kotlin("test-annotations-common"))
+        testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
         testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.6.2")
     }
 

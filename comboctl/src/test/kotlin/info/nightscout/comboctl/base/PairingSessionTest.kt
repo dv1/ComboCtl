@@ -1,9 +1,9 @@
 package info.nightscout.comboctl.base
 
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlinx.coroutines.*
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.Test
 
 class PairingSessionTest {
     private class TestComboIO(
@@ -40,7 +40,7 @@ class PairingSessionTest {
     private lateinit var tpLayer: TransportLayer
     private lateinit var appLayer: ApplicationLayer
 
-    @BeforeEach
+    @BeforeTest
     fun setup() {
         val tpLayerState = TestPersistentTLState()
         tpLayer = TransportLayer(tpLayerState)

@@ -1,7 +1,9 @@
 package info.nightscout.comboctl.base
 
-import org.junit.jupiter.api.Assertions.*
-import org.junit.jupiter.api.Test
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class TransportLayerTest {
     @Test
@@ -222,14 +224,14 @@ class TransportLayerTest {
         // Verify that the state has been updated with the correct addresses
         // and decrypted keys.
         assertEquals(0x10, tpLayerState.keyResponseAddress)
-        assertArrayEquals(byteArrayOfInts(
+        assertEquals(byteArrayListOfInts(
             0x5a, 0x25, 0x0b, 0x75, 0xa9, 0x02, 0x21, 0xfa,
             0xab, 0xbd, 0x36, 0x4d, 0x5c, 0xb8, 0x37, 0xd7),
-            tpLayerState.clientPumpCipher!!.key)
-        assertArrayEquals(byteArrayOfInts(
+            tpLayerState.clientPumpCipher!!.key.toList())
+        assertEquals(byteArrayListOfInts(
             0x2a, 0xb0, 0xf2, 0x67, 0xc2, 0x7d, 0xcf, 0xaa,
             0x32, 0xb2, 0x48, 0x94, 0xe1, 0x6d, 0xe9, 0x5c),
-            tpLayerState.pumpClientCipher!!.key)
+            tpLayerState.pumpClientCipher!!.key.toList())
 
         // After getting KEY_RESPONSE, the client must transmit REQUEST_ID.
         val createdRequestIDPacket = tpLayer.createRequestIDPacket("Test 123")

@@ -1,9 +1,9 @@
 package info.nightscout.comboctl.base
 
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.Test
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 // The frame contents contained in the original frame rows from the Combo below.
 // This is used as a reference to see if frame conversion and assembly is correct.
@@ -141,7 +141,7 @@ class DisplayFrameTest {
         assertFalse(displayFrame == null)
 
         // Check that the assembled frame is correct.
-        compareWithReference(displayFrame!!)
+        compareWithReference(displayFrame)
     }
 
     @Test
@@ -182,7 +182,7 @@ class DisplayFrameTest {
         assertFalse(displayFrame == null)
 
         // Check that the completed frame is OK.
-        compareWithReference(displayFrame!!)
+        compareWithReference(displayFrame)
     }
 
     @Test
@@ -206,7 +206,7 @@ class DisplayFrameTest {
         assertFalse(displayFrame == null)
 
         // Check that the assembled frame is correct.
-        compareWithReference(displayFrame!!)
+        compareWithReference(displayFrame)
     }
 
     private fun dumpDisplayFrameContents(displayFrame: DisplayFrame) {

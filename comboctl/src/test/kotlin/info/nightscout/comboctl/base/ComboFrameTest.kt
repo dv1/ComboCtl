@@ -1,10 +1,10 @@
 package info.nightscout.comboctl.base
 
 import java.text.ParseException
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.assertThrows
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 // Payload which contains some bytes that equal "special" or "reserved" bytes.
 // These bytes are 0xCC and 0x77.
@@ -54,7 +54,7 @@ class ComboFrameTest {
 
         val parsedPayloadData = parser.parseFrame()
         assertTrue(parsedPayloadData != null)
-        assertEquals(payloadDataWithSpecialBytes, parsedPayloadData!!)
+        assertEquals(payloadDataWithSpecialBytes, parsedPayloadData)
     }
 
     @Test
@@ -183,7 +183,7 @@ class ComboFrameTest {
 
         parser.pushData(frameDataWithNonDelimiterOutsideOfFrame)
 
-        assertThrows<ParseException> { parser.parseFrame() }
+        assertFailsWith<ParseException> { parser.parseFrame() }
     }
 
     @Test
@@ -203,6 +203,6 @@ class ComboFrameTest {
 
         parser.pushData(frameDataWithInvalidEscapeByteCombination)
 
-        assertThrows<ParseException> { parser.parseFrame() }
+        assertFailsWith<ParseException> { parser.parseFrame() }
     }
 }

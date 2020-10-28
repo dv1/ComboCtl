@@ -1,8 +1,8 @@
 package info.nightscout.comboctl.base
 
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.Test
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
 
 class ApplicationLayerTest {
     private lateinit var tpLayerState: TestPersistentTLState
@@ -35,7 +35,7 @@ class ApplicationLayerTest {
         assertEquals(payload, tpLayerPacket.payload)
     }
 
-    @BeforeEach
+    @BeforeTest
     fun setup() {
         tpLayerState = TestPersistentTLState()
 

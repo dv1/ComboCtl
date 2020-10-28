@@ -1,9 +1,10 @@
 package info.nightscout.comboctl.base
 
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlinx.coroutines.*
-import org.junit.jupiter.api.Assertions.*
-import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.Test
 
 class HighLevelIOTest {
     private class TestComboIO : ComboIO {
@@ -38,7 +39,7 @@ class HighLevelIOTest {
     private lateinit var testIO: TestComboIO
     private lateinit var highLevelIO: HighLevelIO
 
-    @BeforeEach
+    @BeforeTest
     fun setup() {
         tpLayerState = TestPersistentTLState()
 
