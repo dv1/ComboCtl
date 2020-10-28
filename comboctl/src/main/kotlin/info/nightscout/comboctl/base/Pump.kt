@@ -54,15 +54,20 @@ class Pump(
     private val transportLayer: TransportLayer
     private val applicationLayer = ApplicationLayer()
     private val highLevelIO: HighLevelIO
+    private val framedComboIO: FramedComboIO
 
     private var isConnected = false
 
     init {
+        // Pass IO through the FramedComboIO class since the Combo
+        // sends packets in a framed form (See [ComboFrameParser]
+        // and [List<Byte>.toComboFrame] for details).
+        framedComboIO = FramedComboIO(bluetoothDevice)
         transportLayer = TransportLayer(persistentState)
         highLevelIO = HighLevelIO(
             transportLayer,
             applicationLayer,
-            bluetoothDevice,
+            framedComboIO,
             onNewDisplayFrame
         )
     }
@@ -159,6 +164,10 @@ class Pump(
         // is reverted back to its initial state.
         var doUnpair = true
 
+        // Make sure the frame parser has no leftover data from
+        // a previous connection.
+        framedComboIO.reset()
+
         // Connecting to Bluetooth may block, so run it in
         // a coroutine with an IO dispatcher.
         withContext(Dispatchers.IO) {
@@ -248,6 +257,10 @@ class Pump(
         if (!isPaired())
             throw IllegalStateException(
                 "Attempting to connect to Combo with address ${bluetoothDevice.address} even though it is not paired")
+
+        // Make sure the frame parser has no leftover data from
+        // a previous connection.
+        framedComboIO.reset()
 
         withContext(Dispatchers.IO) {
             bluetoothDevice.connect()
