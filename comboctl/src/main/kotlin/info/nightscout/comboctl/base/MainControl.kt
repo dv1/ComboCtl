@@ -228,7 +228,7 @@ class MainControl(
         // TODO: What if user wants to abort the pairing?
 
         val bluetoothDevice = bluetoothInterface.getDevice(pumpAddress)
-        logger(LogLevel.DEBUG) { "Got Bluetooth device for pump" }
+        logger(LogLevel.DEBUG) { "Got Bluetooth device instance for pump" }
 
         val pump = Pump(
             bluetoothDevice,
