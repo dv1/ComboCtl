@@ -6,10 +6,13 @@
 #include "fmt/format.h"
 
 
+#define DEFINE_LOGGING_TAG(TAG) \
+	static std::string const LOGGING_TAG = TAG;
+
 #define LOG(LEVEL, ...) \
 	do { \
 		std::string str = fmt::format(__VA_ARGS__); \
-		::comboctl::do_log(::comboctl::log_level::LEVEL, __FILE__, __LINE__, std::move(str)); \
+		::comboctl::do_log(LOGGING_TAG, ::comboctl::log_level::LEVEL, std::move(str)); \
 	} while (false)
 
 
@@ -30,13 +33,13 @@ enum class log_level
 std::string_view to_string(log_level level);
 
 
-typedef std::function<void(log_level level, std::string source_file, int source_line, std::string log_string)> logging_function;
+typedef std::function<void(std::string const &tag, log_level level, std::string log_string)> logging_function;
 
 
 logging_function get_default_logging_function();
 void set_logging_function(logging_function new_logging_function);
 
-void do_log(log_level level, std::string source_file, int source_line, std::string log_string);
+void do_log(std::string const &tag, log_level level, std::string log_string);
 
 
 } // namespace comboctl end

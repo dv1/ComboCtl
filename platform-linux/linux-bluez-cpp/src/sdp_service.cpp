@@ -6,6 +6,9 @@
 #include "log.hpp"
 
 
+DEFINE_LOGGING_TAG("SdpService")
+
+
 namespace comboctl
 {
 

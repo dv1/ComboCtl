@@ -7,6 +7,9 @@
 #include "log.hpp"
 
 
+DEFINE_LOGGING_TAG("BlueZAdapter")
+
+
 namespace comboctl
 {
 

@@ -8,6 +8,9 @@
 #include "log.hpp"
 
 
+DEFINE_LOGGING_TAG("BlueZAgent")
+
+
 namespace comboctl
 {
 

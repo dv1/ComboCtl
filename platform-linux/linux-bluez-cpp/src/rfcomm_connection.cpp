@@ -14,6 +14,9 @@
 #include "log.hpp"
 
 
+DEFINE_LOGGING_TAG("RfcommConnection")
+
+
 namespace comboctl
 {
 

@@ -14,9 +14,9 @@ namespace
 
 std::mutex default_logging_function_mutex;
 
-void default_logging_function(log_level level, std::string source_file, int source_line, std::string log_string) {
+void default_logging_function(std::string const &tag, log_level level, std::string log_string) {
 	std::lock_guard<std::mutex> lock(default_logging_function_mutex);
-	std::cerr << "[" << to_string(level) << "] [" << source_file << ":" << source_line << "]    " << log_string << std::endl;
+	std::cerr << "[" << to_string(level) << "] [" << tag << "] " << log_string << std::endl;
 };
 
 
@@ -53,10 +53,10 @@ void set_logging_function(logging_function new_logging_function)
 }
 
 
-void do_log(log_level level, std::string source_file, int source_line, std::string log_string)
+void do_log(std::string const &tag, log_level level, std::string log_string)
 {
 	assert(current_logging_function);
-	current_logging_function(level, std::move(source_file), source_line, std::move(log_string));
+	current_logging_function(tag, level, std::move(log_string));
 }
 
 
