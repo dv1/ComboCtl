@@ -650,17 +650,21 @@ class HighLevelIO(
             tpLayerPacket = TransportLayer.Packet(io.receive())
 
             // Check that the packet is OK. Note that at this point,
-            // the necessary ciphers must have been set. These are:
-            // The weak cipher (for the KEY_RESPONSE packet) and
-            // the pump->client cipher, otherwise this verification
-            // will fail. If the pairing is performed correctly,
-            // this should not be a concern, since these ciphers
-            // will be populated properly and at the right moments.
-            // In particular, there will never be a KEY_RESPONSE
-            // packet arriving before the client sends to the pump
-            // the GET_AVAILABLE_KEYS packet. When the client does
-            // that, it should also have initialized the weak cipher.
-            if (!transportLayer.verifyIncomingPacket(tpLayerPacket))
+            // the necessary ciphers must have been set. Otherwise,
+            // this verification will fail. If the pairing is performed
+            // correctly, this should not be a concern, since these
+            // ciphers will be populated before they are needed here.
+            //
+            // However, we do _not_ verify KEY_RESPONSE packets here,
+            // since they are verified with the weak cipher, and the
+            // weak cipher is generated from the PIN that is supplied
+            // by the user. Since the user could make a mistake when
+            // entering the PIN, the weak cipher may be wrong. The
+            // "fix" is to ask the user to try again to enter the
+            // PIN. This means that the KEY_RESPONSE packet needs to
+            // be verified seperately. performPairing() does this
+            // in its PIN enter loop.
+            if ((tpLayerPacket.commandID != TransportLayer.CommandID.KEY_RESPONSE) && !transportLayer.verifyIncomingPacket(tpLayerPacket))
                 throw TransportLayer.PacketVerificationException(tpLayerPacket)
 
             // Packets with the reliability flag set must be immediately
