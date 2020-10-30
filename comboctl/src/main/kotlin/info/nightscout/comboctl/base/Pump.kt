@@ -168,12 +168,6 @@ class Pump(
         // a previous connection.
         framedComboIO.reset()
 
-        // Connecting to Bluetooth may block, so run it in
-        // a coroutine with an IO dispatcher.
-        withContext(Dispatchers.IO) {
-            bluetoothDevice.connect()
-        }
-
         // Attempt the pairing process, and use a finally block
         // to ensure that we always disconnect afterwards, even
         // in case of an exception, to make sure we always do
@@ -182,6 +176,12 @@ class Pump(
         // to the unpaired state, since pairing failed, and the
         // state is undefined when that happens.
         try {
+            // Connecting to Bluetooth may block, so run it in
+            // a coroutine with an IO dispatcher.
+            withContext(Dispatchers.IO) {
+                bluetoothDevice.connect()
+            }
+
             highLevelIO.performPairing(backgroundReceiveScope, bluetoothFriendlyName, pairingPINCallback)
             doUnpair = false
             logger(LogLevel.INFO) { "Paired with Combo with address ${bluetoothDevice.address}" }
