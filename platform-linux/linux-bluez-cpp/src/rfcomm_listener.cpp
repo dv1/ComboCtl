@@ -231,7 +231,7 @@ void rfcomm_listener::listen(unsigned int rfcomm_channel)
 
 	// We are done.
 
-	LOG(info, "Listening to incoming RFCOMM connections on channel {}", m_rfcomm_channel);
+	LOG(info, "Listening for incoming RFCOMM connections on channel {}", m_rfcomm_channel);
 }
 
 
@@ -244,6 +244,8 @@ void rfcomm_listener::stop_listening()
 		g_socket_listener_close(m_socket_listener);
 		g_object_unref(G_OBJECT(m_socket_listener));
 		m_socket_listener = nullptr;
+
+		LOG(info, "Stopped listening for incoming RFCOMM connections on channel {}", m_rfcomm_channel);
 	}
 }
 

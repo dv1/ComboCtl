@@ -554,7 +554,7 @@ int rfcomm_connection::receive(void *dest, int num_bytes)
 		}
 	}
 
-	LOG(trace, "Received {} byte(s); requested: {}", num_bytes_received, num_bytes);
+	LOG(trace, "Received {} byte(s); requested: max {}", num_bytes_received, num_bytes);
 
 	return num_bytes_received;
 }
