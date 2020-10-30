@@ -220,8 +220,9 @@ class MainControl(
 
         try {
             persistentStateToFill = requestPersistentState(pumpAddress)
-        } finally {
+        } catch (e: Exception) {
             logger(LogLevel.ERROR) { "Could not get persistent state for pump $pumpAddress" }
+            throw e
         }
 
         // TODO: What if user wants to abort the pairing?
