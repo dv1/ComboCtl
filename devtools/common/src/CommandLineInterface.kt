@@ -156,6 +156,22 @@ class CommandLineInterface(private val commands: CommandsMap, private val onStop
     // that the readline mode switches in the middle of printLine()'s execution.
     private val lineMutex = ReentrantLock()
 
+    private class CLILoggerBackend(private val cli: CommandLineInterface) : LoggerBackend {
+        override fun log(tag: String, level: LogLevel, throwable: Throwable?, message: String?) {
+            var str = "[${level.str}] [$tag]"
+
+            if (throwable != null)
+                str += " (" + throwable::class.qualifiedName + ": \"" + throwable.message + "\")"
+
+            if (message != null)
+                str += " $message"
+
+            cli.printLine(str)
+        }
+    }
+
+    private val cliLoggerBackend: CLILoggerBackend
+
     init {
         terminal = TerminalBuilder.builder().build()
         completer = StringsCompleter(commands.keys)
@@ -179,6 +195,9 @@ class CommandLineInterface(private val commands: CommandsMap, private val onStop
 
         for ((name, entry) in commands)
             longestCommandName = max(longestCommandName, name.length)
+
+        cliLoggerBackend = CLILoggerBackend(this)
+        Logger.backend = cliLoggerBackend
     }
 
     /**
