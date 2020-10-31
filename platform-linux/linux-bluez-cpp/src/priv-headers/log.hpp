@@ -22,7 +22,7 @@ namespace comboctl
 
 enum class log_level
 {
-	trace,
+	trace = 0,
 	debug,
 	info,
 	warn,

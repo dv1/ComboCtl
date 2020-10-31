@@ -112,3 +112,17 @@ class BlueZInterface : BluetoothInterface {
     // bindings, so don't remove nativePtr.
     private var nativePtr: Long = 0
 }
+
+internal fun nativeLoggerCall(tag: String, cppLogLevel: Int, message: String) {
+    val logLevel = when (cppLogLevel) {
+        0 -> LogLevel.DEBUG
+        1 -> LogLevel.DEBUG
+        2 -> LogLevel.INFO
+        3 -> LogLevel.WARN
+        4 -> LogLevel.ERROR
+        5 -> LogLevel.ERROR
+        else -> return
+    }
+
+    Logger.backend.log(tag, logLevel, null, message)
+}

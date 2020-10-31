@@ -250,6 +250,12 @@ private:
 //////////////////////////////////
 
 
+struct bluez_interface_global_tag { static constexpr auto Name() { return "info/nightscout/comboctl/linux_bluez/BlueZInterfaceKt"; } };
+struct bluez_interface_global_class_wrapper
+{
+	using jni_class = jni::Class<bluez_interface_global_tag>;
+};
+
 struct bluetooth_device_no_return_callback_tag { static constexpr auto Name() { return "info/nightscout/comboctl/linux_bluez/BluetoothDeviceNoReturnCallback"; } };
 struct bluetooth_device_no_return_callback_wrapper
 {
@@ -270,6 +276,12 @@ public:
 	explicit bluez_interface_jni(JNIEnv &env)
 		: m_java_vm(jni::GetJavaVM(env))
 	{
+		{
+			std::unique_lock<std::mutex> lock(m_instance_mutex);
+			assert(m_instance == nullptr);
+			m_instance = this;
+		}
+
 		// The main thread is special in that we must not detach from it.
 		// For this reason, we manually insert it into the thread env
 		// map and keep track of its ID so we can exclude it from later
@@ -277,9 +289,12 @@ public:
 		m_main_thread_id = std::this_thread::get_id();
 		m_thread_env_map.emplace(m_main_thread_id, jni::AttachCurrentThread(m_java_vm));
 
+		m_jni_bluez_interface_global_klass = jni::NewGlobal(env, bluez_interface_global_class_wrapper::jni_class::Find(env));
+
 		m_jni_no_return_klass = jni::NewGlobal(env, bluetooth_device_no_return_callback_wrapper::jni_class::Find(env));
 		m_jni_boolean_return_klass = jni::NewGlobal(env, bluetooth_device_boolean_return_callback_wrapper::jni_class::Find(env));
 
+		comboctl::set_logging_function(log_to_kotlin);
 
 		m_iface.on_thread_stopping([&]() {
 			// This is called when a thread that was started by
@@ -293,6 +308,11 @@ public:
 
 	~bluez_interface_jni()
 	{
+		{
+			std::unique_lock<std::mutex> lock(m_instance_mutex);
+			m_instance = nullptr;
+		}
+
 		// Explicitely tear down the interface here to make sure its
 		// threads are all shut down by now.
 		m_iface.teardown();
@@ -414,6 +434,32 @@ public:
 		});
 	}
 
+	static void log_to_kotlin(std::string const &tag, comboctl::log_level level, std::string log_string)
+	{
+		std::unique_lock<std::mutex> instance_lock(m_instance_mutex);
+
+		bluez_interface_jni *self = bluez_interface_jni::m_instance;
+
+		// Handle the corner case that something still tries
+		// to log a line while the BlueZ interface is shutting down.
+		if (self == nullptr)
+			return;
+
+		std::unique_lock<std::mutex> env_map_lock(self->m_thread_env_map_mutex);
+
+		jni::JNIEnv &env = self->get_jni_env_for_current_thread();
+
+		auto native_logger_call_func = self->m_jni_bluez_interface_global_klass.GetStaticMethod<void(jni::String, int, jni::String)>(env, "nativeLoggerCall");
+
+		self->m_jni_bluez_interface_global_klass.Call(
+			env,
+			native_logger_call_func,
+			jni::Make<jni::String>(env, tag),
+			int(level),
+			jni::Make<jni::String>(env, log_string)
+		);
+	}
+
 	static constexpr auto Name() { return "info/nightscout/comboctl/linux_bluez/BlueZInterface"; }
 
 
@@ -462,13 +508,22 @@ private:
 	std::mutex m_thread_env_map_mutex;
 	std::thread::id m_main_thread_id;
 
+	jni::Global<bluez_interface_global_class_wrapper::jni_class> m_jni_bluez_interface_global_klass;
+
 	jni::Global<bluetooth_device_no_return_callback_wrapper::jni_class> m_jni_no_return_klass;
 	jni::Global<bluetooth_device_boolean_return_callback_wrapper::jni_class> m_jni_boolean_return_klass;
 
 	jni::Global<bluetooth_device_no_return_callback_wrapper::jni_object> m_jni_found_new_paired_device_object;
 	jni::Global<bluetooth_device_no_return_callback_wrapper::jni_object> m_jni_device_is_gone_object;
 	jni::Global<bluetooth_device_boolean_return_callback_wrapper::jni_object> m_jni_filter_device_object;
+
+	static std::mutex m_instance_mutex;
+	static bluez_interface_jni *m_instance;
 };
+
+
+std::mutex bluez_interface_jni::m_instance_mutex;
+bluez_interface_jni *bluez_interface_jni::m_instance = nullptr;
 
 
 } // unnamed namespace end
