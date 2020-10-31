@@ -38,6 +38,14 @@ public:
 	 */
 	~rfcomm_listener();
 
+	// Move semantics.
+	rfcomm_listener(rfcomm_listener && other);
+	rfcomm_listener& operator = (rfcomm_listener && other);
+
+	// Disable copy semantics for this class.
+	rfcomm_listener(rfcomm_listener const &) = delete;
+	rfcomm_listener& operator = (rfcomm_listener const &) = delete;
+
 	/**
 	 * Starts listening by setting up an RFCOMM listener socket.
 	 *

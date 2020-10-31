@@ -34,6 +34,29 @@ rfcomm_listener::~rfcomm_listener()
 }
 
 
+rfcomm_listener::rfcomm_listener(rfcomm_listener && other)
+	: m_socket_listener(other.m_socket_listener)
+	, m_socket_listener_accept_cancellable(other.m_socket_listener_accept_cancellable)
+	, m_rfcomm_channel(other.m_rfcomm_channel)
+{
+	other.m_socket_listener = nullptr;
+	other.m_socket_listener_accept_cancellable = nullptr;
+}
+
+
+rfcomm_listener& rfcomm_listener::operator = (rfcomm_listener && other)
+{
+	m_socket_listener = other.m_socket_listener;
+	m_socket_listener_accept_cancellable = other.m_socket_listener_accept_cancellable;
+	m_rfcomm_channel = other.m_rfcomm_channel;
+
+	other.m_socket_listener = nullptr;
+	other.m_socket_listener_accept_cancellable = nullptr;
+
+	return *this;
+}
+
+
 void rfcomm_listener::listen(unsigned int rfcomm_channel)
 {
 	// In here, we first set up the RFCOMM socket directly via
