@@ -9,6 +9,7 @@
 #include <mutex>
 #include <condition_variable>
 #include <deque>
+#include <map>
 #include <fmt/format.h>
 #include <glib.h>
 #include <gio/gio.h>
@@ -269,22 +270,44 @@ public:
 	explicit bluez_interface_jni(JNIEnv &env)
 		: m_java_vm(jni::GetJavaVM(env))
 	{
+		// The main thread is special in that we must not detach from it.
+		// For this reason, we manually insert it into the thread env
+		// map and keep track of its ID so we can exclude it from later
+		// attempts at detaching JNI environments from threads.
+		m_main_thread_id = std::this_thread::get_id();
+		m_thread_env_map.emplace(m_main_thread_id, jni::AttachCurrentThread(m_java_vm));
+
 		m_jni_no_return_klass = jni::NewGlobal(env, bluetooth_device_no_return_callback_wrapper::jni_class::Find(env));
 		m_jni_boolean_return_klass = jni::NewGlobal(env, bluetooth_device_boolean_return_callback_wrapper::jni_class::Find(env));
 
-		m_iface.run_in_thread([&]() {
-			LOG(trace, "Attaching JVM to internal BlueZ interface thread");
-			m_thread_env = jni::AttachCurrentThread(m_java_vm);
-		});
 
 		m_iface.on_thread_stopping([&]() {
-			LOG(trace, "Detaching JVM from internal BlueZ interface thread");
-			jni::DetachCurrentThread(m_java_vm, std::move(m_thread_env));
+			// This is called when a thread that was started by
+			// the interface is being shut down. Detach the JVM
+			// in that case to make sure we have no lingering
+			// JVM environment attached.
+			std::unique_lock<std::mutex> lock(m_thread_env_map_mutex);
+			remove_current_thread_from_vm();
 		});
 	}
 
 	~bluez_interface_jni()
 	{
+		// Explicitely tear down the interface here to make sure its
+		// threads are all shut down by now.
+		m_iface.teardown();
+
+		// Detach any leftover environments except the main one,
+		// since the JVM takes care of that one by itself.
+		{
+			std::unique_lock<std::mutex> lock(m_thread_env_map_mutex);
+			for (auto & entry : m_thread_env_map)
+			{
+				if (entry.first != m_main_thread_id)
+					jni::DetachCurrentThread(m_java_vm, std::move(entry.second));
+			}
+			m_thread_env_map.clear();
+		}
 	}
 
 	bluez_interface_jni(bluez_interface_jni const &) = delete;
@@ -313,9 +336,13 @@ public:
 				jni::Make<std::string>(env, sdp_service_description),
 				jni::Make<std::string>(env, bt_pairing_pin_code),
 				[&]() {
-					m_jni_found_new_paired_device_object = jni::NewGlobal(*m_thread_env, found_new_paired_device);
-					m_jni_device_is_gone_object = jni::NewGlobal(*m_thread_env, device_is_gone);
-					m_jni_filter_device_object = jni::NewGlobal(*m_thread_env, filter_device);
+					std::unique_lock<std::mutex> lock(m_thread_env_map_mutex);
+
+					jni::JNIEnv &env = get_jni_env_for_current_thread();
+
+					m_jni_found_new_paired_device_object = jni::NewGlobal(env, found_new_paired_device);
+					m_jni_device_is_gone_object = jni::NewGlobal(env, device_is_gone);
+					m_jni_filter_device_object = jni::NewGlobal(env, filter_device);
 				},
 				[this]() {
 					m_jni_found_new_paired_device_object.reset();
@@ -323,22 +350,34 @@ public:
 					m_jni_filter_device_object.reset();
 				},
 				[this](comboctl::bluetooth_address paired_device_address) {
-					auto jni_array = jni::Make<jni::Array<jni::jbyte>>(*m_thread_env, reinterpret_cast<jni::jbyte const *>(paired_device_address.data()), paired_device_address.size());
+					std::unique_lock<std::mutex> lock(m_thread_env_map_mutex);
 
-					auto method = m_jni_no_return_klass.GetMethod<void(jni::Array<jni::jbyte>)>(*m_thread_env, "invoke");
-					m_jni_found_new_paired_device_object.Call(*m_thread_env, method, jni_array);
+					jni::JNIEnv &env = get_jni_env_for_current_thread();
+
+					auto jni_array = jni::Make<jni::Array<jni::jbyte>>(env, reinterpret_cast<jni::jbyte const *>(paired_device_address.data()), paired_device_address.size());
+
+					auto method = m_jni_no_return_klass.GetMethod<void(jni::Array<jni::jbyte>)>(env, "invoke");
+					m_jni_found_new_paired_device_object.Call(env, method, jni_array);
 				},
 				[this](comboctl::bluetooth_address removed_device_address) {
-					auto jni_array = jni::Make<jni::Array<jni::jbyte>>(*m_thread_env, reinterpret_cast<jni::jbyte const *>(removed_device_address.data()), removed_device_address.size());
+					std::unique_lock<std::mutex> lock(m_thread_env_map_mutex);
 
-					auto method = m_jni_no_return_klass.GetMethod<void(jni::Array<jni::jbyte>)>(*m_thread_env, "invoke");
-					m_jni_device_is_gone_object.Call(*m_thread_env, method, jni_array);
+					jni::JNIEnv &env = get_jni_env_for_current_thread();
+
+					auto jni_array = jni::Make<jni::Array<jni::jbyte>>(env, reinterpret_cast<jni::jbyte const *>(removed_device_address.data()), removed_device_address.size());
+
+					auto method = m_jni_no_return_klass.GetMethod<void(jni::Array<jni::jbyte>)>(env, "invoke");
+					m_jni_device_is_gone_object.Call(env, method, jni_array);
 				},
 				[this](comboctl::bluetooth_address device_address) -> bool {
-					auto jni_array = jni::Make<jni::Array<jni::jbyte>>(*m_thread_env, reinterpret_cast<jni::jbyte const *>(device_address.data()), device_address.size());
+					std::unique_lock<std::mutex> lock(m_thread_env_map_mutex);
 
-					auto method = m_jni_boolean_return_klass.GetMethod<jni::jboolean(jni::Array<jni::jbyte>)>(*m_thread_env, "invoke");
-					return m_jni_filter_device_object.Call(*m_thread_env, method, jni_array);
+					jni::JNIEnv &env = get_jni_env_for_current_thread();
+
+					auto jni_array = jni::Make<jni::Array<jni::jbyte>>(env, reinterpret_cast<jni::jbyte const *>(device_address.data()), device_address.size());
+
+					auto method = m_jni_boolean_return_klass.GetMethod<jni::jboolean(jni::Array<jni::jbyte>)>(env, "invoke");
+					return m_jni_filter_device_object.Call(env, method, jni_array);
 				}
 			);
 		});
@@ -379,11 +418,49 @@ public:
 
 
 private:
+	void remove_current_thread_from_vm()
+	{
+		// Try to remove the current thread if it
+		// is listed in the thread env map.
+
+		auto tid = std::this_thread::get_id();
+		auto iter = m_thread_env_map.find(tid);
+		if (iter != m_thread_env_map.end())
+		{
+			jni::DetachCurrentThread(m_java_vm, std::move(iter->second));
+			m_thread_env_map.erase(iter);
+		}
+	}
+
+	jni::JNIEnv& get_jni_env_for_current_thread()
+	{
+		// Try to get the JNI environment that is associated
+		// with the current thread. If no such association
+		// is listed in the thread env map, add one. This
+		// means that get_jni_env_for_current_thread() attaches
+		// the current thread to the JVM on demand.
+
+		auto tid = std::this_thread::get_id();
+		auto iter = m_thread_env_map.find(tid);
+		if (iter == m_thread_env_map.end())
+			iter = m_thread_env_map.emplace(std::move(tid), jni::AttachCurrentThread(m_java_vm)).first;
+		return *(iter->second);
+	}
+
+
 	comboctl::bluez_interface m_iface;
 
 	jni::JavaVM &m_java_vm;
 
-	jni::UniqueEnv m_thread_env;
+	// STL map for keeping track of JNI environments and the
+	// threads they are attached to. It is essential to attach
+	// a JNI environment to a thread, otherwise the JVM will
+	// fail if a call is issued from a thread that is spawned
+	// by C/C++ code.
+	typedef std::map<std::thread::id, jni::UniqueEnv> thread_env_map;
+	thread_env_map m_thread_env_map;
+	std::mutex m_thread_env_map_mutex;
+	std::thread::id m_main_thread_id;
 
 	jni::Global<bluetooth_device_no_return_callback_wrapper::jni_class> m_jni_no_return_klass;
 	jni::Global<bluetooth_device_boolean_return_callback_wrapper::jni_class> m_jni_boolean_return_klass;
