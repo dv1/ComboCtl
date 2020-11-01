@@ -139,6 +139,8 @@ class Pump(
      *         is running, or if the pump is already paired.
      * @throws ComboIOException if connection fails due to an underlying
      *         IO issue.
+     * @throws ReceiveLoopFailureException if the background
+     *         receive loop failed.
      */
     suspend fun performPairing(
         backgroundReceiveScope: CoroutineScope,
@@ -239,7 +241,12 @@ class Pump(
      * leading to race conditions.
      *
      * If an exception is thrown, the connection attempt is rolled
-     * back. The device is in a disconnected state afterwards.
+     * back. The device is in a disconnected state afterwards. This
+     * applies to an exception thrown _during_ the connection setup;
+     * any exception thrown in the background receive loop will cause
+     * [onBackgroundReceiveException] to be called instead. Also,
+     * other functions that involve IO to/from the Combo will throw
+     * that exception.
      *
      * This internally uses [HighLevelIO.connect], but also
      * handles the Bluetooth connection setup. Also, it terminates
@@ -247,6 +254,8 @@ class Pump(
      *
      * @param backgroundReceiveScope [CoroutineScope] to run the background
      *        packet receive loop in.
+     * @param onBackgroundReceiveException Callback that gets invoked if
+     *        an exception occurs in the background receive loop.
      * @throws ComboIOException if an IO error occurs during
      *         the connection attempts.
      * @throws IllegalStateException if no pairing was done with
@@ -254,7 +263,10 @@ class Pump(
      *         false. Also thrown if this is called after a connection
      *         was already established.
      */
-    suspend fun connect(backgroundReceiveScope: CoroutineScope) {
+    suspend fun connect(
+        backgroundReceiveScope: CoroutineScope,
+        onBackgroundReceiveException: (e: Exception) -> Unit = { Unit }
+    ) {
         if (isConnected)
             throw IllegalStateException("Already connected to Combo")
 
@@ -271,7 +283,7 @@ class Pump(
         }
 
         runChecked {
-            highLevelIO.connect(backgroundReceiveScope)
+            highLevelIO.connect(backgroundReceiveScope, onBackgroundReceiveException)
             isConnected = true
         }
     }

@@ -59,6 +59,18 @@ class MainControl(
      * receive loop may run in a different thread than this function,
      * potentially leading to race conditions.
      *
+     * In case of a failure during discovery, [onDiscoveryFailure] is
+     * called, and the discovery is aborted. This means that even if
+     * the failure is specific to the pump itself, the entire discovery
+     * process is aborted. This is because it is not possible to guarantee
+     * that the failure didn't affect other parts of the discovery
+     * process. For example, IO errors may persist even if the logic
+     * excluded the particular pump where IO errors occurred. This
+     * can for example happen if there is something wrong with the
+     * Bluetooth stack. So, in case of failure during discovery, it
+     * is aborted. It can be restarted by calling [startDiscovery]
+     * again, however.
+     *
      * @param backgroundDiscoveryEventScope [CoroutineScope] to run the
      *        background pairing activities in.
      * @param onNewPump Optional callback to notify callers about a new
@@ -76,7 +88,8 @@ class MainControl(
     fun startDiscovery(
         backgroundDiscoveryEventScope: CoroutineScope,
         onNewPump: (pumpAddress: BluetoothAddress) -> Unit = { Unit },
-        onPumpGone: (pumpAddress: BluetoothAddress) -> Unit = { Unit }
+        onPumpGone: (pumpAddress: BluetoothAddress) -> Unit = { Unit },
+        onDiscoveryFailure: (pumpAddress: BluetoothAddress, e: Exception) -> Unit = { _, _ -> Unit }
     ) {
         if (discoveryEventLoopJob != null)
             throw IllegalStateException("Discovery already ongoing")
@@ -99,9 +112,27 @@ class MainControl(
 
                 when (eventType) {
                     EventType.NEW_PUMP -> {
-                        logger(LogLevel.DEBUG) { "Found paired device with address $pumpAddress" }
-                        onNewPump(pumpAddress)
-                        performPairing(backgroundDiscoveryEventScope, pumpAddress)
+                        // Note that we do _not_ rethrow exceptions here,
+                        // unlike in the try-catch block further below.
+                        // This is because this try-catch block runs in
+                        // its separate coroutine that runs in the
+                        // background. The exception would not be propagated
+                        // in a way that is useful here. For this reason,
+                        // instead, we notify the caller by invoking the
+                        // onDiscoveryFailure() callback.
+                        try {
+                            logger(LogLevel.DEBUG) { "Found paired device with address $pumpAddress" }
+                            onNewPump(pumpAddress)
+                            performPairing(backgroundDiscoveryEventScope, pumpAddress)
+                        } catch (e: CancellationException) {
+                            logger(LogLevel.ERROR) { "Aborting pairing since this coroutine got cancelled" }
+                            abortDiscovery(e)
+                            onDiscoveryFailure(pumpAddress, e)
+                        } catch (e: Exception) {
+                            logger(LogLevel.ERROR) { "Caught exception while pairing to pump with address $pumpAddress: $e" }
+                            abortDiscovery(e)
+                            onDiscoveryFailure(pumpAddress, e)
+                        }
                     }
                     EventType.PUMP_GONE -> {
                         logger(LogLevel.DEBUG) { "Previously paired device with address $pumpAddress removed" }
@@ -111,32 +142,37 @@ class MainControl(
             }
         }
 
-        bluetoothInterface.startDiscovery(
-            Constants.BT_SDP_SERVICE_NAME,
-            "ComboCtl SDP service",
-            "ComboCtl",
-            Constants.BT_PAIRING_PIN,
-            {
-                deviceAddress -> backgroundDiscoveryEventScope.launch {
-                    discoveryEventChannel.send(Pair(deviceAddress, EventType.NEW_PUMP))
+        try {
+            bluetoothInterface.startDiscovery(
+                Constants.BT_SDP_SERVICE_NAME,
+                "ComboCtl SDP service",
+                "ComboCtl",
+                Constants.BT_PAIRING_PIN,
+                {
+                    deviceAddress -> backgroundDiscoveryEventScope.launch {
+                        discoveryEventChannel.send(Pair(deviceAddress, EventType.NEW_PUMP))
+                    }
+                },
+                {
+                    deviceAddress -> backgroundDiscoveryEventScope.launch {
+                        discoveryEventChannel.send(Pair(deviceAddress, EventType.PUMP_GONE))
+                    }
+                },
+                {
+                    // Filter for Combo devices based on their address.
+                    // The first 3 bytes of a Combo are always the same.
+                    deviceAddress ->
+                    (deviceAddress[0] == 0x00.toByte()) &&
+                    (deviceAddress[1] == 0x0E.toByte()) &&
+                    (deviceAddress[2] == 0x2F.toByte())
                 }
-            },
-            {
-                deviceAddress -> backgroundDiscoveryEventScope.launch {
-                    discoveryEventChannel.send(Pair(deviceAddress, EventType.PUMP_GONE))
-                }
-            },
-            {
-                // Filter for Combo devices based on their address.
-                // The first 3 bytes of a Combo are always the same.
-                deviceAddress ->
-                (deviceAddress[0] == 0x00.toByte()) &&
-                (deviceAddress[1] == 0x0E.toByte()) &&
-                (deviceAddress[2] == 0x2F.toByte())
-            }
-        )
+            )
 
-        logger(LogLevel.DEBUG) { "Discovery started" }
+            logger(LogLevel.DEBUG) { "Discovery started" }
+        } catch (e: Exception) {
+            abortDiscovery(e)
+            throw e
+        }
     }
 
     /**
@@ -175,7 +211,12 @@ class MainControl(
      * leading to race conditions.
      *
      * If an exception is thrown, the connection attempt is rolled
-     * back. The device is in a disconnected state afterwards.
+     * back. The device is in a disconnected state afterwards. This
+     * applies to an exception thrown _during_ the connection setup;
+     * any exception thrown in the background receive loop will cause
+     * [onBackgroundReceiveException] to be called instead. Also,
+     * other [Pump] functions that involve IO to/from the Combo will
+     * throw that exception.
      *
      * @param pumpAddress Bluetooth address of the pump to connect to.
      * @param backgroundReceiveScope [CoroutineScope] to run the
@@ -183,6 +224,9 @@ class MainControl(
      * @param persistentState Persistent state store for this pump.
      * @param onNewDisplayFrame Callback invoked every time the pump
      *        receives a new complete remote terminal frame.
+     * @param onBackgroundReceiveException Callback that gets invoked
+     *        if an exception occurs in the Pump instance's background
+     *        receive loop.
      * @throws ComboIOException if an IO error occurs during
      *         the connection attempts.
      * @throws IllegalStateException if the pump was not paired,
@@ -194,7 +238,8 @@ class MainControl(
         pumpAddress: BluetoothAddress,
         persistentState: PersistentState,
         backgroundReceiveScope: CoroutineScope,
-        onNewDisplayFrame: (displayFrame: DisplayFrame) -> Unit
+        onNewDisplayFrame: (displayFrame: DisplayFrame) -> Unit,
+        onBackgroundReceiveException: (e: Exception) -> Unit = { Unit }
     ): Pump {
         require(persistentState.isValid())
 
@@ -208,7 +253,7 @@ class MainControl(
             onNewDisplayFrame
         )
 
-        pump.connect(backgroundReceiveScope)
+        pump.connect(backgroundReceiveScope, onBackgroundReceiveException)
 
         return pump
     }
@@ -233,7 +278,7 @@ class MainControl(
         val pump = Pump(
             bluetoothDevice,
             persistentStateToFill,
-            { Unit }
+            { Unit } // We don't need the onNewDisplayFrame callback while pairing.
         )
 
         logger(LogLevel.DEBUG) { "Pump instance ready for pairing" }
@@ -243,5 +288,24 @@ class MainControl(
         }
 
         logger(LogLevel.DEBUG) { "Successfully paired with pump $pumpAddress" }
-}
+    }
+
+    private fun abortDiscovery(e: Exception) {
+        // This function is almost identical to stopDiscovery(),
+        // except that the log messages are different (the Exception
+        // argument is there for logging purposes), and stopDiscovery()
+        // has an additional check to make sure redundant calls are
+        // avoided (this check is unnecessary here).
+
+        logger(LogLevel.DEBUG) { "Aborting discovery due to exception: $e" }
+
+        bluetoothInterface.stopDiscovery()
+
+        if (discoveryEventLoopJob != null) {
+            discoveryEventLoopJob!!.cancel()
+            discoveryEventLoopJob = null
+        }
+
+        logger(LogLevel.DEBUG) { "Discovery aborted" }
+    }
 }

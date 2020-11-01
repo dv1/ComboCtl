@@ -6,6 +6,14 @@ import kotlinx.coroutines.channels.Channel
 private val logger = Logger.get("HighLevelIO")
 
 /**
+ * Exception thrown then the [HighLevelIO] background receive loop fails.
+ *
+ * @param cause The exception that was thrown in the loop specifying
+ *        want went wrong there.
+ */
+class ReceiveLoopFailureException(cause: Exception) : ComboException(cause.message, cause)
+
+/**
  * Class for high-level IO operations.
  *
  * Unlike [ComboIO], the public API of this class does not directly
@@ -38,12 +46,13 @@ private val logger = Logger.get("HighLevelIO")
  * there's no significant backpressure that may block the callback,
  * since this would also block the data-receiving coroutine.
  *
- * IMPORTANT: If a ComboIOException happens during a regular connection,
- * reconnect, since the connection state may be undefined, and data may
- * not have made it through in its entirety. If it happens while pairing,
- * disconnect, reset any existing persistent state associated with the
- * device the client communicated with, and do any other necessary
- * cleanup, to revert back to the state before the pairing attempt.
+ * IMPORTANT: If a ComboIOException or a ReceiveLoopFailureException
+ * happens during a regular connection, reconnect, since the connection
+ * state may be undefined, and data may not have made it through in its
+ * entirety. If it happens while pairing, disconnect, reset any existing
+ * persistent state associated with the device the client communicated with,
+ * and do any other necessary cleanup, to revert back to the state before
+ * the pairing attempt.
  *
  * @param transportLayer TransportLayer instance to use for producing
  *        and parsing transport layer packets.
@@ -109,14 +118,16 @@ class HighLevelIO(
         CHECK("CHECK")
     }
 
-    private val appPacketChannel = Channel<ApplicationLayer.Packet>(Channel.UNLIMITED)
-    private val tpPacketChannel = Channel<TransportLayer.Packet>(Channel.UNLIMITED)
+    private var appPacketChannel = Channel<ApplicationLayer.Packet>(Channel.UNLIMITED)
+    private var tpPacketChannel = Channel<TransportLayer.Packet>(Channel.UNLIMITED)
 
     private val displayFrameAssembler = DisplayFrameAssembler()
 
     private var currentMode = Mode.REMOTE_TERMINAL
 
     private var receiveLoopJob: Job? = null
+    private var onBackgroundReceiveException: (e: Exception) -> Unit = { Unit }
+    private var caughtBackgroundReceiveException: Exception? = null
 
     private var currentLongRTPressJob: Job? = null
     private var currentLongRTPressedButton = Button.CHECK
@@ -174,6 +185,8 @@ class HighLevelIO(
      * @throws ComboIOException if connection fails due to an underlying
      *         IO issue. See the [HighLevelIO] documentation at the top
      *         for details about this.
+     * @throws ReceiveLoopFailureException if the background
+     *         receive loop failed.
      */
     suspend fun performPairing(
         backgroundReceiveScope: CoroutineScope,
@@ -185,6 +198,9 @@ class HighLevelIO(
                 "Attempted to pair even though a receive job is running (-> we are currently connected)"
             )
         }
+
+        // Make sure we get channels that are in their initial states.
+        resetPacketChannels()
 
         try {
             // Start the receive loop now since we expect certain transport
@@ -365,10 +381,17 @@ class HighLevelIO(
      * leading to race conditions.
      *
      * If an exception is thrown, the connection attempt is rolled
-     * back. The device is in a disconnected state afterwards.
+     * back. The device is in a disconnected state afterwards. This
+     * applies to an exception thrown _during_ the connection setup;
+     * any exception thrown in the background receive loop will cause
+     * [onBackgroundReceiveException] to be called instead. Also,
+     * other functions that involve IO to/from the Combo will throw
+     * that exception.
      *
      * @param backgroundReceiveScope [CoroutineScope] to run the background
      *        packet receive loop in.
+     * @param onBackgroundReceiveException Callback that gets invoked if
+     *        an exception occurs in the background receive loop.
      * @throws ComboIOException if an IO error occurs during
      *         the connection attempts.
      * @throws IllegalStateException if no pairing was done with
@@ -377,7 +400,10 @@ class HighLevelIO(
      *         filled with valid data. Also thrown if this is
      *         called after a connection was already established.
      */
-    suspend fun connect(backgroundReceiveScope: CoroutineScope) {
+    suspend fun connect(
+        backgroundReceiveScope: CoroutineScope,
+        onBackgroundReceiveException: (e: Exception) -> Unit = { Unit }
+    ) {
         if (receiveLoopJob != null) {
             throw IllegalStateException(
                 "Attempted to connect even though a receive job is running (-> we are already connected)"
@@ -390,7 +416,13 @@ class HighLevelIO(
             )
         }
 
+        // Make sure we get channels that are in their initial states.
+        resetPacketChannels()
+
         try {
+            this.onBackgroundReceiveException = onBackgroundReceiveException
+            this.caughtBackgroundReceiveException = null
+
             // Start the receive loop now since we expect certain transport
             // and application layer packets during the connection procedure.
             // Also, RT_DISPLAY packets, ACK_RESPONSE packets etc. may arrive
@@ -491,8 +523,13 @@ class HighLevelIO(
      *
      * @throws ComboIOException if an IO error occurs during
      *         the mode switch.
+     * @throws ReceiveLoopFailureException if the background
+     *         receive loop failed.
      */
     suspend fun switchToMode(newMode: Mode) {
+        if (caughtBackgroundReceiveException != null)
+            throw caughtBackgroundReceiveException!!
+
         if (currentMode == newMode) {
             logger(LogLevel.DEBUG) { "Ignoring redundant mode change since the ${currentMode.str} is already active" }
             return
@@ -523,6 +560,8 @@ class HighLevelIO(
      *         the button press.
      * @throws IllegalStateException if a long button press is
      *         ongoing or the pump is not in the RT mode.
+     * @throws ReceiveLoopFailureException if the background
+     *         receive loop failed.
      */
     suspend fun sendSingleRTButtonPress(button: Button) {
         // A single RT button press is performed by sending the button code,
@@ -534,6 +573,9 @@ class HighLevelIO(
 
         if (currentMode != Mode.REMOTE_TERMINAL)
             throw IllegalStateException("Cannot send single RT button press while being in ${currentMode.str} mode")
+
+        if (caughtBackgroundReceiveException != null)
+            throw caughtBackgroundReceiveException!!
 
         val buttonCode = when (button) {
             Button.UP -> ApplicationLayer.RTButtonCode.UP
@@ -575,6 +617,8 @@ class HighLevelIO(
      * @throws ComboIOException if an IO error occurs during
      *         the button press.
      * @throws IllegalStateException if the pump is not in the RT mode.
+     * @throws ReceiveLoopFailureException if the background
+     *         receive loop failed.
      */
     suspend fun startLongRTButtonPress(button: Button, scope: CoroutineScope) {
         if (currentMode != Mode.REMOTE_TERMINAL)
@@ -586,6 +630,9 @@ class HighLevelIO(
             }
             return
         }
+
+        if (caughtBackgroundReceiveException != null)
+            throw caughtBackgroundReceiveException!!
 
         try {
             sendLongRTButtonPress(button, true, scope)
@@ -608,6 +655,8 @@ class HighLevelIO(
      * @throws ComboIOException if an IO error occurs during
      *         the button press.
      * @throws IllegalStateException if the pump is not in the RT mode.
+     * @throws ReceiveLoopFailureException if the background
+     *         receive loop failed.
      */
     suspend fun stopLongRTButtonPress() {
         if (currentMode != Mode.REMOTE_TERMINAL)
@@ -619,6 +668,9 @@ class HighLevelIO(
             }
             return
         }
+
+        if (caughtBackgroundReceiveException != null)
+            throw caughtBackgroundReceiveException!!
 
         // We use the Button.CHECK button code here, but it
         // actually does not matter what code we use, since
@@ -704,26 +756,36 @@ class HighLevelIO(
         // calls connect() or performPairing(), since this would
         // require synchronization that is not in place here.
 
-        while (true) {
-            val tpLayerPacket = receiveTpPacketFromIO()
+        try {
+            while (true) {
+                val tpLayerPacket = receiveTpPacketFromIO()
 
-            // Process the packet according to its command ID. If we
-            // don't recognize the packet, log and discard it.
-            // NOTE: This is not about packets with unknown IDs. These
-            // are sorted out by the TransportLayer.Packet constructor,
-            // which throws an InvalidCommandIDException in that case.
-            // This check here is about valid command IDs that we don't
-            // handle in this when statement.
-            when (tpLayerPacket.commandID) {
-                TransportLayer.CommandID.DATA -> processTpLayerDataPacket(tpLayerPacket)
-                TransportLayer.CommandID.PAIRING_CONNECTION_REQUEST_ACCEPTED,
-                TransportLayer.CommandID.KEY_RESPONSE,
-                TransportLayer.CommandID.ID_RESPONSE,
-                TransportLayer.CommandID.REGULAR_CONNECTION_REQUEST_ACCEPTED -> tpPacketChannel.send(tpLayerPacket)
-                else -> logger(LogLevel.WARN) {
-                    "Cannot process ${tpLayerPacket.commandID.name} packet coming from the Combo; ignoring packet"
+                // Process the packet according to its command ID. If we
+                // don't recognize the packet, log and discard it.
+                // NOTE: This is not about packets with unknown IDs. These
+                // are sorted out by the TransportLayer.Packet constructor,
+                // which throws an InvalidCommandIDException in that case.
+                // This check here is about valid command IDs that we don't
+                // handle in this when statement.
+                when (tpLayerPacket.commandID) {
+                    TransportLayer.CommandID.DATA -> processTpLayerDataPacket(tpLayerPacket)
+                    TransportLayer.CommandID.PAIRING_CONNECTION_REQUEST_ACCEPTED,
+                    TransportLayer.CommandID.KEY_RESPONSE,
+                    TransportLayer.CommandID.ID_RESPONSE,
+                    TransportLayer.CommandID.REGULAR_CONNECTION_REQUEST_ACCEPTED -> tpPacketChannel.send(tpLayerPacket)
+                    else -> logger(LogLevel.WARN) {
+                        "Cannot process ${tpLayerPacket.commandID.name} packet coming from the Combo; ignoring packet"
+                    }
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            val recvloopException = ReceiveLoopFailureException(e)
+            caughtBackgroundReceiveException = recvloopException
+            onBackgroundReceiveException(recvloopException)
+            appPacketChannel.close(recvloopException)
+            tpPacketChannel.close(recvloopException)
         }
     }
 
@@ -809,6 +871,18 @@ class HighLevelIO(
     /*****************
      * Miscellaneous *
      *****************/
+
+    private fun resetPacketChannels() {
+        // Reset channels in case they were closed in a previous call
+        // or still contain stale data from a previous run. Do this
+        // by closing any existing channels and creating new ones.
+
+        appPacketChannel.close()
+        tpPacketChannel.close()
+
+        appPacketChannel = Channel<ApplicationLayer.Packet>(Channel.UNLIMITED)
+        tpPacketChannel = Channel<TransportLayer.Packet>(Channel.UNLIMITED)
+    }
 
     private suspend fun activateMode(newMode: Mode) {
         logger(LogLevel.DEBUG) { "Activating ${newMode.str} mode" }
