@@ -188,7 +188,11 @@ class Pump(
         } finally {
             disconnectBTDeviceAndCatchExceptions()
             if (doUnpair) {
-                bluetoothDevice.unpair()
+                // Unpair in a separate context, since this
+                // can block for up to a second or so.
+                withContext(Dispatchers.IO) {
+                    bluetoothDevice.unpair()
+                }
                 persistentState.reset()
             }
         }
