@@ -227,6 +227,8 @@ void sdp_service::setup(GDBusConnection *dbus_connection, std::string service_na
 			LOG(error, "Could not register profile: {}", error->message);
 			throw gerror_exception(error);
 		}
+
+		m_profile_registered = true;
 	}
 
 	// Our SDP service record is ready. Dismiss the guard to make

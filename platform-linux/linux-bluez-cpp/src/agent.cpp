@@ -189,6 +189,8 @@ void agent::setup(
 		throw gerror_exception(error);
 	}
 
+	LOG(trace, "Registered object with ID {} as agent", m_agent_object_id);
+
 	g_dbus_proxy_call_sync(
 		m_agent_manager_proxy,
 		"RequestDefaultAgent",
@@ -208,6 +210,8 @@ void agent::setup(
 
 	guard.dismiss();
 
+	m_agent_registered = true;
+
 	LOG(trace, "Agent set up");
 }
 
@@ -216,6 +220,8 @@ void agent::teardown()
 {
 	if (m_agent_registered)
 	{
+		GError *error = nullptr;
+
 		g_dbus_proxy_call_sync(
 			m_agent_manager_proxy,
 			"UnregisterAgent",
@@ -223,14 +229,23 @@ void agent::teardown()
 			G_DBUS_CALL_FLAGS_NONE,
 			-1,
 			nullptr,
-			nullptr
+			&error
 		);
 
+		if (error != nullptr)
+		{
+			LOG(error, "Could not unregister agent: {}", error->message);
+			g_error_free(error);
+		}
+
 		m_agent_registered = false;
+
+		LOG(trace, "Unregistered object with ID {} as agent", m_agent_object_id);
 	}
 
 	if (m_agent_object_id != 0)
 	{
+		LOG(trace, "Unregistering object with ID {}", m_agent_object_id);
 		g_dbus_connection_unregister_object(m_dbus_connection, m_agent_object_id);
 		m_agent_object_id = 0;
 	}

@@ -148,7 +148,7 @@ void adapter::setup(GDBusConnection *dbus_connection)
 
 	guard.dismiss();
 
-	LOG(trace, "Adapter set up");
+	LOG(debug, "Adapter set up");
 }
 
 
@@ -174,7 +174,7 @@ void adapter::teardown()
 	// Clear the map to make sure there is no leftover stale data.
 	m_bt_address_dbus_object_paths.clear();
 
-	LOG(trace, "Adapter torn down");
+	LOG(debug, "Adapter torn down");
 }
 
 

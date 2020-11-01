@@ -30,7 +30,8 @@ rfcomm_listener::~rfcomm_listener()
 {
 	stop_listening();
 
-	g_object_unref(G_OBJECT(m_socket_listener_accept_cancellable));
+	if (m_socket_listener_accept_cancellable != nullptr)
+		g_object_unref(G_OBJECT(m_socket_listener_accept_cancellable));
 }
 
 
