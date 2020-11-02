@@ -1,6 +1,8 @@
 package info.nightscout.comboctl.base
 
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Interface for Combo IO operations.
