@@ -1,7 +1,7 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    id("org.jetbrains.kotlin.jvm") version "1.3.71"
+    id("org.jetbrains.kotlin.jvm") version "1.4.10"
     id("org.jlleitschuh.gradle.ktlint") version "9.2.1"
 }
 
@@ -38,7 +38,7 @@ allprojects {
         // Use the Kotlin JDK 8 standard library.
         implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
 
-        implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.3.7")
+        implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.4.0")
 
         testImplementation(kotlin("test-common"))
         testImplementation(kotlin("test-annotations-common"))
