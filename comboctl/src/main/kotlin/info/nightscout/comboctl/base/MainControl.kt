@@ -18,10 +18,27 @@ private val logger = Logger.get("MainControl")
  * This class takes care of managing pump discovery via
  * Bluetooth and performing the pairing once a pump is
  * discovered, along with connecting to pumps.
+ *
+ * The [requestPersistentPumpStateStore] must return a
+ * usable state store, even if one does not exist yet.
+ * If it does not exist for the pump with the given address,
+ * the state store is in its initial invalid state
+ * (see [PersistentPumpStateStore] for details). Exceptions
+ * can be thrown if something goes wrong while retrieving
+ * an existing state store.
+ *
+ * The [pairingPINCallback] is called when the control
+ * needs the 10-digit pairing PIN that is shown on the
+ * Combo's LCD. This typically leads to a dialog box
+ * shown on screen with a widget for entering the PIN.
+ * If the user cancels that entry (for example by pressing
+ * a "Cancel" button in that dialog box), the callback
+ * should throw an exception to have the pairing process
+ * aborted.
  */
 class MainControl(
     private val bluetoothInterface: BluetoothInterface,
-    private val requestPersistentState: (newPumpAddress: BluetoothAddress) -> PersistentState,
+    private val requestPersistentPumpStateStore: (newPumpAddress: BluetoothAddress) -> PersistentPumpStateStore,
     private val pairingPINCallback: (
         newPumpAddress: BluetoothAddress,
         previousAttemptFailed: Boolean,
@@ -225,7 +242,6 @@ class MainControl(
      * @param pumpAddress Bluetooth address of the pump to connect to.
      * @param backgroundReceiveScope [CoroutineScope] to run the
      *        background packet receive loop in.
-     * @param persistentState Persistent state store for this pump.
      * @param onNewDisplayFrame Callback invoked every time the pump
      *        receives a new complete remote terminal frame.
      * @param onBackgroundReceiveException Callback that gets invoked
@@ -240,12 +256,22 @@ class MainControl(
      */
     suspend fun connect(
         pumpAddress: BluetoothAddress,
-        persistentState: PersistentState,
         backgroundReceiveScope: CoroutineScope,
         onNewDisplayFrame: (displayFrame: DisplayFrame) -> Unit,
         onBackgroundReceiveException: (e: Exception) -> Unit = { Unit }
     ): Pump {
-        require(persistentState.isValid())
+        lateinit var persistentPumpStateStore: PersistentPumpStateStore
+
+        try {
+            persistentPumpStateStore = requestPersistentPumpStateStore(pumpAddress)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logger(LogLevel.ERROR) { "Could not get persistent state store for pump $pumpAddress due to an exception: $e" }
+            throw PumpStateStoreRequestException(e)
+        }
+
+        require(persistentPumpStateStore.isValid())
 
         logger(LogLevel.DEBUG) { "About to connect to pump $pumpAddress" }
 
@@ -253,7 +279,7 @@ class MainControl(
 
         val pump = Pump(
             bluetoothDevice,
-            persistentState,
+            persistentPumpStateStore,
             onNewDisplayFrame
         )
 
@@ -265,13 +291,15 @@ class MainControl(
     private suspend fun performPairing(backgroundReceiveScope: CoroutineScope, pumpAddress: BluetoothAddress) {
         logger(LogLevel.DEBUG) { "About to perform pairing with pump $pumpAddress" }
 
-        lateinit var persistentStateToFill: PersistentState
+        lateinit var persistentPumpStateStore: PersistentPumpStateStore
 
         try {
-            persistentStateToFill = requestPersistentState(pumpAddress)
-        } catch (e: Exception) {
-            logger(LogLevel.ERROR) { "Could not get persistent state for pump $pumpAddress" }
+            persistentPumpStateStore = requestPersistentPumpStateStore(pumpAddress)
+        } catch (e: CancellationException) {
             throw e
+        } catch (e: Exception) {
+            logger(LogLevel.ERROR) { "Could not get persistent state store for pump $pumpAddress due to an exception: $e" }
+            throw PumpStateStoreRequestException(e)
         }
 
         // TODO: What if user wants to abort the pairing?
@@ -281,7 +309,7 @@ class MainControl(
 
         val pump = Pump(
             bluetoothDevice,
-            persistentStateToFill,
+            persistentPumpStateStore,
             { Unit } // We don't need the onNewDisplayFrame callback while pairing.
         )
 

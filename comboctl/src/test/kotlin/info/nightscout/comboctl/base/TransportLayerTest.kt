@@ -199,7 +199,7 @@ class TransportLayerTest {
             0x34, 0x35, 0x36, 0x37,
             0xab, 0xc6, 0x89, 0x7f, 0x14, 0x9b, 0xdf, 0x3b))
 
-        val tpLayerState = TestPersistentTLState()
+        val tpLayerState = TestPersistentPumpStateStore()
         val tpLayer = TransportLayer(tpLayerState)
 
         // Send the first 3 pairing setup packets. After REQUEST_PAIRING_CONNECTION,
@@ -223,15 +223,16 @@ class TransportLayerTest {
         tpLayer.parseKeyResponsePacket(keyResponsePacket)
         // Verify that the state has been updated with the correct addresses
         // and decrypted keys.
-        assertEquals(0x10, tpLayerState.keyResponseAddress)
+        val pumpPairingData = tpLayerState.retrievePumpPairingData()
+        assertEquals(0x10, pumpPairingData.keyResponseAddress)
         assertEquals(byteArrayListOfInts(
             0x5a, 0x25, 0x0b, 0x75, 0xa9, 0x02, 0x21, 0xfa,
             0xab, 0xbd, 0x36, 0x4d, 0x5c, 0xb8, 0x37, 0xd7),
-            tpLayerState.clientPumpCipher!!.key.toList())
+            pumpPairingData.clientPumpCipher.key.toList())
         assertEquals(byteArrayListOfInts(
             0x2a, 0xb0, 0xf2, 0x67, 0xc2, 0x7d, 0xcf, 0xaa,
             0x32, 0xb2, 0x48, 0x94, 0xe1, 0x6d, 0xe9, 0x5c),
-            tpLayerState.pumpClientCipher!!.key.toList())
+            pumpPairingData.pumpClientCipher.key.toList())
 
         // After getting KEY_RESPONSE, the client must transmit REQUEST_ID.
         val createdRequestIDPacket = tpLayer.createRequestIDPacket("Test 123")

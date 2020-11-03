@@ -1,5 +1,6 @@
 package info.nightscout.comboctl.base
 
+import kotlinx.coroutines.CancellationException
 import java.lang.IllegalStateException
 
 private val logger = Logger.get("TransportLayer")
@@ -49,11 +50,12 @@ const val MAX_VALID_TL_PAYLOAD_SIZE = 65535
  * at the transport layer. The TransportLayer class itself contains internal
  * temporary states that only need to exist for the duration of a communication
  * session with the Combo. In addition, external states exist that must be stored
- * in a persistent fashion. The PersistentState interface is used for that purpose.
+ * in a persistent fashion. The [PersistentPumpStateStore] interface is used
+ * for that purpose.
  *
  * Callers create an instance of TransportLayer every time a new connection to
  * the Combo is established, and destroyed afterwards (it is not reused). Callers
- * also must provide the constructor an implementation of PersistentState.
+ * also must provide the constructor an implementation of [PersistentPumpStateStore].
  *
  * Packets created by this class follow a specific order when pairing and when
  * initiating a regular connection. This is important to keep in mind since the
@@ -63,7 +65,7 @@ const val MAX_VALID_TL_PAYLOAD_SIZE = 65535
  * This class is typically not directly touched by users. Instead, it is typically
  * used by higher-level code that handles the pairing and regular connection processes.
  */
-class TransportLayer(private val state: PersistentState) {
+class TransportLayer(private val persistentPumpStateStore: PersistentPumpStateStore) {
     /**
      * Current sequence flag, used in reliable data packets.
      *
@@ -78,6 +80,19 @@ class TransportLayer(private val state: PersistentState) {
      * KEY_RESPONSE packet.
      */
     private var weakCipher: Cipher? = null
+
+    private var cachedPumpPairingData: PumpPairingData
+
+    init {
+        if (persistentPumpStateStore.isValid())
+            cachedPumpPairingData = persistentPumpStateStore.retrievePumpPairingData()
+        else
+            cachedPumpPairingData = PumpPairingData(
+                Cipher(ByteArray(CIPHER_KEY_SIZE)),
+                Cipher(ByteArray(CIPHER_KEY_SIZE)),
+                0x00.toByte()
+            )
+    }
 
     /**
      * Valid command IDs for Combo packets.
@@ -443,21 +458,23 @@ class TransportLayer(private val state: PersistentState) {
         sequenceBit: Boolean = false,
         reliabilityBit: Boolean = false
     ): Packet {
-        if (state.keyResponseAddress == null)
+        if (!persistentPumpStateStore.isValid())
             throw IllegalStateException()
+
+        val currentTxNonce = persistentPumpStateStore.currentTxNonce
 
         val packet = Packet(
             commandID = commandID,
-            address = state.keyResponseAddress!!,
+            address = cachedPumpPairingData.keyResponseAddress,
             sequenceBit = sequenceBit,
             reliabilityBit = reliabilityBit,
             payload = payload,
-            nonce = state.currentTxNonce
+            nonce = currentTxNonce
         )
 
-        state.currentTxNonce = state.currentTxNonce.getIncrementedNonce()
+        persistentPumpStateStore.currentTxNonce = currentTxNonce.getIncrementedNonce()
 
-        state.clientPumpCipher?.let { packet.authenticate(it) } ?: throw IllegalStateException()
+        packet.authenticate(cachedPumpPairingData.clientPumpCipher)
 
         return packet
     }
@@ -485,7 +502,7 @@ class TransportLayer(private val state: PersistentState) {
     /**
      * Checks whether or not the transport layer's [PersistentState] is valid.
      */
-    fun persistentStateIsValid() = state.isValid()
+    fun persistentStateIsValid() = persistentPumpStateStore.isValid()
 
     /**
      * Generic incoming packet verification function.
@@ -537,9 +554,9 @@ class TransportLayer(private val state: PersistentState) {
             CommandID.ACK_RESPONSE,
             CommandID.DATA,
             CommandID.ERROR_RESPONSE -> {
-                if (state.pumpClientCipher == null)
+                if (!persistentPumpStateStore.isValid())
                     throw IllegalStateException("Cannot verify ${packet.commandID} packet without a pump-client cipher")
-                packet.verifyAuthentication(state.pumpClientCipher!!)
+                packet.verifyAuthentication(cachedPumpPairingData.pumpClientCipher)
             }
         }
 
@@ -598,7 +615,7 @@ class TransportLayer(private val state: PersistentState) {
     fun createRequestIDPacket(bluetoothFriendlyName: String): Packet {
         // The nonce is set to 1 in the REQUEST_ID packet, and
         // gets incremented from that moment onwards.
-        state.currentTxNonce = Nonce(byteArrayListOfInts(
+        persistentPumpStateStore.currentTxNonce = Nonce(byteArrayListOfInts(
             0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
         ))
 
@@ -721,6 +738,9 @@ class TransportLayer(private val state: PersistentState) {
      *         the one expected from KEY_RESPONSE packets.
      * @throws PacketVerificationException if the packet
      *         verification fails.
+     * @throws PumpStateStoreStorageException if placing the
+     *         parsed keys and the key response address into
+     *         the persistent pump state store fails.
      */
     fun parseKeyResponsePacket(packet: Packet) {
         if (weakCipher == null)
@@ -741,20 +761,36 @@ class TransportLayer(private val state: PersistentState) {
             encryptedCPKey[i] = packet.payload[i + CIPHER_KEY_SIZE]
         }
 
-        state.pumpClientCipher = Cipher(weakCipher!!.decrypt(encryptedPCKey))
-        state.clientPumpCipher = Cipher(weakCipher!!.decrypt(encryptedCPKey))
+        val pumpClientCipher = Cipher(weakCipher!!.decrypt(encryptedPCKey))
+        val clientPumpCipher = Cipher(weakCipher!!.decrypt(encryptedCPKey))
 
         // Note: Source and destination addresses are reversed,
         // since they are set from the perspective of the pump.
         val addressInt = packet.address.toPosInt()
         val sourceAddress = addressInt and 0xF
         val destinationAddress = (addressInt shr 4) and 0xF
-        state.keyResponseAddress = ((sourceAddress shl 4) or destinationAddress).toByte()
+        val keyResponseAddress = ((sourceAddress shl 4) or destinationAddress).toByte()
+
+        cachedPumpPairingData = PumpPairingData(
+            pumpClientCipher = pumpClientCipher,
+            clientPumpCipher = clientPumpCipher,
+            keyResponseAddress = keyResponseAddress
+        )
 
         logger(LogLevel.DEBUG) {
-            "Address: ${"%02x".format(state.keyResponseAddress)}" +
-            "  decrypted client->pump key: ${state.clientPumpCipher!!.key.toHexString()}" +
-            "  decrypted pump->client key: ${state.pumpClientCipher!!.key.toHexString()}"
+            "Address: ${"%02x".format(cachedPumpPairingData.keyResponseAddress)}" +
+            "  decrypted client->pump key: ${cachedPumpPairingData.clientPumpCipher.key.toHexString()}" +
+            "  decrypted pump->client key: ${cachedPumpPairingData.pumpClientCipher.key.toHexString()}"
+        }
+
+        // Catch any exception (other than CancellationException) and
+        // wrap it into a PumpStateStoreStorageException instance.
+        try {
+            persistentPumpStateStore.storePumpPairingData(cachedPumpPairingData)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw PumpStateStoreStorageException(e)
         }
     }
 
@@ -786,9 +822,10 @@ class TransportLayer(private val state: PersistentState) {
             throw IncorrectPacketException(packet, CommandID.ID_RESPONSE)
         if (packet.payload.size != 17)
             throw InvalidPayloadException(packet, "Expected 17 bytes, got ${packet.payload.size}")
+        if (!persistentPumpStateStore.isValid())
+            throw IllegalStateException()
 
-        val pumpClientCipher = state.pumpClientCipher ?: throw IllegalStateException()
-        if (!packet.verifyAuthentication(pumpClientCipher))
+        if (!packet.verifyAuthentication(cachedPumpPairingData.pumpClientCipher))
             throw PacketVerificationException(packet)
 
         val serverID = ((packet.payload[0].toPosLong() shl 0) or
@@ -826,9 +863,10 @@ class TransportLayer(private val state: PersistentState) {
             throw IncorrectPacketException(packet, CommandID.ERROR_RESPONSE)
         if (packet.payload.size != 1)
             throw InvalidPayloadException(packet, "Expected 1 byte, got ${packet.payload.size}")
+        if (!persistentPumpStateStore.isValid())
+            throw IllegalStateException()
 
-        val pumpClientCipher = state.pumpClientCipher ?: throw IllegalStateException()
-        if (!packet.verifyAuthentication(pumpClientCipher))
+        if (!packet.verifyAuthentication(cachedPumpPairingData.pumpClientCipher))
             throw PacketVerificationException(packet)
 
         return packet.payload[0].toInt()

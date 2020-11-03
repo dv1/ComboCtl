@@ -33,7 +33,7 @@ class HighLevelIOTest {
         assertEquals(appLayerPacket.payload[3], (if (buttonStatusChangedFlag) 0xB7 else 0x48).toByte())
     }
 
-    private lateinit var tpLayerState: TestPersistentTLState
+    private lateinit var tpLayerState: TestPersistentPumpStateStore
     private lateinit var tpLayer: TransportLayer
     private lateinit var appLayer: ApplicationLayer
     private lateinit var testIO: TestComboIO
@@ -41,15 +41,19 @@ class HighLevelIOTest {
 
     @BeforeTest
     fun setup() {
-        tpLayerState = TestPersistentTLState()
+        tpLayerState = TestPersistentPumpStateStore()
 
-        tpLayerState.keyResponseAddress = 0x10
-        tpLayerState.clientPumpCipher = Cipher(byteArrayOfInts(
-            0x5a, 0x25, 0x0b, 0x75, 0xa9, 0x02, 0x21, 0xfa,
-            0xab, 0xbd, 0x36, 0x4d, 0x5c, 0xb8, 0x37, 0xd7))
-        tpLayerState.pumpClientCipher = Cipher(byteArrayOfInts(
-            0x2a, 0xb0, 0xf2, 0x67, 0xc2, 0x7d, 0xcf, 0xaa,
-            0x32, 0xb2, 0x48, 0x94, 0xe1, 0x6d, 0xe9, 0x5c))
+        val pumpPairingData = PumpPairingData(
+            keyResponseAddress = 0x10,
+            clientPumpCipher = Cipher(byteArrayOfInts(
+                0x5a, 0x25, 0x0b, 0x75, 0xa9, 0x02, 0x21, 0xfa,
+                0xab, 0xbd, 0x36, 0x4d, 0x5c, 0xb8, 0x37, 0xd7)),
+            pumpClientCipher = Cipher(byteArrayOfInts(
+                0x2a, 0xb0, 0xf2, 0x67, 0xc2, 0x7d, 0xcf, 0xaa,
+                0x32, 0xb2, 0x48, 0x94, 0xe1, 0x6d, 0xe9, 0x5c))
+        )
+
+        tpLayerState.storePumpPairingData(pumpPairingData)
 
         tpLayer = TransportLayer(tpLayerState)
         appLayer = ApplicationLayer()

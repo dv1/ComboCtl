@@ -19,11 +19,11 @@ private val logger = Logger.get("Pump")
  * ComboCtl. Programs using ComboCtl primarily use this class,
  * along with [MainControl].
  *
- * Each Pump object has a [PersistentState] associated with it.
- * A [PersistentState] of one Pump instance must be kept entirely
- * separate from other persistent states. So, even if a pump's
- * persistent state is reset (that is, completely wiped), other
- * pump states must not be affected.
+ * Each Pump object has a [PersistentPumpStateStore] associated with
+ * it. A [PersistentPumpStateStore] of one Pump instance must be kept
+ * entirely separate from other persistent states. So, even if a
+ * pump's persistent state is reset (that is, completely wiped),
+ * other pump states must not be affected.
  *
  * The constructor does not immediately connect to the pump.
  * This is done by calling [connect]. Also note that before being
@@ -42,13 +42,13 @@ private val logger = Logger.get("Pump")
  * @param bluetoothDevice [BluetoothDevice] object to use for
  *        Bluetooth I/O. Must be in a disconnected state when
  *        assigned to this instance.
- * @param persistentState Persistent state store for this pump.
+ * @param persistentPumpStateStore Persistent state store for this pump.
  * @param onNewDisplayFrame Callback invoked every time the pump
  *        receives a new complete remote terminal frame.
  */
 class Pump(
     private val bluetoothDevice: BluetoothDevice,
-    private val persistentState: PersistentState,
+    private val persistentPumpStateStore: PersistentPumpStateStore,
     private val onNewDisplayFrame: (displayFrame: DisplayFrame) -> Unit
 ) {
     private val transportLayer: TransportLayer
@@ -63,7 +63,7 @@ class Pump(
         // sends packets in a framed form (See [ComboFrameParser]
         // and [List<Byte>.toComboFrame] for details).
         framedComboIO = FramedComboIO(bluetoothDevice)
-        transportLayer = TransportLayer(persistentState)
+        transportLayer = TransportLayer(persistentPumpStateStore)
         highLevelIO = HighLevelIO(
             transportLayer,
             applicationLayer,
@@ -90,7 +90,7 @@ class Pump(
      *
      * @return true if the pump is paired.
      */
-    fun isPaired() = persistentState.isValid()
+    fun isPaired() = persistentPumpStateStore.isValid()
 
     /**
      * Performs a pairing procedure with the pump.
@@ -101,9 +101,9 @@ class Pump(
      * the client at this point. But the Combo itself needs additional
      * pairing, which we perform with this function.
      *
-     * Once this is done, the [persistentState will be filled with all
-     * of the necessary information (ciphers etc.) for establishing
-     * regular connections with [connect].
+     * Once this is done, the [persistentPumpStateStore will be filled
+     * with all of the necessary information (ciphers etc.) for
+     * establishing regular connections with [connect].
      *
      * Packets are received in a loop that runs in a background
      * coroutine that operates in the [backgroundReceiveScope].
@@ -174,9 +174,9 @@ class Pump(
         // to ensure that we always disconnect afterwards, even
         // in case of an exception, to make sure we always do
         // an ordered shutdown. In case of an exception, we also
-        // unpair and reset the persistentState to revert back
-        // to the unpaired state, since pairing failed, and the
-        // state is undefined when that happens.
+        // unpair and reset the persistentPumpStateStore to revert
+        // back to the unpaired state, since pairing failed, and
+        // the state is undefined when that happens.
         try {
             // Connecting to Bluetooth may block, so run it in
             // a coroutine with an IO dispatcher.
@@ -195,7 +195,7 @@ class Pump(
                 withContext(Dispatchers.IO) {
                     bluetoothDevice.unpair()
                 }
-                persistentState.reset()
+                persistentPumpStateStore.reset()
             }
         }
     }
@@ -203,7 +203,7 @@ class Pump(
     /**
      * Unpairs the pump.
      *
-     * Unpairing consists of resetting the [persistentState],
+     * Unpairing consists of resetting the [persistentPumpStateStore],
      * followed by unpairing the Bluetooth device.
      *
      * If we aren't paired already, this function does nothing.
@@ -214,10 +214,10 @@ class Pump(
         // makes sense? And if so, what should the caller do?
         // Try to unpair again?
 
-        if (!persistentState.isValid())
+        if (!persistentPumpStateStore.isValid())
             return
 
-        persistentState.reset()
+        persistentPumpStateStore.reset()
 
         // NOTE: The user still has to manually unpair the client through
         // the Combo's UI before any communication with it can be resumed.

@@ -65,7 +65,7 @@ class PairingSessionTest {
 
     @BeforeTest
     fun setup() {
-        val tpLayerState = TestPersistentTLState()
+        val tpLayerState = TestPersistentPumpStateStore()
         tpLayer = TransportLayer(tpLayerState)
         appLayer = ApplicationLayer()
     }
