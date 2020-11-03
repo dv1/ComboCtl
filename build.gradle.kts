@@ -58,13 +58,4 @@ allprojects {
     tasks.withType<KotlinCompile>().configureEach {
         kotlinOptions.jvmTarget = "1.8"
     }
-
-    // Enable more detailed deprecation warnings to be able to pinpoint
-    // where exactly deprecated calls are located in the code.
-    // Useful when adding third-party code that uses deprecated functions.
-    afterEvaluate {
-        tasks.withType(JavaCompile::class) {
-            options.compilerArgs.add("-Xlint:deprecation")
-        }
-    }
 }
