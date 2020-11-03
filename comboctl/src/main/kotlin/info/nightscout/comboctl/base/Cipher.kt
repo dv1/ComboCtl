@@ -46,7 +46,11 @@ class Cipher(val key: ByteArray) {
         require(ciphertext.size == CIPHER_BLOCK_SIZE)
         return Twofish.blockDecrypt(ciphertext, 0, keyObject)
     }
+
+    override fun toString() = key.toHexString(" ")
 }
+
+fun String.toCipher() = Cipher(this.split(" ").map { it.toInt(radix = 16).toByte() }.toByteArray())
 
 /**
  * Generates a weak key out of a 10-digit PIN.

@@ -38,7 +38,7 @@ data class Nonce(private val nonceBytes: List<Byte>) : Iterable<Byte> {
 
     override operator fun iterator() = nonceBytes.iterator()
 
-    override fun toString() = nonceBytes.toHexString()
+    override fun toString() = nonceBytes.toHexString(" ")
 
     /**
      * Return an incremented copy of this nonce.
@@ -65,6 +65,8 @@ data class Nonce(private val nonceBytes: List<Byte>) : Iterable<Byte> {
         return Nonce(outputNonceBytes)
     }
 }
+
+fun String.toNonce() = Nonce(this.split(" ").map { it.toInt(radix = 16).toByte() })
 
 /**
  * Nonce consisting of 13 nullbytes. Useful for initializations.
