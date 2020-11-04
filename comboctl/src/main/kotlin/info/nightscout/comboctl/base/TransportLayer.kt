@@ -1,7 +1,6 @@
 package info.nightscout.comboctl.base
 
 import kotlinx.coroutines.CancellationException
-import java.lang.IllegalStateException
 
 private val logger = Logger.get("TransportLayer")
 
