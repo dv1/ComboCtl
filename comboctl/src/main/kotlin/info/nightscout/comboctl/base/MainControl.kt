@@ -35,6 +35,16 @@ private val logger = Logger.get("MainControl")
  * a "Cancel" button in that dialog box), the callback
  * should throw an exception to have the pairing process
  * aborted.
+ *
+ * @param bluetoothInterface Bluetooth interface to use
+ *        for discovery, pairing, and connection setup.
+ * @param requestPersistentPumpStateStore Callback that
+ *        gets invoked whenever a [Pump] instance is
+ *        created for pairing or for establishing a
+ *        regular connection to the pump.
+ * @param pairingPINCallback Callback that gets invoked
+ *        as soon as a pump pairing process needs the
+ *        10-digit-PIN.
  */
 class MainControl(
     private val bluetoothInterface: BluetoothInterface,
@@ -102,6 +112,10 @@ class MainControl(
      *        Typically, this happens because the pump is out of range,
      *        or because the user unpaired it in the Bluetooth settings,
      *        or when the pump is turned off.
+     * @param onDiscoveryFailure Optional callback to notify the caller
+     *        that discovery failed / got aborted. The cause for the
+     *        failure is supplied along with the Bluetooth address of
+     *        the pump associated with the failure.
      * @throws IllegalStateException if a discovery is already ongoing.
      * @throws BluetoothException if discovery fails due to an underlying
      *         Bluetooth issue.
@@ -199,6 +213,8 @@ class MainControl(
     /**
      * Stops any ongoing discovery.
      *
+     * This also aborts any ongoing pairing process.
+     *
      * If no discovery is ongoing, this function does nothing.
      */
     fun stopDiscovery() {
@@ -289,6 +305,9 @@ class MainControl(
     }
 
     private suspend fun performPairing(backgroundReceiveScope: CoroutineScope, pumpAddress: BluetoothAddress) {
+        // NOTE: Pairing can be aborted either by calling stopDiscovery()
+        // or by throwing an exception in the pairing PIN callback.
+
         logger(LogLevel.DEBUG) { "About to perform pairing with pump $pumpAddress" }
 
         lateinit var persistentPumpStateStore: PersistentPumpStateStore
@@ -301,8 +320,6 @@ class MainControl(
             logger(LogLevel.ERROR) { "Could not get persistent state store for pump $pumpAddress due to an exception: $e" }
             throw PumpStateStoreRequestException(e)
         }
-
-        // TODO: What if user wants to abort the pairing?
 
         val bluetoothDevice = bluetoothInterface.getDevice(pumpAddress)
         logger(LogLevel.DEBUG) { "Got Bluetooth device instance for pump" }
