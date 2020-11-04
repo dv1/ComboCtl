@@ -1,5 +1,6 @@
 package info.nightscout.comboctl.base
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -420,6 +421,8 @@ class Pump(
             withContext(Dispatchers.IO) {
                 bluetoothDevice.disconnect()
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             logger(LogLevel.ERROR) {
                 "Caught exception during Bluetooth device disconnect; not propagating; exception: $e"

@@ -163,6 +163,7 @@ class MainControl(
                             logger(LogLevel.ERROR) { "Aborting pairing since this coroutine got cancelled" }
                             abortDiscovery(e)
                             onDiscoveryFailure(pumpAddress, e)
+                            throw e
                         } catch (e: Exception) {
                             logger(LogLevel.ERROR) { "Caught exception while pairing to pump with address $pumpAddress: $e" }
                             abortDiscovery(e)
