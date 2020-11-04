@@ -24,12 +24,11 @@ private const val COMMAND_ID_BYTE_OFFSET = 2
 private const val PAYLOAD_BYTES_OFFSET = 4
 
 // Utility function to be able to throw an exception in case of
-// an invalid service or command ID even in the constructor below.
+// an invalid service or command ID.
 private fun checkedGetCommand(
-    appPacketBytes: ArrayList<Byte>,
     tpLayerPacket: TransportLayer.Packet
 ): ApplicationLayer.Command {
-    val serviceIDInt = appPacketBytes[SERVICE_ID_BYTE_OFFSET].toPosInt()
+    val serviceIDInt = tpLayerPacket.payload[SERVICE_ID_BYTE_OFFSET].toPosInt()
     val serviceID = ApplicationLayer.ServiceID.fromInt(serviceIDInt)
         ?: throw ApplicationLayer.InvalidServiceIDException(tpLayerPacket, serviceIDInt)
     val commandID = (tpLayerPacket.payload[COMMAND_ID_BYTE_OFFSET + 0].toPosInt() shl 0) or
@@ -143,7 +142,7 @@ class ApplicationLayer {
     class InvalidServiceIDException(
         val tpLayerPacket: TransportLayer.Packet,
         val serviceID: Int
-    ) : ExceptionBase("Invalid/unknown application layer packet service ID $serviceID")
+    ) : ExceptionBase("Invalid/unknown application layer packet service ID 0x${serviceID.toString(16)}")
 
     /**
      * Exception thrown when an application layer packet arrives with an invalid application layer command ID.
@@ -156,7 +155,7 @@ class ApplicationLayer {
         val tpLayerPacket: TransportLayer.Packet,
         val serviceID: ServiceID,
         val commandID: Int
-    ) : ExceptionBase("Invalid/unknown application layer packet command ID $commandID (service ID: ${serviceID.name})")
+    ) : ExceptionBase("Invalid/unknown application layer packet command ID 0x${commandID.toString(16)} (service ID: ${serviceID.name})")
 
     /**
      * Exception thrown when a different application layer packet was expected than the one that arrived.
@@ -240,7 +239,7 @@ class ApplicationLayer {
          * @throws IncorrectPacketException if the given packet is not a DATA packet.
          */
         constructor(tpLayerPacket: TransportLayer.Packet) : this(
-            command = checkedGetCommand(tpLayerPacket.payload, tpLayerPacket),
+            command = checkedGetCommand(tpLayerPacket),
             version = tpLayerPacket.payload[VERSION_BYTE_OFFSET],
             payload = ArrayList<Byte>(tpLayerPacket.payload.subList(PAYLOAD_BYTES_OFFSET, tpLayerPacket.payload.size))
         ) {
