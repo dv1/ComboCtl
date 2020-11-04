@@ -500,7 +500,7 @@ class ApplicationLayer {
             reason = reason,
             index = payload[3].toPosInt(),
             row = row,
-            pixels = payload.subList(4, 101)
+            pixels = payload.subList(5, 101)
         )
     }
 }
