@@ -805,6 +805,7 @@ class HighLevelIO(
         try {
             logger(LogLevel.DEBUG) { "Parsing DATA packet as application layer packet" }
             appLayerPacket = ApplicationLayer.Packet(tpLayerPacket)
+            logger(LogLevel.DEBUG) { "This is an application layer packet with command ${appLayerPacket.command}" }
         } catch (e: ApplicationLayer.ExceptionBase) {
             logger(LogLevel.ERROR) { "Could not parse DATA packet as application layer packet: $e" }
             throw e
@@ -824,9 +825,14 @@ class HighLevelIO(
         // Feed the payload to the display frame assembler to let it piece together
         // frames and output them via the callback.
 
-        val displayFrame = displayFrameAssembler.processRTDisplayPayload(rtDisplayPayload)
-        if (displayFrame != null)
-            onNewDisplayFrame(displayFrame)
+        try {
+            val displayFrame = displayFrameAssembler.processRTDisplayPayload(rtDisplayPayload)
+            if (displayFrame != null)
+                onNewDisplayFrame(displayFrame)
+        } catch (e: Exception) {
+            logger(LogLevel.ERROR) { "Could not process RT_DISPLAY payload: $e" }
+            throw e
+        }
     }
 
     private suspend fun receiveTpLayerPacketFromChannel(expectedCommandID: TransportLayer.CommandID? = null): TransportLayer.Packet {
