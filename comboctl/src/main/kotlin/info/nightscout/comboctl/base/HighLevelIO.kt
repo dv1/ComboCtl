@@ -848,6 +848,7 @@ class HighLevelIO(
         // packets _to_ the Combo. The rtKeepAliveJob takes care of that.)
         when (appLayerPacket.command) {
             ApplicationLayer.Command.RT_DISPLAY -> processRTDisplayPayload(applicationLayer.parseRTDisplayPacket(appLayerPacket))
+            ApplicationLayer.Command.RT_KEY_CONFIRMATION -> { logger(LogLevel.DEBUG) { "Got RT_KEY_CONFIRMATION packet from the Combo; ignoring" } }
             ApplicationLayer.Command.RT_KEEP_ALIVE -> { logger(LogLevel.DEBUG) { "Got RT_KEEP_ALIVE packet from the Combo; ignoring" } }
             ApplicationLayer.Command.CTRL_SERVICE_ERROR ->
                 processCTRLServiceError(appLayerPacket, applicationLayer.parseCTRLServiceErrorPacket(appLayerPacket))
