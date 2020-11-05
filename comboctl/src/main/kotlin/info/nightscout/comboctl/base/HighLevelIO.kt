@@ -131,6 +131,8 @@ class HighLevelIO(
     private var currentMode = Mode.REMOTE_TERMINAL
 
     private var receiveLoopJob: Job? = null
+    private var rtKeepAliveJob: Job? = null
+    private var rtKeepAliveScope: CoroutineScope? = null
     private var onBackgroundReceiveException: (e: Exception) -> Unit = { Unit }
     private var caughtBackgroundReceiveException: Exception? = null
 
@@ -421,6 +423,10 @@ class HighLevelIO(
             )
         }
 
+        // Keep a reference to the coroutine scope to be able to run
+        // the RT_KEEPALIVE packet send loop in the background later.
+        rtKeepAliveScope = backgroundReceiveScope
+
         // Make sure we get channels that are in their initial states.
         resetPacketChannels()
 
@@ -476,6 +482,8 @@ class HighLevelIO(
 
         // Cancel any ongoing jobs
 
+        stopRTKeepAliveBackgroundLoop()
+
         receiveLoopJob!!.cancel()
         receiveLoopJob = null
 
@@ -483,6 +491,8 @@ class HighLevelIO(
             currentLongRTPressJob!!.cancel()
             currentLongRTPressJob = null
         }
+
+        rtKeepAliveScope = null
 
         try {
             // First, deactivate all application layer services.
@@ -798,6 +808,11 @@ class HighLevelIO(
             // Close the channels, citing the exception as the reason why.
             appPacketChannel.close(recvloopException)
             tpPacketChannel.close(recvloopException)
+
+            // Stop the RT_KEEPALIVE background loop, since it is
+            // pointless to keep sending these packets after the
+            // receive loop got stopped by the exception.
+            stopRTKeepAliveBackgroundLoop()
         }
     }
 
@@ -826,8 +841,14 @@ class HighLevelIO(
         // CTRL_SERVICE_ERROR packets are errors that must be handled immediately.
         // Unlike the ERROR_RESPONSE packet, these packets report errors at the
         // application layer.
+        //
+        // As for the RT_KEY_CONFIRMATION and RT_KEEP_ALIVE packets, they are
+        // notifications that we don't need here, so we ignore them. (Note that
+        // RT_KEEP_ALIVE serves a dual purpose; we _do_ have to also send such
+        // packets _to_ the Combo. The rtKeepAliveJob takes care of that.)
         when (appLayerPacket.command) {
             ApplicationLayer.Command.RT_DISPLAY -> processRTDisplayPayload(applicationLayer.parseRTDisplayPacket(appLayerPacket))
+            ApplicationLayer.Command.RT_KEEP_ALIVE -> { logger(LogLevel.DEBUG) { "Got RT_KEEP_ALIVE packet from the Combo; ignoring" } }
             ApplicationLayer.Command.CTRL_SERVICE_ERROR ->
                 processCTRLServiceError(appLayerPacket, applicationLayer.parseCTRLServiceErrorPacket(appLayerPacket))
             else -> appPacketChannel.send(appLayerPacket)
@@ -916,6 +937,8 @@ class HighLevelIO(
     private suspend fun activateMode(newMode: Mode) {
         logger(LogLevel.DEBUG) { "Activating ${newMode.str} mode" }
 
+        // Send the command to switch the mode.
+
         sendPacketToIO(
             applicationLayer.createCTRLActivateServicePacket(
                 when (newMode) {
@@ -927,7 +950,51 @@ class HighLevelIO(
         receiveAppLayerPacketFromChannel(ApplicationLayer.Command.CTRL_ACTIVATE_SERVICE_RESPONSE)
 
         currentMode = newMode
+
+        // If we just switched to the RT mode, enable the RT_KEEPALIVE
+        // background loop. Disable it if we switched to the command mode.
+
+        val rtKeepAliveRunning = isRTKeepAliveBackgroundLoopRunning()
+
+        if ((newMode == Mode.REMOTE_TERMINAL) && !rtKeepAliveRunning)
+            startRTKeepAliveBackgroundLoop()
+        else if ((newMode != Mode.REMOTE_TERMINAL) && rtKeepAliveRunning)
+            stopRTKeepAliveBackgroundLoop()
     }
+
+    private fun startRTKeepAliveBackgroundLoop() {
+        if (isRTKeepAliveBackgroundLoopRunning())
+            return
+
+        logger(LogLevel.DEBUG) { "Starting background RT keep-alive loop" }
+
+        require(rtKeepAliveScope != null)
+
+        rtKeepAliveJob = rtKeepAliveScope!!.launch {
+            // We have to send an RT_KEEPALIVE packet to the Combo
+            // every second to let the Combo know that we are still
+            // there. Otherwise, it will terminate the connection,
+            // since it then assumes that we are no longer connected
+            // (for example due to a system crash).
+            while (true) {
+                logger(LogLevel.DEBUG) { "Transmitting RT keep-alive packet" }
+                sendPacketToIO(applicationLayer.createRTKeepAlivePacket())
+                delay(1000)
+            }
+        }
+    }
+
+    private fun stopRTKeepAliveBackgroundLoop() {
+        if (!isRTKeepAliveBackgroundLoopRunning())
+            return
+
+        logger(LogLevel.DEBUG) { "Stopping background RT keep-alive loop" }
+
+        rtKeepAliveJob!!.cancel()
+        rtKeepAliveJob = null
+    }
+
+    private fun isRTKeepAliveBackgroundLoopRunning() = (rtKeepAliveJob != null)
 
     private suspend fun sendLongRTButtonPress(button: Button, pressing: Boolean, scope: CoroutineScope?) {
         val currentJob = currentLongRTPressJob
