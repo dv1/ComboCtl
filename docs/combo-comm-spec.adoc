@@ -1238,7 +1238,7 @@ make up the majority of commands sent to and from the Combo.
 This informs the client that about an error that occurred. The
 single payload byte identifies the error.
 
-The following errors are known:
+The following error IDs are known:
 
 * 0x0F : Combo is in the wrong state (command mode or remote terminal (RT) mode)
 * 0x33 : "Invalid service primitive" #TODO: What is this?#

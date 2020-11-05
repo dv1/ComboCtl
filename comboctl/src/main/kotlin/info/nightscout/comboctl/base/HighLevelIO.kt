@@ -774,7 +774,7 @@ class HighLevelIO(
                 // handle in this when statement.
                 when (tpLayerPacket.commandID) {
                     TransportLayer.CommandID.ACK_RESPONSE -> logger(LogLevel.DEBUG) { "Got ACK_RESPONSE packet; ignoring" }
-                    TransportLayer.CommandID.ERROR_RESPONSE -> processErrorResponse(transportLayer.parseErrorResponsePacket(tpLayerPacket))
+                    TransportLayer.CommandID.ERROR_RESPONSE -> processErrorResponse(tpLayerPacket)
                     TransportLayer.CommandID.DATA -> processTpLayerDataPacket(tpLayerPacket)
                     TransportLayer.CommandID.PAIRING_CONNECTION_REQUEST_ACCEPTED,
                     TransportLayer.CommandID.KEY_RESPONSE,
@@ -808,8 +808,8 @@ class HighLevelIO(
         }
     }
 
-    private fun processErrorResponse(errorResponse: Int) {
-        // TODO: Throw exception here
+    private fun processErrorResponse(tpLayerPacket: TransportLayer.Packet) {
+        throw TransportLayer.ErrorResponseException(tpLayerPacket, transportLayer.parseErrorResponsePacket(tpLayerPacket))
     }
 
     private suspend fun processTpLayerDataPacket(tpLayerPacket: TransportLayer.Packet) {

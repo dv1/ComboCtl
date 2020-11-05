@@ -174,6 +174,20 @@ class TransportLayer(private val persistentPumpStateStore: PersistentPumpStateSt
     ) : ExceptionBase(message)
 
     /**
+     * Exception thrown when the Combo sends an ERROR_RESPONSE packet.
+     *
+     * These packets notify about errors in the communication between client and Combo
+     * at the transport layer.
+     *
+     * @property packet Transport layer packet with the error information.
+     * @property errorID ID of the error.
+     */
+    class ErrorResponseException(
+        val packet: Packet,
+        val errorID: Int
+    ) : ExceptionBase("Error response by the Combo; error ID = 0x${errorID.toString(16)}")
+
+    /**
      * Class containing data of a Combo transport layer packet.
      *
      * Communication with the Combo uses packets as the basic unit. Each packet
