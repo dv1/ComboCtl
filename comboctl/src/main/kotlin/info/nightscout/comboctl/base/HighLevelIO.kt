@@ -711,51 +711,41 @@ class HighLevelIO(
     // other packets.
 
     private suspend fun receiveTpPacketFromIO(): TransportLayer.Packet {
-        lateinit var tpLayerPacket: TransportLayer.Packet
+        val tpLayerPacket = TransportLayer.Packet(io.receive())
 
-        receivingPacket@ while (true) {
-            tpLayerPacket = TransportLayer.Packet(io.receive())
+        // Check that the packet is OK. Note that at this point,
+        // the necessary ciphers must have been set. Otherwise,
+        // this verification will fail. If the pairing is performed
+        // correctly, this should not be a concern, since these
+        // ciphers will be populated before they are needed here.
+        //
+        // However, we do _not_ verify KEY_RESPONSE packets here,
+        // since they are verified with the weak cipher, and the
+        // weak cipher is generated from the PIN that is supplied
+        // by the user. Since the user could make a mistake when
+        // entering the PIN, the weak cipher may be wrong. The
+        // "fix" is to ask the user to try again to enter the
+        // PIN. This means that the KEY_RESPONSE packet needs to
+        // be verified seperately. performPairing() does this
+        // in its PIN enter loop.
+        if ((tpLayerPacket.commandID != TransportLayer.CommandID.KEY_RESPONSE) && !transportLayer.verifyIncomingPacket(tpLayerPacket))
+            throw TransportLayer.PacketVerificationException(tpLayerPacket)
 
-            // Check that the packet is OK. Note that at this point,
-            // the necessary ciphers must have been set. Otherwise,
-            // this verification will fail. If the pairing is performed
-            // correctly, this should not be a concern, since these
-            // ciphers will be populated before they are needed here.
-            //
-            // However, we do _not_ verify KEY_RESPONSE packets here,
-            // since they are verified with the weak cipher, and the
-            // weak cipher is generated from the PIN that is supplied
-            // by the user. Since the user could make a mistake when
-            // entering the PIN, the weak cipher may be wrong. The
-            // "fix" is to ask the user to try again to enter the
-            // PIN. This means that the KEY_RESPONSE packet needs to
-            // be verified seperately. performPairing() does this
-            // in its PIN enter loop.
-            if ((tpLayerPacket.commandID != TransportLayer.CommandID.KEY_RESPONSE) && !transportLayer.verifyIncomingPacket(tpLayerPacket))
-                throw TransportLayer.PacketVerificationException(tpLayerPacket)
-
-            // Packets with the reliability flag set must be immediately
-            // responded to with an ACK_RESPONSE packet whose sequence bit
-            // must match that of the received packet.
-            if (tpLayerPacket.reliabilityBit) {
-                logger(LogLevel.DEBUG) {
-                    "Got a transport layer ${tpLayerPacket.commandID.name} packet with its reliability bit set; " +
-                    "responding with ACK_RESPONSE packet; sequence bit: ${tpLayerPacket.sequenceBit}"
-                }
-                val ackResponsePacket = transportLayer.createAckResponsePacket(tpLayerPacket.sequenceBit)
-
-                try {
-                    io.send(ackResponsePacket.toByteList())
-                } catch (e: Exception) {
-                    logger(LogLevel.ERROR) { "Error while sending ACK_RESPONSE transport layer packet: $e" }
-                    throw e
-                }
+        // Packets with the reliability flag set must be immediately
+        // responded to with an ACK_RESPONSE packet whose sequence bit
+        // must match that of the received packet.
+        if (tpLayerPacket.reliabilityBit) {
+            logger(LogLevel.DEBUG) {
+                "Got a transport layer ${tpLayerPacket.commandID.name} packet with its reliability bit set; " +
+                "responding with ACK_RESPONSE packet; sequence bit: ${tpLayerPacket.sequenceBit}"
             }
+            val ackResponsePacket = transportLayer.createAckResponsePacket(tpLayerPacket.sequenceBit)
 
-            when (tpLayerPacket.commandID) {
-                TransportLayer.CommandID.ACK_RESPONSE -> logger(LogLevel.DEBUG) { "Got ACK_RESPONSE packet; ignoring" }
-                TransportLayer.CommandID.ERROR_RESPONSE -> processErrorResponse(transportLayer.parseErrorResponsePacket(tpLayerPacket))
-                else -> break@receivingPacket
+            try {
+                io.send(ackResponsePacket.toByteList())
+            } catch (e: Exception) {
+                logger(LogLevel.ERROR) { "Error while sending ACK_RESPONSE transport layer packet: $e" }
+                throw e
             }
         }
 
@@ -783,6 +773,8 @@ class HighLevelIO(
                 // This check here is about valid command IDs that we don't
                 // handle in this when statement.
                 when (tpLayerPacket.commandID) {
+                    TransportLayer.CommandID.ACK_RESPONSE -> logger(LogLevel.DEBUG) { "Got ACK_RESPONSE packet; ignoring" }
+                    TransportLayer.CommandID.ERROR_RESPONSE -> processErrorResponse(transportLayer.parseErrorResponsePacket(tpLayerPacket))
                     TransportLayer.CommandID.DATA -> processTpLayerDataPacket(tpLayerPacket)
                     TransportLayer.CommandID.PAIRING_CONNECTION_REQUEST_ACCEPTED,
                     TransportLayer.CommandID.KEY_RESPONSE,
