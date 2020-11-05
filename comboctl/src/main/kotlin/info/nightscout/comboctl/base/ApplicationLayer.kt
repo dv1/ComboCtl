@@ -30,11 +30,22 @@ private fun checkedGetCommand(
 ): ApplicationLayer.Command {
     val serviceIDInt = tpLayerPacket.payload[SERVICE_ID_BYTE_OFFSET].toPosInt()
     val serviceID = ApplicationLayer.ServiceID.fromInt(serviceIDInt)
-        ?: throw ApplicationLayer.InvalidServiceIDException(tpLayerPacket, serviceIDInt)
+        ?: throw ApplicationLayer.InvalidServiceIDException(
+            tpLayerPacket,
+            serviceIDInt,
+            ArrayList<Byte>(tpLayerPacket.payload.subList(PAYLOAD_BYTES_OFFSET, tpLayerPacket.payload.size))
+        )
+
     val commandID = (tpLayerPacket.payload[COMMAND_ID_BYTE_OFFSET + 0].toPosInt() shl 0) or
         (tpLayerPacket.payload[COMMAND_ID_BYTE_OFFSET + 1].toPosInt() shl 8)
+
     return ApplicationLayer.Command.fromIDs(serviceID, commandID)
-        ?: throw ApplicationLayer.InvalidCommandIDException(tpLayerPacket, serviceID, commandID)
+        ?: throw ApplicationLayer.InvalidCommandIDException(
+            tpLayerPacket,
+            serviceID,
+            commandID,
+            ArrayList<Byte>(tpLayerPacket.payload.subList(PAYLOAD_BYTES_OFFSET, tpLayerPacket.payload.size))
+        )
 }
 
 /**
@@ -141,10 +152,12 @@ class ApplicationLayer {
      *
      * @property tpLayerPacket Underlying transport layer DATA packet containing the application layer packet data.
      * @property serviceID The invalid service ID.
+     * @property payload The application packet's payload.
      */
     class InvalidServiceIDException(
         val tpLayerPacket: TransportLayer.Packet,
-        val serviceID: Int
+        val serviceID: Int,
+        val payload: List<Byte>
     ) : ExceptionBase("Invalid/unknown application layer packet service ID 0x${serviceID.toString(16)}")
 
     /**
@@ -153,11 +166,13 @@ class ApplicationLayer {
      * @property tpLayerPacket Underlying transport layer DATA packet containing the application layer packet data.
      * @property serviceID Service ID from the application layer packet.
      * @property commandID The invalid application layer command ID.
+     * @property payload The application packet's payload.
      */
     class InvalidCommandIDException(
         val tpLayerPacket: TransportLayer.Packet,
         val serviceID: ServiceID,
-        val commandID: Int
+        val commandID: Int,
+        val payload: List<Byte>
     ) : ExceptionBase("Invalid/unknown application layer packet command ID 0x${commandID.toString(16)} (service ID: ${serviceID.name})")
 
     /**
