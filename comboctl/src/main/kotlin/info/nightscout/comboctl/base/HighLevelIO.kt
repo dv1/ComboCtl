@@ -828,6 +828,13 @@ class HighLevelIO(
             logger(LogLevel.DEBUG) { "Parsing DATA packet as application layer packet" }
             appLayerPacket = ApplicationLayer.Packet(tpLayerPacket)
             logger(LogLevel.DEBUG) { "This is an application layer packet with command ${appLayerPacket.command}" }
+        } catch (e: ApplicationLayer.InvalidCommandIDException) {
+            logger(LogLevel.WARN) {
+                "Got an application layer packet with invalid/unknown command ID 0x${e.commandID.toString(16)} " +
+                "service ID ${e.serviceID.name} and payload (with ${e.payload.size} byte(s)) ${e.payload.toHexString()}" +
+                "; dropping packet"
+            }
+            return
         } catch (e: ApplicationLayer.ExceptionBase) {
             logger(LogLevel.ERROR) { "Could not parse DATA packet as application layer packet: $e" }
             throw e
