@@ -786,9 +786,16 @@ class HighLevelIO(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            logger(LogLevel.DEBUG) { "Caught exception in receive loop: $e" }
+
+            // Record the exception.
             val recvloopException = ReceiveLoopFailureException(e)
             caughtBackgroundReceiveException = recvloopException
+
+            // Notify about the exception.
             onBackgroundReceiveException(recvloopException)
+
+            // Close the channels, citing the exception as the reason why.
             appPacketChannel.close(recvloopException)
             tpPacketChannel.close(recvloopException)
         }
@@ -815,8 +822,14 @@ class HighLevelIO(
         // frame updates. We must pass these new updates on right away, and not just
         // push it into the channel, because the frames may contain notifications.
         // For this reason, we handle RT_DISPLAY packets explicitely.
+        //
+        // CTRL_SERVICE_ERROR packets are errors that must be handled immediately.
+        // Unlike the ERROR_RESPONSE packet, these packets report errors at the
+        // application layer.
         when (appLayerPacket.command) {
             ApplicationLayer.Command.RT_DISPLAY -> processRTDisplayPayload(applicationLayer.parseRTDisplayPacket(appLayerPacket))
+            ApplicationLayer.Command.CTRL_SERVICE_ERROR ->
+                processCTRLServiceError(appLayerPacket, applicationLayer.parseCTRLServiceErrorPacket(appLayerPacket))
             else -> appPacketChannel.send(appLayerPacket)
         }
     }
@@ -833,6 +846,11 @@ class HighLevelIO(
             logger(LogLevel.ERROR) { "Could not process RT_DISPLAY payload: $e" }
             throw e
         }
+    }
+
+    private fun processCTRLServiceError(appLayerPacket: ApplicationLayer.Packet, ctrlServiceError: ApplicationLayer.CTRLServiceError) {
+        logger(LogLevel.ERROR) { "Got CTRL_SERVICE_ERROR packet from the Combo; throwing exception" }
+        throw ApplicationLayer.ServiceErrorException(appLayerPacket, ctrlServiceError)
     }
 
     private suspend fun receiveTpLayerPacketFromChannel(expectedCommandID: TransportLayer.CommandID? = null): TransportLayer.Packet {
