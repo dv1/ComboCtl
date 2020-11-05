@@ -1471,6 +1471,62 @@ The Combo responds to this with `AL_CTRL_ALL_SERVICES_DEACTIVATED`.
 in existing sources.#
 
 
+=== `AL_CTRL_SERVICE_ERROR` :
+
+* Sent by: Combo
+* Service ID: 0x00 (control)
+* Command ID: 0x00AA
+* Reliable: yes
+* Payload length: 5
+
+This informs the client that an error occurred at application level.
+One example would be an incorrect RT sequence number. Another would
+be an incorrect application layer packet size.
+
+The first two bytes form a 16-bit little endian integer that contains
+the error code. The known codes are listed below. The next byte seems
+to describe a service ID, the next two bytes a command ID. These two
+IDs seem to identify the application layer command that caused this
+error.
+
+List of known error codes:
+
+Generic application layer error codes:
+
+* 0xF003: Unknown service ID
+* 0xF005: Incompatible application layer packet version
+* 0xF006: Invalid payload length
+* 0xF056: Application layer not connected
+  This one seems to be related to `AL_CTRL_CONNECT`.
+* 0xF059: Incompatible service version
+* 0xF05A: Version, activate, deactivate request with unknown service ID
+* 0xF05C: Service activation not allowed
+* 0xF05F: Command not allowed (wrong mode)
+
+Remote terminal mode specific error codes:
+
+* 0xF503: RT payload wrong length
+* 0xF505: RT display with incorrect row index, update, or display index
+* 0xF506: RT display timeout
+* 0xF509: RT unknown audio sequence
+* 0xF50A: RT unknown vibration sequence
+* 0xF50C: RT command has incorrect sequence number
+* 0xF533: RT alive timeout expired
+
+Command mode specific error codes:
+
+* 0xF605: CMD values not within threshold
+* 0xF606: CMD wrong bolus type
+* 0xF60A: CMD bolus not delivering
+* 0xF60C: CMD history read EEPROM error
+* 0xF633: CMD history confirm FRAM not readable or writeable
+* 0xF635: CMD unknown bolus type
+* 0xF636: CMD bolus is not available at the moment
+* 0xF639: CMD incorrect CRC value
+* 0xF63A: CMD ch1 and ch2 values inconsistent
+* 0xF63C: CMD pump has internal error (RAM values changed)
+
+
 === `AL_RT_BUTTON_STATUS` :
 
 * Sent by: Client
@@ -1528,7 +1584,47 @@ sequence needs to be performed:
    set to 0xB7 ("status did change") and the button code NoButton.
 
 #TODO: Can multiple buttons be held down at the same time?
-#And can held down buttons and singular button pressed be mixed?
+And can held down buttons and singular button pressed be mixed?#
+
+
+=== `AL_RT_KEEP_ALIVE` :
+
+* Sent by: Client, Combo
+* Service ID: 0x48
+* Command ID: 0x0566
+* Reliable: no
+* Payload length: 2
+
+This is sent both by the client and by the Combo, and serves
+the same purpose: To let the other side know that it is still
+alive.
+
+Once the connection is established, and the RT mode is enabled,
+the client must send a keep-alive packet once every second.
+
+The 2 payload bytes are the RT sequence. If the clients sends
+the packet, it must be incremented as usual. If the Combo sent
+this packet to the client, it will take care of the increment.
+
+
+=== `AL_RT_KEY_CONFIRMATION` :
+
+* Sent by: Combo
+* Service ID: 0x48
+* Command ID: 0x0556
+* Reliable: no
+* Payload length: 2
+
+This is a notification by the Combo that periodically comes in.
+Its exact purpose is unknown. So far, it seems that it can be
+ignored.
+
+#TODO: Clarify this if possible.#
+
+No specific packet has to be sent to the Combo as a response.
+
+The 2 payload bytes are the RT sequence, incremented by the Combo.
+
 
 
 === `AL_RT_DISPLAY` :
@@ -1625,12 +1721,13 @@ for (b = 0; b < 96; b = b + 1)
 ```
 
 
+
+
+
 #TODO: Document these commands:#
 
-0x0556
 0x0559
 0x055a
-0x0566
 0x0569
 0x056a
 0x9069

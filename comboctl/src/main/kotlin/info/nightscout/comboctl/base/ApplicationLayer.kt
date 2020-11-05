@@ -108,8 +108,11 @@ class ApplicationLayer {
         CTRL_ACTIVATE_SERVICE_RESPONSE(ServiceID.CONTROL, 0xA066, true),
         CTRL_DEACTIVATE_ALL_SERVICES(ServiceID.CONTROL, 0x906A, true),
         CTRL_ALL_SERVICES_DEACTIVATED(ServiceID.CONTROL, 0xA06A, true),
+        CTRL_SERVICE_ERROR(ServiceID.CONTROL, 0x00AA, true),
 
         RT_BUTTON_STATUS(ServiceID.RT_MODE, 0x0565, false),
+        RT_KEEP_ALIVE(ServiceID.RT_MODE, 0x0566, false),
+        RT_KEY_CONFIRMATION(ServiceID.RT_MODE, 0x0556, false),
         RT_DISPLAY(ServiceID.RT_MODE, 0x0555, false);
 
         companion object {
@@ -169,6 +172,22 @@ class ApplicationLayer {
         val appLayerPacket: Packet,
         val expectedCommand: Command
     ) : ExceptionBase("Incorrect packet: expected ${expectedCommand.name} packet, got ${appLayerPacket.command.name} one")
+
+    /**
+     * Exception thrown when the combo sends a CTRL_SERVICE_ERROR packet.
+     *
+     * These packets notify about errors in the communication between client and Combo
+     * at the application layer.
+     *
+     * @property appLayerPacket Application layer packet that arrived.
+     * @property serviceError The service error information from the packet.
+     */
+    class ServiceErrorException(
+        val appLayerPacket: Packet,
+        val serviceError: CTRLServiceError
+    ) : ExceptionBase(
+        "Service error reported by Combo: $serviceError"
+    )
 
     /**
      * Exception thrown when something is wrong with an application layer packet's payload.
@@ -399,6 +418,129 @@ class ApplicationLayer {
     }
 
     /**
+     * Categories for [CTRLServiceErrorCode].
+     */
+    enum class CTRLServiceErrorCategory {
+        MISC_APPLICATION_LAYER,
+        REMOTE_TERMINAL_MODE,
+        COMMAND_MODE
+    }
+
+    /**
+     * Known error codes from CTRL_SERVICE_ERROR packets.
+     */
+    enum class CTRLServiceErrorCode(val value: Int, val category: CTRLServiceErrorCategory, val description: String) {
+        UNKNOWN_SERVICE_ID(0xF003, CTRLServiceErrorCategory.MISC_APPLICATION_LAYER, "Unknown service ID"),
+        INCOMPATIBLE_AL_PACKET_VERSION(0xF005, CTRLServiceErrorCategory.MISC_APPLICATION_LAYER, "Incompatible application layer packet version"),
+        INVALID_PAYLOAD_LENGTH(0xF006, CTRLServiceErrorCategory.MISC_APPLICATION_LAYER, "Invalid payload length"),
+        NOT_CONNECTED(0xF056, CTRLServiceErrorCategory.MISC_APPLICATION_LAYER, "Application layer not connected"),
+        INCOMPATIBLE_SERVICE_VERSION(0xF059, CTRLServiceErrorCategory.MISC_APPLICATION_LAYER, "Incompatible service version"),
+        REQUEST_WITH_UNKNOWN_SERVICE_ID(0xF05A, CTRLServiceErrorCategory.MISC_APPLICATION_LAYER,
+            "Version, activate, deactivate request with unknown service ID"),
+        SERVICE_ACTIVATION_NOT_ALLOWED(0xF05C, CTRLServiceErrorCategory.MISC_APPLICATION_LAYER, "Service activation not allowed"),
+        COMMAND_NOT_ALLOWED(0xF05F, CTRLServiceErrorCategory.MISC_APPLICATION_LAYER, "Command not allowed (wrong mode)"),
+
+        RT_PAYLOAD_WRONG_LENGTH(0xF503, CTRLServiceErrorCategory.REMOTE_TERMINAL_MODE, "RT payload wrong length"),
+        RT_DISPLAY_INCORRECT_INDEX(0xF505, CTRLServiceErrorCategory.REMOTE_TERMINAL_MODE,
+            "RT display with incorrect row index, update, or display index"),
+        RT_DISPLAY_TIMEOUT(0xF506, CTRLServiceErrorCategory.REMOTE_TERMINAL_MODE, "RT display timeout"),
+        RT_UNKNOWN_AUDIO_SEQUENCE(0xF509, CTRLServiceErrorCategory.REMOTE_TERMINAL_MODE, "RT unknown audio sequence"),
+        RT_UNKNOWN_VIBRATION_SEQUENCE(0xF50A, CTRLServiceErrorCategory.REMOTE_TERMINAL_MODE, "RT unknown vibration sequence"),
+        RT_INCORRECT_SEQUENCE_NUMBER(0xF50C, CTRLServiceErrorCategory.REMOTE_TERMINAL_MODE, "RT command has incorrect sequence number"),
+        RT_ALIVE_TIMEOUT_EXPIRED(0xF533, CTRLServiceErrorCategory.REMOTE_TERMINAL_MODE, "RT alive timeout expired"),
+
+        CMD_VALUES_NOT_WITHIN_THRESHOLD(0xF605, CTRLServiceErrorCategory.COMMAND_MODE, "CMD values not within threshold"),
+        CMD_WRONG_BOLUS_TYPE(0xF606, CTRLServiceErrorCategory.COMMAND_MODE, "CMD wrong bolus type"),
+        CMD_BOLUS_NOT_DELIVERING(0xF60A, CTRLServiceErrorCategory.COMMAND_MODE, "CMD bolus not delivering"),
+        CMD_HISTORY_READ_EEPROM_ERROR(0xF60C, CTRLServiceErrorCategory.COMMAND_MODE, "CMD history read EEPROM error"),
+        CMD_HISTORY_FRAM_NOT_ACCESSIBLE(0xF633, CTRLServiceErrorCategory.COMMAND_MODE, "CMD history confirm FRAM not readable or writeable"),
+        CMD_UNKNOWN_BOLUS_TYPE(0xF635, CTRLServiceErrorCategory.COMMAND_MODE, "CMD unknown bolus type"),
+        CMD_BOLUS_CURRENTLY_UNAVAILABLE(0xF636, CTRLServiceErrorCategory.COMMAND_MODE, "CMD bolus is not available at the moment"),
+        CMD_INCORRECT_CRC_VALUE(0xF639, CTRLServiceErrorCategory.COMMAND_MODE, "CMD incorrect CRC value"),
+        CMD_CH1_CH2_VALUES_INCONSISTENT(0xF63A, CTRLServiceErrorCategory.COMMAND_MODE, "CMD ch1 and ch2 values inconsistent"),
+        CMD_INTERNAL_PUMP_ERROR(0xF63C, CTRLServiceErrorCategory.COMMAND_MODE, "CMD pump has internal error (RAM values changed)");
+
+        companion object {
+            private val values = CTRLServiceErrorCode.values()
+
+            /**
+             * Returns the error code that has a matching value.
+             *
+             * @return CTRLServiceErrorCode, or null if no matching error code exists.
+             */
+            fun fromValue(value: Int) = values.firstOrNull { (it.value == value) }
+        }
+    }
+
+    /**
+     * Error information from CTRL_SERVICE_ERROR packets.
+     *
+     * The values are kept as integer on purpose, since it is not known
+     * if all possible values are known, so directly having enum types
+     * here would not allow for representing unknown values properly.
+     *
+     * @property errorCodeValue Integer value of the error code.
+     *           Known error codes exist in [CTRLServiceErrorCode].
+     * @property serviceIDValue Integer with the value of the
+     *           service ID of the command that caused the error.
+     * @property commandIDValue Integer with the value of the
+     *           command ID of the command that caused the error.
+     */
+    data class CTRLServiceError(
+        val errorCodeValue: Int,
+        val serviceIDValue: Int,
+        val commandIDValue: Int
+    ) {
+        override fun toString(): String {
+            val errorCode = CTRLServiceErrorCode.fromValue(errorCodeValue)
+            val errorCodeStr =
+                if (errorCode != null)
+                    "error code \"${errorCode.description}\""
+                else
+                    "error code 0x${errorCodeValue.toString(16)}"
+
+            var command: Command? = null
+
+            val serviceID = ServiceID.fromInt(serviceIDValue)
+            if (serviceID != null)
+                command = Command.fromIDs(serviceID, commandIDValue)
+
+            val commandStr =
+                if (command != null)
+                    "command \"${command.name}\""
+                else
+                    "service ID 0x${serviceIDValue.toString(16)} command ID 0x${commandIDValue.toString(16)}"
+
+            return "$errorCodeStr $commandStr"
+        }
+    }
+
+    /**
+     * Parses an CTRL_SERVICE_ERROR packet and extracts its payload.
+     *
+     * @param packet Application layer CTRL_SERVICE_ERROR packet to parse.
+     * @return The packet's parsed payload.
+     * @throws InvalidPayloadException if the payload size is not the expected size.
+     */
+    fun parseCTRLServiceErrorPacket(packet: Packet): CTRLServiceError {
+        val payload = packet.payload
+
+        val expectedPayloadSize = 5
+        if (payload.size < expectedPayloadSize) {
+            throw InvalidPayloadException(
+                packet,
+                "Insufficient payload bytes in RT display packet; expected $expectedPayloadSize byte(s), got ${payload.size}"
+            )
+        }
+
+        return CTRLServiceError(
+            errorCodeValue = (payload[0].toPosInt() shl 0) or (payload[1].toPosInt() shl 8),
+            serviceIDValue = payload[2].toPosInt(),
+            commandIDValue = (payload[3].toPosInt() shl 0) or (payload[4].toPosInt() shl 8)
+        )
+    }
+
+    /**
      * Valid button codes that an RT_BUTTON_STATUS packet can contain in its payload.
      */
     enum class RTButtonCode(val id: Int) {
@@ -430,6 +572,29 @@ class ApplicationLayer {
 
         return Packet(
             command = Command.RT_BUTTON_STATUS,
+            payload = payload
+        )
+    }
+
+    /**
+     * Creates an RT_KEEP_ALIVE packet.
+     *
+     * The RT mode must have been activated before this can be sent to the Combo.
+     *
+     * See the combo-comm-spec.adoc file for details about this packet.
+     *
+     * @return The produced packet.
+     */
+    fun createRTKeepAlivePacket(): Packet {
+        val payload = byteArrayListOfInts(
+            (currentRTSequence shr 0) and 0xFF,
+            (currentRTSequence shr 8) and 0xFF
+        )
+
+        incrementRTSequence()
+
+        return Packet(
+            command = Command.RT_KEEP_ALIVE,
             payload = payload
         )
     }
