@@ -124,7 +124,9 @@ class ApplicationLayer {
         RT_BUTTON_STATUS(ServiceID.RT_MODE, 0x0565, false),
         RT_KEEP_ALIVE(ServiceID.RT_MODE, 0x0566, false),
         RT_KEY_CONFIRMATION(ServiceID.RT_MODE, 0x0556, false),
-        RT_DISPLAY(ServiceID.RT_MODE, 0x0555, false);
+        RT_DISPLAY(ServiceID.RT_MODE, 0x0555, false),
+        RT_AUDIO(ServiceID.RT_MODE, 0x0559, false),
+        RT_VIBRATION(ServiceID.RT_MODE, 0x055A, false);
 
         companion object {
             private val values = Command.values()
@@ -539,14 +541,7 @@ class ApplicationLayer {
      */
     fun parseCTRLServiceErrorPacket(packet: Packet): CTRLServiceError {
         val payload = packet.payload
-
-        val expectedPayloadSize = 5
-        if (payload.size < expectedPayloadSize) {
-            throw InvalidPayloadException(
-                packet,
-                "Insufficient payload bytes in RT display packet; expected $expectedPayloadSize byte(s), got ${payload.size}"
-            )
-        }
+        checkPayloadSize(packet, 5)
 
         return CTRLServiceError(
             errorCodeValue = (payload[0].toPosInt() shl 0) or (payload[1].toPosInt() shl 8),
@@ -653,14 +648,7 @@ class ApplicationLayer {
      */
     fun parseRTDisplayPacket(packet: Packet): RTDisplayPayload {
         val payload = packet.payload
-
-        val expectedPayloadSize = 5 + 96
-        if (payload.size < expectedPayloadSize) {
-            throw InvalidPayloadException(
-                packet,
-                "Insufficient payload bytes in RT display packet; expected $expectedPayloadSize byte(s), got ${payload.size}"
-            )
-        }
+        checkPayloadSize(packet, 5 + 96)
 
         val reasonInt = payload[2].toPosInt()
         val reason = RTDisplayUpdateReason.fromInt(reasonInt) ?: throw InvalidPayloadException(
@@ -681,5 +669,58 @@ class ApplicationLayer {
             row = row,
             pixels = payload.subList(5, 101)
         )
+    }
+
+    /**
+     * Parses an RT_AUDIO packet and extracts its payload.
+     *
+     * @param packet Application layer RT_AUDIO packet to parse.
+     * @return The packet's parsed payload (the 32-bit little
+     *         endian integer specifying the audio type).
+     * @throws InvalidPayloadException if the payload size is not the expected size.
+     */
+    fun parseRTAudioPacket(packet: Packet): Int {
+        val payload = packet.payload
+        checkPayloadSize(packet, 6)
+
+        // The first 2 bytes in the payload contain the RT
+        // sequence number, which we are not interested in,
+        // so we ignore these 2 bytes.
+
+        return (payload[2].toPosInt() shl 0) or
+               (payload[3].toPosInt() shl 8) or
+               (payload[4].toPosInt() shl 16) or
+               (payload[5].toPosInt() shl 24)
+    }
+
+    /**
+     * Parses an RT_VIBRATION packet and extracts its payload.
+     *
+     * @param packet Application layer RT_VIBRATION packet to parse.
+     * @return The packet's parsed payload (the 32-bit little
+     *         endian integer specifying the vibration type).
+     * @throws InvalidPayloadException if the payload size is not the expected size.
+     */
+    fun parseRTVibrationPacket(packet: Packet): Int {
+        val payload = packet.payload
+        checkPayloadSize(packet, 6)
+
+        // The first 2 bytes in the payload contain the RT
+        // sequence number, which we are not interested in,
+        // so we ignore these 2 bytes.
+
+        return (payload[2].toPosInt() shl 0) or
+               (payload[3].toPosInt() shl 8) or
+               (payload[4].toPosInt() shl 16) or
+               (payload[5].toPosInt() shl 24)
+    }
+
+    private fun checkPayloadSize(packet: Packet, expectedPayloadSize: Int) {
+        if (packet.payload.size != expectedPayloadSize) {
+            throw InvalidPayloadException(
+                packet,
+                "Incorrect payload size in ${packet.command} packet; expected $expectedPayloadSize byte(s), got ${packet.payload.size}"
+            )
+        }
     }
 }

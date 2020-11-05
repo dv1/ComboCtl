@@ -1616,15 +1616,13 @@ this packet to the client, it will take care of the increment.
 * Payload length: 2
 
 This is a notification by the Combo that periodically comes in.
-Its exact purpose is unknown. So far, it seems that it can be
-ignored.
-
-#TODO: Clarify this if possible.#
+It confirms a previous `AL_RT_BUTTON_STATUS` command. It does
+not always arrive after sending such a command to the Combo,
+however.
 
 No specific packet has to be sent to the Combo as a response.
 
 The 2 payload bytes are the RT sequence, incremented by the Combo.
-
 
 
 === `AL_RT_DISPLAY` :
@@ -1721,13 +1719,52 @@ for (b = 0; b < 96; b = b + 1)
 ```
 
 
+=== `AL_RT_AUDIO`:
 
+* Sent by: Combo
+* Service ID: 0x48
+* Command ID: 0x0559
+* Reliable: no
+* Payload length: 6
+
+This informs the client about simulated audio activity.
+That is, if this were the actual Combo, with its actual
+LCD and buttons, a beep would have been played. This
+command is just a notification and can be safely ignored.
+
+The first 2 bytes are the RT sequence, incremented by
+the Combo.
+
+The remaining 4 bytes form a 32-bit little endian integer.
+This integer specifies the type of the beep. Currently,
+there is no known defined list of different beep types
+associated with certain codes.
+
+
+=== `AL_RT_VIBRATION`:
+
+* Sent by: Combo
+* Service ID: 0x48
+* Command ID: 0x055A
+* Reliable: no
+* Payload length: 6
+
+This informs the client about simulated vibration activity.
+That is, if this were the actual Combo, with its actual
+LCD and buttons, the Combo would have vibrated. This
+command is just a notification and can be safely ignored.
+
+The first 2 bytes are the RT sequence, incremented by
+the Combo.
+
+The remaining 4 bytes form a 32-bit little endian integer.
+This integer specifies the type of the vibration. Currently,
+there is no known defined list of different vibration types
+associated with certain codes.
 
 
 #TODO: Document these commands:#
 
-0x0559
-0x055a
 0x0569
 0x056a
 0x9069
