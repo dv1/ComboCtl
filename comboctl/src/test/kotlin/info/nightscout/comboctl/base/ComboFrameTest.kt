@@ -1,6 +1,5 @@
 package info.nightscout.comboctl.base
 
-import java.text.ParseException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -183,7 +182,7 @@ class ComboFrameTest {
 
         parser.pushData(frameDataWithNonDelimiterOutsideOfFrame)
 
-        assertFailsWith<ParseException> { parser.parseFrame() }
+        assertFailsWith<FrameParseException> { parser.parseFrame() }
     }
 
     @Test
@@ -203,6 +202,6 @@ class ComboFrameTest {
 
         parser.pushData(frameDataWithInvalidEscapeByteCombination)
 
-        assertFailsWith<ParseException> { parser.parseFrame() }
+        assertFailsWith<FrameParseException> { parser.parseFrame() }
     }
 }

@@ -1,7 +1,5 @@
 package info.nightscout.comboctl.base
 
-import java.text.ParseException
-
 // Combo frames are delimited by the FRAME_DELIMITER byte 0xCC. Each
 // frame begins and ends with this byte. Binary payload itself can
 // also contain that byte, however. To solve this, there is the
@@ -13,6 +11,13 @@ private const val FRAME_DELIMITER = 0xCC.toByte()
 private const val ESCAPE_BYTE = 0x77.toByte()
 private const val ESCAPED_FRAME_DELIMITER = 0xDD.toByte()
 private const val ESCAPED_ESCAPE_BYTE = 0xEE.toByte()
+
+/**
+ * Exception thrown when parsing a Combo frame fails.
+ *
+ * @param message The detail message.
+ */
+class FrameParseException(message: String) : ComboException(message)
 
 /**
  * Parses incoming streaming data to isolate frames and extract their payload.
@@ -72,7 +77,7 @@ class ComboFrameParser {
      *
      * @return Payload of a detected frame, or null if no complete frame was
      *         currently found.
-     * @throws ParseException in case of invalid data.
+     * @throws FrameParseException in case of invalid data.
      */
     fun parseFrame(): List<Byte>? {
         // The part that begins at currentReadOffset is not yet parsed.
@@ -146,8 +151,8 @@ class ComboFrameParser {
                     frameStartOffset = currentReadOffset
                     continue
                 } else
-                    throw ParseException("Found non-delimiter byte %02X outside of frames (surrounding context: %s)"
-                            .format(currentByte, accumulationBuffer.toHexStringWithContext(oldReadOffset)), 0)
+                    throw FrameParseException("Found non-delimiter byte %02X outside of frames (surrounding context: %s)"
+                            .format(currentByte, accumulationBuffer.toHexStringWithContext(oldReadOffset)))
             }
         }
 
@@ -192,13 +197,13 @@ class ComboFrameParser {
                 when (accumulationBuffer[readOffset + 1]) {
                     ESCAPED_FRAME_DELIMITER -> Triple(FRAME_DELIMITER, readOffset + 2, true)
                     ESCAPED_ESCAPE_BYTE -> Triple(ESCAPE_BYTE, readOffset + 2, true)
-                    else -> throw ParseException(
+                    else -> throw FrameParseException(
                             "Found escape byte, but followup byte %02X is not a valid combination (surrounding context: %s)"
                                     .format(
                                             accumulationBuffer[readOffset + 1],
                                             accumulationBuffer.toHexStringWithContext(readOffset + 1)
-                                    ),
-                            0)
+                                    )
+                            )
                 }
             }
         } else {
