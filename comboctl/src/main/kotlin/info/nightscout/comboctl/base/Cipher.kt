@@ -71,7 +71,7 @@ fun generateWeakKeyFromPIN(PIN: PairingPIN): ByteArray {
     // NOTE: This could be a compile-time check, since these
     // are constants. But currently, it is not known how to
     // do this check at compile time.
-    assert(PAIRING_PIN_SIZE < CIPHER_KEY_SIZE)
+    require(PAIRING_PIN_SIZE < CIPHER_KEY_SIZE)
 
     val generatedKey = ByteArray(CIPHER_KEY_SIZE)
 
