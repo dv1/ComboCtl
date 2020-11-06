@@ -633,7 +633,7 @@ class TransportLayer(private val persistentPumpStateStore: PersistentPumpStateSt
             0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
         ))
 
-        val btFriendlyNameBytes = bluetoothFriendlyName.toByteArray(Charsets.UTF_8)
+        val btFriendlyNameBytes = bluetoothFriendlyName.encodeToByteArray()
         val numBTFriendlyNameBytes = kotlin.math.min(btFriendlyNameBytes.size, 13)
 
         val payload = ArrayList<Byte>(17)
