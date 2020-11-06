@@ -982,7 +982,8 @@ TODO: Check the seq bit usage in Transport.java
 This command initiates the pairing process at the transport
 layer. (See the Pairing section above for details.)
 
-The payload is a CRC-16-MCRF4XX checksum of the packet header.
+The payload is a CRC-16-MCRF4XX checksum of the packet header
+(two bytes, stored in little endian order).
 
 This packet's MAC is set to 8 nullbytes.
 
