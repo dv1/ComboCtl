@@ -309,7 +309,7 @@ class ApplicationLayer {
         }
 
         override fun toString(): String {
-            return "version: ${"%02x".format(version)}" +
+            return "version: ${version.toHexString(2)}" +
                 "  service ID: ${command.serviceID}" +
                 "  command: $command" +
                 "  payload: ${payload.size} byte(s): ${payload.toHexString()}"

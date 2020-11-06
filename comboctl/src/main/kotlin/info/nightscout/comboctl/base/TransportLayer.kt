@@ -431,11 +431,11 @@ class TransportLayer(private val persistentPumpStateStore: PersistentPumpStateSt
         }
 
         override fun toString(): String {
-            return "version: ${"%02x".format(version)}" +
+            return "version: ${version.toHexString(2)}" +
                 "  command ID: ${commandID.name}" +
                 "  sequence bit: $sequenceBit" +
                 "  reliability bit: $reliabilityBit" +
-                "  address: ${"%02x".format(address)}" +
+                "  address: ${address.toHexString(2)}" +
                 "  nonce: $nonce" +
                 "  MAC: $machineAuthenticationCode" +
                 "  payload: ${payload.size} byte(s): ${payload.toHexString()}"
@@ -456,7 +456,8 @@ class TransportLayer(private val persistentPumpStateStore: PersistentPumpStateSt
         )
         packet.computeCRC16Payload()
         logger(LogLevel.DEBUG) {
-            "Computed CRC16 payload 0x%02X%02X".format(packet.payload[1].toPosInt(), packet.payload[0].toPosInt())
+            val crc16 = (packet.payload[1].toPosInt() shl 8) or packet.payload[0].toPosInt()
+            "Computed CRC16 payload ${crc16.toHexString(4)}"
         }
         return packet
     }
@@ -791,7 +792,7 @@ class TransportLayer(private val persistentPumpStateStore: PersistentPumpStateSt
         )
 
         logger(LogLevel.DEBUG) {
-            "Address: ${"%02x".format(cachedPumpPairingData.keyResponseAddress)}" +
+            "Address: ${cachedPumpPairingData.keyResponseAddress.toHexString(2)}" +
             "  decrypted client->pump key: ${cachedPumpPairingData.clientPumpCipher.key.toHexString()}" +
             "  decrypted pump->client key: ${cachedPumpPairingData.pumpClientCipher.key.toHexString()}"
         }

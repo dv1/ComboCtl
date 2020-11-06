@@ -851,14 +851,14 @@ class HighLevelIO(
             ApplicationLayer.Command.RT_KEEP_ALIVE -> { logger(LogLevel.DEBUG) { "Got RT_KEEP_ALIVE packet from the Combo; ignoring" } }
             ApplicationLayer.Command.RT_AUDIO -> {
                 logger(LogLevel.DEBUG) {
-                    val typestr = String.format("%1$#010x", applicationLayer.parseRTAudioPacket(appLayerPacket))
-                    "Got RT_AUDIO packet with audio type $typestr; ignoring"
+                    val audioType = applicationLayer.parseRTAudioPacket(appLayerPacket)
+                    "Got RT_AUDIO packet with audio type ${audioType.toHexString(8)}; ignoring"
                 }
             }
             ApplicationLayer.Command.RT_VIBRATION -> {
                 logger(LogLevel.DEBUG) {
-                    val typestr = String.format("%1$#010x", applicationLayer.parseRTVibrationPacket(appLayerPacket))
-                    "Got RT_VIBRATION packet with vibration type $typestr; ignoring"
+                    val vibrationType = applicationLayer.parseRTVibrationPacket(appLayerPacket)
+                    "Got RT_VIBRATION packet with vibration type ${vibrationType.toHexString(8)}; ignoring"
                 }
             }
             ApplicationLayer.Command.CTRL_SERVICE_ERROR ->

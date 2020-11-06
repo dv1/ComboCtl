@@ -150,9 +150,12 @@ class ComboFrameParser {
                     frameStarted = true
                     frameStartOffset = currentReadOffset
                     continue
-                } else
-                    throw FrameParseException("Found non-delimiter byte %02X outside of frames (surrounding context: %s)"
-                            .format(currentByte, accumulationBuffer.toHexStringWithContext(oldReadOffset)))
+                } else {
+                    throw FrameParseException(
+                        "Found non-delimiter byte ${currentByte.toHexString(2)} " +
+                        "outside of frames (surrounding context: ${accumulationBuffer.toHexStringWithContext(oldReadOffset)})"
+                    )
+                }
             }
         }
 
@@ -197,13 +200,12 @@ class ComboFrameParser {
                 when (accumulationBuffer[readOffset + 1]) {
                     ESCAPED_FRAME_DELIMITER -> Triple(FRAME_DELIMITER, readOffset + 2, true)
                     ESCAPED_ESCAPE_BYTE -> Triple(ESCAPE_BYTE, readOffset + 2, true)
-                    else -> throw FrameParseException(
-                            "Found escape byte, but followup byte %02X is not a valid combination (surrounding context: %s)"
-                                    .format(
-                                            accumulationBuffer[readOffset + 1],
-                                            accumulationBuffer.toHexStringWithContext(readOffset + 1)
-                                    )
-                            )
+                    else -> {
+                        throw FrameParseException(
+                            "Found escape byte, but followup byte ${accumulationBuffer[readOffset + 1].toHexString(2)} " +
+                            "is not a valid combination (surrounding context: ${accumulationBuffer.toHexStringWithContext(readOffset + 1)})"
+                        )
+                    }
                 }
             }
         } else {

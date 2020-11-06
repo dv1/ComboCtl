@@ -37,7 +37,7 @@ fun byteArrayListOfInts(vararg ints: Int) = ArrayList<Byte>(ints.map { it.toByte
  *
  * @return The string representation.
  */
-fun ByteArray.toHexString(separator: String = " ") = this.joinToString(separator) { "%02X".format(it) }
+fun ByteArray.toHexString(separator: String = " ") = this.joinToString(separator) { it.toHexString(width = 2, prependPrefix = false) }
 
 /**
  * Produces a hexadecimal string representation of the bytes in the list.
@@ -47,7 +47,7 @@ fun ByteArray.toHexString(separator: String = " ") = this.joinToString(separator
  *
  * @return The string representation.
  */
-fun List<Byte>.toHexString(separator: String = " ") = this.joinToString(separator) { "%02X".format(it) }
+fun List<Byte>.toHexString(separator: String = " ") = this.joinToString(separator) { it.toHexString(width = 2, prependPrefix = false) }
 
 /**
  * Produces a hexadecimal string describing the "surroundings" of a byte in a list.
@@ -79,7 +79,7 @@ fun List<Byte>.toHexStringWithContext(offset: Int, contextSize: Int = 10): Strin
     val afterByteContext = this.subList(offset + 1, min(this.size, offset + 1 + contextSize))
     val afterByteContextStr = if (afterByteContext.isEmpty()) "" else " " + afterByteContext.toHexString()
 
-    return "%s[%02X]%s".format(beforeByteContextStr, byte, afterByteContextStr)
+    return "$beforeByteContextStr[${byte.toHexString(width = 2, prependPrefix = false)}]$afterByteContextStr"
 }
 
 /**
@@ -139,3 +139,48 @@ fun Byte.toPosInt() = toInt() and 0xFF
  * This behaves identically to toPosInt(), except it produces a Long instead of an Int value.
  */
 fun Byte.toPosLong() = toLong() and 0xFF
+
+/**
+ * Produces a hex string out of an Int.
+ *
+ * String.format() is JVM specific, so we can't use it in multiplatform projects.
+ * Hence the existence of this function.
+ *
+ * @param width Width of the hex string. If the actual hex string is shorter
+ *        than this, the excess characters to the left (the leading characters)
+ *        are filled with zeros. If a "0x" prefix is added, the prefix length is
+ *        not considered part of the hex string. For example, a width of 4 and
+ *        a hex string of 0x45 will produce 0045 with no prefix and 0x0045 with
+ *        prefix.
+ * @param prependPrefix If true, the "0x" prefix is prepended.
+ * @return Hex string representation of the Int.
+ */
+fun Int.toHexString(width: Int, prependPrefix: Boolean = true): String {
+	val prefix = if (prependPrefix) "0x" else ""
+	val hexstring = this.toString(16)
+	val numLeadingChars = max(width - hexstring.length, 0)
+	return prefix + "0".repeat(numLeadingChars) + hexstring
+}
+
+/**
+ * Produces a hex string out of a Byte.
+ *
+ * String.format() is JVM specific, so we can't use it in multiplatform projects.
+ * Hence the existence of this function.
+ *
+ * @param width Width of the hex string. If the actual hex string is shorter
+ *        than this, the excess characters to the left (the leading characters)
+ *        are filled with zeros. If a "0x" prefix is added, the prefix length is
+ *        not considered part of the hex string. For example, a width of 4 and
+ *        a hex string of 0x45 will produce 0045 with no prefix and 0x0045 with
+ *        prefix.
+ * @param prependPrefix If true, the "0x" prefix is prepended.
+ * @return Hex string representation of the Byte.
+ */
+fun Byte.toHexString(width: Int, prependPrefix: Boolean = true): String {
+	val intValue = this.toPosInt()
+	val prefix = if (prependPrefix) "0x" else ""
+	val hexstring = intValue.toString(16)
+	val numLeadingChars = max(width - hexstring.length, 0)
+	return prefix + "0".repeat(numLeadingChars) + hexstring
+}
