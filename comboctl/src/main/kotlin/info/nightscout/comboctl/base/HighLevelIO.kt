@@ -480,12 +480,10 @@ class HighLevelIO(
             return
         }
 
-        // Cancel any ongoing jobs
+        // Cancel any ongoing jobs (except for the receive loop job, since
+        // need it for receiving the deactivate / disconnect packts).
 
         stopRTKeepAliveBackgroundLoop()
-
-        receiveLoopJob!!.cancel()
-        receiveLoopJob = null
 
         if (currentLongRTPressJob != null) {
             currentLongRTPressJob!!.cancel()
@@ -517,6 +515,10 @@ class HighLevelIO(
             }
         }
 
+        // Now cancel the receive loop job, since we don't need to
+        // receive any more packets at this point.
+        receiveLoopJob!!.cancel()
+        receiveLoopJob = null
         logger(LogLevel.INFO) { "Application layer disconnected" }
     }
 
