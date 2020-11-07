@@ -156,7 +156,7 @@ class MainControl(
                         // instead, we notify the caller by invoking the
                         // onDiscoveryFailure() callback.
                         try {
-                            logger(LogLevel.DEBUG) { "Found paired device with address $pumpAddress" }
+                            logger(LogLevel.DEBUG) { "Found device with address $pumpAddress" }
                             onNewPump(pumpAddress)
                             performPairing(backgroundDiscoveryEventScope, pumpAddress)
                         } catch (e: CancellationException) {
