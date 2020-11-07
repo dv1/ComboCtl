@@ -16,7 +16,6 @@
 #include "bluez_interface.hpp"
 #include "exception.hpp"
 #include "gerror_exception.hpp"
-#include "scope_guard.hpp"
 #include "log.hpp"
 
 

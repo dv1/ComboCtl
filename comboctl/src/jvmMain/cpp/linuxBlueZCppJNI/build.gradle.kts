@@ -6,23 +6,28 @@ plugins {
 
 library {
     dependencies {
-        implementation(project(":platform-linux:linux-bluez-cpp:external:fmtlib"))
+        implementation(project(":comboctl:src:linuxBlueZCpp"))
     }
 }
 
 extensions.configure<CppLibrary> {
     source.from(file("src"))
-    privateHeaders.from(file("src/priv-headers"), file("external/jni-hpp/include"))
-    publicHeaders.from(file("include"))
+    privateHeaders.from(file("external/jni-hpp/include"))
 }
 
 val glibCflagsStdout = ByteArrayOutputStream()
 val glibLibsStdout = ByteArrayOutputStream()
 
+fun getJNICflags(): List<String> {
+    val javaHome = System.getenv("JAVA_HOME") ?: throw GradleException(
+        "Cannot build JNI bindings without the JAVA_HOME environment variable being present")
+
+    return listOf("-I$javaHome/include", "-I$javaHome/include/linux")
+}
+
 fun getGccAndClangCflags(): List<String> {
     return listOf("-Wextra", "-Wall", "-O0", "-g3", "-ggdb", "-fPIC", "-DPIC", "-std=c++17") +
-    glibCflagsStdout.toString().trim().split(" ") +
-    listOf("-I/usr/lib/jvm/java-11-openjdk-amd64/include", "-I/usr/lib/jvm/java-11-openjdk-amd64/include/linux")
+    glibCflagsStdout.toString().trim().split(" ")
 }
 
 task<Exec>("glib2PkgConfigCflags") {
@@ -39,8 +44,7 @@ tasks.withType(CppCompile::class.java).configureEach {
     dependsOn("glib2PkgConfigCflags")
     compilerArgs.addAll(toolChain.map { toolChain ->
         when (toolChain) {
-            // TODO: Remove hardcoded JNI include paths
-            is Gcc, is Clang -> getGccAndClangCflags()
+            is Gcc, is Clang -> getGccAndClangCflags() + getJNICflags()
             else -> listOf()
         }
     })
