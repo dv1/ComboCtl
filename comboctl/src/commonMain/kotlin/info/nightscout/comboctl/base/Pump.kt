@@ -3,7 +3,6 @@ package info.nightscout.comboctl.base
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 private val logger = Logger.get("Pump")
@@ -186,7 +185,7 @@ class Pump(
         try {
             // Connecting to Bluetooth may block, so run it in
             // a coroutine with an IO dispatcher.
-            withContext(Dispatchers.IO) {
+            withContext(ioDispatcher()) {
                 bluetoothDevice.connect()
             }
 
@@ -198,7 +197,7 @@ class Pump(
             if (doUnpair) {
                 // Unpair in a separate context, since this
                 // can block for up to a second or so.
-                withContext(Dispatchers.IO) {
+                withContext(ioDispatcher()) {
                     bluetoothDevice.unpair()
                 }
                 persistentPumpStateStore.reset()
@@ -284,7 +283,7 @@ class Pump(
         // a previous connection.
         framedComboIO.reset()
 
-        withContext(Dispatchers.IO) {
+        withContext(ioDispatcher()) {
             bluetoothDevice.connect()
         }
 
@@ -423,7 +422,7 @@ class Pump(
         // here would only complicate matters, because disconnect()
         // gets called in catch blocks.
         try {
-            withContext(Dispatchers.IO) {
+            withContext(ioDispatcher()) {
                 bluetoothDevice.disconnect()
             }
         } catch (e: CancellationException) {

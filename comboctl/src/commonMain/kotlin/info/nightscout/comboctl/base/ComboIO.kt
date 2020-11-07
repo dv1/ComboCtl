@@ -1,7 +1,6 @@
 package info.nightscout.comboctl.base
 
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
@@ -100,13 +99,13 @@ interface ComboIO {
  */
 abstract class BlockingComboIO : ComboIO {
     final override suspend fun send(dataToSend: List<Byte>) {
-        withContext(Dispatchers.IO) {
+        withContext(ioDispatcher()) {
             blockingSend(dataToSend)
         }
     }
 
     final override suspend fun receive(): List<Byte> {
-        return withContext(Dispatchers.IO) {
+        return withContext(ioDispatcher()) {
             blockingReceive()
         }
     }

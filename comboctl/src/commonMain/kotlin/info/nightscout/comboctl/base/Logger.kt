@@ -43,21 +43,10 @@ class NullLoggerBackend : LoggerBackend {
 }
 
 /**
- * Backend that prints log lines to stderr.
+ * Backend that prints log lines in a platform specific manner.
  */
-class StderrLoggerBackend : LoggerBackend {
-    override fun log(tag: String, level: LogLevel, throwable: Throwable?, message: String?) {
-        var str = "[${level.str}] [$tag]"
-
-        if (throwable != null)
-            str += " (" + throwable::class.qualifiedName + ": \"" + throwable.message + "\")"
-
-        if (message != null)
-            str += " $message"
-
-        // TODO: System.err.println is JVM specific
-        System.err.println(str)
-    }
+expect class PlatformLoggerBackend() : LoggerBackend {
+    override fun log(tag: String, level: LogLevel, throwable: Throwable?, message: String?)
 }
 
 class SingleTagLogger(val tag: String) {
@@ -76,7 +65,7 @@ class SingleTagLogger(val tag: String) {
  *
  * Applications can set a custom logger backend simply by setting
  * the [Logger.backend] variable to a new value. By default, the
- * [StderrLoggerBackend] is used.
+ * [PlatformLoggerBackend] is used.
  *
  * The logger is used by adding a line like this at the top of:
  * a source file:
@@ -91,6 +80,6 @@ class SingleTagLogger(val tag: String) {
  * and the "TagName" tag (see [LoggerBackend.log] for details).
  */
 object Logger {
-    var backend: LoggerBackend = StderrLoggerBackend()
+    var backend: LoggerBackend = PlatformLoggerBackend()
     fun get(tag: String) = SingleTagLogger(tag)
 }
