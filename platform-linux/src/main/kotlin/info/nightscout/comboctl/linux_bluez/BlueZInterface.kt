@@ -115,7 +115,7 @@ class BlueZInterface : BluetoothInterface {
 
 internal fun nativeLoggerCall(tag: String, cppLogLevel: Int, message: String) {
     val logLevel = when (cppLogLevel) {
-        0 -> LogLevel.DEBUG
+        0 -> LogLevel.VERBOSE
         1 -> LogLevel.DEBUG
         2 -> LogLevel.INFO
         3 -> LogLevel.WARN

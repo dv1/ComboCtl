@@ -519,6 +519,7 @@ class HighLevelIO(
         // receive any more packets at this point.
         receiveLoopJob!!.cancel()
         receiveLoopJob = null
+
         logger(LogLevel.INFO) { "Application layer disconnected" }
     }
 
@@ -819,9 +820,9 @@ class HighLevelIO(
 
         // Parse the transport layer DATA packet as an application layer packet.
         try {
-            logger(LogLevel.DEBUG) { "Parsing DATA packet as application layer packet" }
+            logger(LogLevel.VERBOSE) { "Parsing DATA packet as application layer packet" }
             appLayerPacket = ApplicationLayer.Packet(tpLayerPacket)
-            logger(LogLevel.DEBUG) { "This is an application layer packet with command ${appLayerPacket.command}" }
+            logger(LogLevel.VERBOSE) { "This is an application layer packet with command ${appLayerPacket.command}" }
         } catch (e: ApplicationLayer.InvalidCommandIDException) {
             logger(LogLevel.WARN) {
                 "Got an application layer packet with invalid/unknown command ID 0x${e.commandID.toString(16)} " +
@@ -849,16 +850,16 @@ class HighLevelIO(
         // packets _to_ the Combo. The rtKeepAliveJob takes care of that.)
         when (appLayerPacket.command) {
             ApplicationLayer.Command.RT_DISPLAY -> processRTDisplayPayload(applicationLayer.parseRTDisplayPacket(appLayerPacket))
-            ApplicationLayer.Command.RT_KEY_CONFIRMATION -> { logger(LogLevel.DEBUG) { "Got RT_KEY_CONFIRMATION packet from the Combo; ignoring" } }
-            ApplicationLayer.Command.RT_KEEP_ALIVE -> { logger(LogLevel.DEBUG) { "Got RT_KEEP_ALIVE packet from the Combo; ignoring" } }
+            ApplicationLayer.Command.RT_KEY_CONFIRMATION -> { logger(LogLevel.VERBOSE) { "Got RT_KEY_CONFIRMATION packet from the Combo; ignoring" } }
+            ApplicationLayer.Command.RT_KEEP_ALIVE -> { logger(LogLevel.VERBOSE) { "Got RT_KEEP_ALIVE packet from the Combo; ignoring" } }
             ApplicationLayer.Command.RT_AUDIO -> {
-                logger(LogLevel.DEBUG) {
+                logger(LogLevel.VERBOSE) {
                     val audioType = applicationLayer.parseRTAudioPacket(appLayerPacket)
                     "Got RT_AUDIO packet with audio type ${audioType.toHexString(8)}; ignoring"
                 }
             }
             ApplicationLayer.Command.RT_VIBRATION -> {
-                logger(LogLevel.DEBUG) {
+                logger(LogLevel.VERBOSE) {
                     val vibrationType = applicationLayer.parseRTVibrationPacket(appLayerPacket)
                     "Got RT_VIBRATION packet with vibration type ${vibrationType.toHexString(8)}; ignoring"
                 }
@@ -889,7 +890,7 @@ class HighLevelIO(
     }
 
     private suspend fun receiveTpLayerPacketFromChannel(expectedCommandID: TransportLayer.CommandID? = null): TransportLayer.Packet {
-        logger(LogLevel.DEBUG) {
+        logger(LogLevel.VERBOSE) {
             if (expectedCommandID == null)
                 "Waiting for transport layer packet"
             else
@@ -904,7 +905,7 @@ class HighLevelIO(
     }
 
     private suspend fun receiveAppLayerPacketFromChannel(expectedCommand: ApplicationLayer.Command? = null): ApplicationLayer.Packet {
-        logger(LogLevel.DEBUG) {
+        logger(LogLevel.VERBOSE) {
             if (expectedCommand == null)
                 "Waiting for application layer packet (will arrive in a transport layer DATA packet)"
             else
@@ -923,12 +924,12 @@ class HighLevelIO(
      ********************************/
 
     private suspend fun sendPacketToIO(packet: TransportLayer.Packet) {
-        logger(LogLevel.DEBUG) { "Sending transport layer ${packet.commandID.name} packet" }
+        logger(LogLevel.VERBOSE) { "Sending transport layer ${packet.commandID.name} packet" }
         io.send(packet.toByteList())
     }
 
     private suspend fun sendPacketToIO(packet: ApplicationLayer.Packet) {
-        logger(LogLevel.DEBUG) { "Sending application layer ${packet.command.name} packet" }
+        logger(LogLevel.VERBOSE) { "Sending application layer ${packet.command.name} packet" }
         io.send(packet.toTransportLayerPacket(transportLayer).toByteList())
     }
 
@@ -991,7 +992,7 @@ class HighLevelIO(
             // since it then assumes that we are no longer connected
             // (for example due to a system crash).
             while (true) {
-                logger(LogLevel.DEBUG) { "Transmitting RT keep-alive packet" }
+                logger(LogLevel.VERBOSE) { "Transmitting RT keep-alive packet" }
                 sendPacketToIO(applicationLayer.createRTKeepAlivePacket())
                 delay(1000)
             }

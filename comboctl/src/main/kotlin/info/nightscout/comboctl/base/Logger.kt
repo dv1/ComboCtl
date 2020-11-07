@@ -4,6 +4,7 @@ package info.nightscout.comboctl.base
  * Valid log levels.
  */
 enum class LogLevel(val str: String) {
+    VERBOSE("VERBOSE"),
     DEBUG("DEBUG"),
     INFO("INFO"),
     WARN("WARN"),
