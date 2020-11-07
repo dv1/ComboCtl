@@ -331,6 +331,11 @@ class MainControl(
             { Unit } // We don't need the onNewDisplayFrame callback while pairing.
         )
 
+        if (pump.isPaired()) {
+            logger(LogLevel.INFO) { "Not pairing discovered pump $pumpAddress since it is already paired" }
+            return
+        }
+
         logger(LogLevel.DEBUG) { "Pump instance ready for pairing" }
 
         pump.performPairing(backgroundReceiveScope, bluetoothInterface.getAdapterFriendlyName()) {
