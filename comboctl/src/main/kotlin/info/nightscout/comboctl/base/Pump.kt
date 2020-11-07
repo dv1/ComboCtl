@@ -74,6 +74,11 @@ class Pump(
     }
 
     /**
+     * The pump's Bluetooth address.
+     */
+    val address = bluetoothDevice.address
+
+    /**
      * Returns whether or not this pump has already been paired.
      *
      * "Pairing" refers to the custom Combo pairing here, not the
