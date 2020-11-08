@@ -68,6 +68,7 @@ struct bluez_interface_priv
 	std::thread m_thread;
 	bool m_thread_started = false;
 
+	GMainContext *m_mainloop_context = nullptr;
 	GMainLoop *m_mainloop = nullptr;
 	GDBusConnection *m_gdbus_connection = nullptr;
 
@@ -92,7 +93,21 @@ struct bluez_interface_priv
 
 	bluez_interface_priv()
 	{
-		m_mainloop = g_main_loop_new(nullptr, TRUE);
+		// Start our own GLib mainloop where all GDBus activities
+		// shall take place, along with any extra calls we serialize
+		// to the mainloop via the run_in_thread() call.
+		// We use a custom GMainContext to make sure we don't
+		// pollute the default context (which is selected by
+		// passing null to the first g_main_loop_new() argument).
+		// This allows for using this code with other components
+		// that also use a GLib mainloop. If we used the default
+		// GMainContext, there could be a collision if another
+		// component also uses that context. One prominent example
+		// is the GTK backend of JavaFX on Linux, which uses a
+		// GLib mainloop, and apparently uses the default context
+		// instead of a custom one.
+		m_mainloop_context = g_main_context_new();
+		m_mainloop = g_main_loop_new(m_mainloop_context, TRUE);
 		assert(m_mainloop != nullptr);
 	}
 
@@ -100,12 +115,22 @@ struct bluez_interface_priv
 	~bluez_interface_priv()
 	{
 		g_main_loop_unref(m_mainloop);
+		g_main_context_unref(m_mainloop_context);
 	}
 
 
 	void thread_func()
 	{
 		LOG(trace, "Starting internal BlueZ thread");
+
+		// Set our custom context as the new default one in
+		// this thread (-> this is a thread-local configuration).
+		// Any calls that always take the default context (like
+		// the GDBus functions) will now use our own context.
+		// In this code, all calls that touch the GLib mainloop
+		// happen in this same thread, so we don't have to worry
+		// about calls in other threads not using our context.
+		g_main_context_push_thread_default(m_mainloop_context);
 
 		if (m_on_thread_starting)
 			m_on_thread_starting();
@@ -114,6 +139,10 @@ struct bluez_interface_priv
 
 		if (m_on_thread_stopping)
 			m_on_thread_stopping();
+
+		// Unset our custom context as the default one
+		// as part of our cleanup here.
+		g_main_context_pop_thread_default(m_mainloop_context);
 	}
 
 
