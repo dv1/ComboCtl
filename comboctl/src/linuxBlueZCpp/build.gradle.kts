@@ -5,6 +5,7 @@ plugins {
 }
 
 library {
+    linkage.set(listOf(Linkage.STATIC))
     dependencies {
         api(project("external:fmtlib"))
     }
