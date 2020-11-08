@@ -1,6 +1,4 @@
-package info.nightscout.comboctl.linux_bluez
-
-import info.nightscout.comboctl.base.*
+package info.nightscout.comboctl.base
 
 // Callback wrappers. We need these to be able to invoke
 // our callbacks from C++. We can't invoke the function

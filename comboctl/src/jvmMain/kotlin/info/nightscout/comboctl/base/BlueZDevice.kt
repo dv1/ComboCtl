@@ -1,8 +1,4 @@
-package info.nightscout.comboctl.linux_bluez
-
-import info.nightscout.comboctl.base.BluetoothAddress
-import info.nightscout.comboctl.base.BluetoothDevice
-import info.nightscout.comboctl.base.BluetoothInterface
+package info.nightscout.comboctl.base
 
 /**
  * Class representing a Bluetooth device accessible through BlueZ.
