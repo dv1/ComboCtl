@@ -1,4 +1,11 @@
-package info.nightscout.comboctl.base
+package info.nightscout.comboctl.linuxBlueZ
+
+import info.nightscout.comboctl.base.BluetoothAddress
+import info.nightscout.comboctl.base.BluetoothDevice
+import info.nightscout.comboctl.base.BluetoothInterface
+import info.nightscout.comboctl.base.LogLevel
+import info.nightscout.comboctl.base.Logger
+import info.nightscout.comboctl.base.toBluetoothAddress
 
 // Callback wrappers. We need these to be able to invoke
 // our callbacks from C++. We can't invoke the function
@@ -22,7 +29,7 @@ class BlueZInterface : BluetoothInterface {
         // This loads the .so file with the C++ code inside.
         // That's where the implementation of the external
         // functions are located.
-        System.loadLibrary("linux-bluez-cpp")
+        System.loadLibrary("linuxBlueZCppJNI")
         // This calls the constructor of the native C++ class.
         initialize()
     }

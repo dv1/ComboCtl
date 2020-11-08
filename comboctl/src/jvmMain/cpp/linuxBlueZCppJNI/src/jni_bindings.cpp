@@ -234,7 +234,7 @@ public:
 		assert(m_device != nullptr);
 	}
 
-	static constexpr auto Name() { return "info/nightscout/comboctl/linux_bluez/BlueZDevice"; }
+	static constexpr auto Name() { return "info/nightscout/comboctl/linuxBlueZ/BlueZDevice"; }
 
 
 private:
@@ -249,20 +249,20 @@ private:
 //////////////////////////////////
 
 
-struct bluez_interface_global_tag { static constexpr auto Name() { return "info/nightscout/comboctl/linux_bluez/BlueZInterfaceKt"; } };
+struct bluez_interface_global_tag { static constexpr auto Name() { return "info/nightscout/comboctl/linuxBlueZ/BlueZInterfaceKt"; } };
 struct bluez_interface_global_class_wrapper
 {
 	using jni_class = jni::Class<bluez_interface_global_tag>;
 };
 
-struct bluetooth_device_no_return_callback_tag { static constexpr auto Name() { return "info/nightscout/comboctl/linux_bluez/BluetoothDeviceNoReturnCallback"; } };
+struct bluetooth_device_no_return_callback_tag { static constexpr auto Name() { return "info/nightscout/comboctl/linuxBlueZ/BluetoothDeviceNoReturnCallback"; } };
 struct bluetooth_device_no_return_callback_wrapper
 {
 	using jni_object = jni::Object<bluetooth_device_no_return_callback_tag>;
 	using jni_class = jni::Class<bluetooth_device_no_return_callback_tag>;
 };
 
-struct bluetooth_device_boolean_return_callback_tag { static constexpr auto Name() { return "info/nightscout/comboctl/linux_bluez/BluetoothDeviceBooleanReturnCallback"; } };
+struct bluetooth_device_boolean_return_callback_tag { static constexpr auto Name() { return "info/nightscout/comboctl/linuxBlueZ/BluetoothDeviceBooleanReturnCallback"; } };
 struct bluetooth_device_boolean_return_callback_wrapper
 {
 	using jni_object = jni::Object<bluetooth_device_boolean_return_callback_tag>;
@@ -459,7 +459,7 @@ public:
 		);
 	}
 
-	static constexpr auto Name() { return "info/nightscout/comboctl/linux_bluez/BlueZInterface"; }
+	static constexpr auto Name() { return "info/nightscout/comboctl/linuxBlueZ/BlueZInterface"; }
 
 
 private:
