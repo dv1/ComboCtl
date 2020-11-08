@@ -137,6 +137,8 @@ struct bluez_interface_priv
 
 		g_main_loop_run(m_mainloop);
 
+		LOG(trace, "Stopping internal BlueZ thread");
+
 		if (m_on_thread_stopping)
 			m_on_thread_stopping();
 
@@ -547,9 +549,14 @@ void bluez_interface::setup()
 
 void bluez_interface::teardown()
 {
+	LOG(trace, "Starting teardown");
+
 	// Catch redundant calls.
 	if (!m_priv->m_thread_started)
+	{
+		LOG(trace, "GLib mainloop thread is not running; nothing to tear down");
 		return;
+	}
 
 	stop_discovery();
 
