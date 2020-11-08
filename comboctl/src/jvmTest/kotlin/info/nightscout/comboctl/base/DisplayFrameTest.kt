@@ -100,8 +100,8 @@ class DisplayFrameTest {
         val displayFrame = DisplayFrame(frameBytes)
 
         // Verify that all pixels except the two specific ones are empty.
-        for (y in 0 until 32) {
-            for (x in 0 until 96) {
+        for (y in 0 until DISPLAY_FRAME_HEIGHT) {
+            for (x in 0 until DISPLAY_FRAME_WIDTH) {
                 when (Pair(x, y)) {
                     Pair(2, 0) -> assertEquals(true, displayFrame.getPixelAt(x, y))
                     Pair(8, 1) -> assertEquals(true, displayFrame.getPixelAt(x, y))
@@ -210,8 +210,8 @@ class DisplayFrameTest {
     }
 
     private fun dumpDisplayFrameContents(displayFrame: DisplayFrame) {
-        for (y in 0 until 32) {
-            for (x in 0 until 96) {
+        for (y in 0 until DISPLAY_FRAME_HEIGHT) {
+            for (x in 0 until DISPLAY_FRAME_WIDTH) {
                 val displayFramePixel = displayFrame.getPixelAt(x, y)
                 print(if (displayFramePixel) '█' else ' ')
             }
@@ -220,8 +220,8 @@ class DisplayFrameTest {
     }
 
     private fun compareWithReference(displayFrame: DisplayFrame) {
-        for (y in 0 until 32) {
-            for (x in 0 until 96) {
+        for (y in 0 until DISPLAY_FRAME_HEIGHT) {
+            for (x in 0 until DISPLAY_FRAME_WIDTH) {
                 val referencePixel = (referenceDisplayFramePixels[y][x] != ' ')
                 val displayFramePixel = displayFrame.getPixelAt(x, y)
 

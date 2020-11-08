@@ -1,9 +1,12 @@
 package info.nightscout.comboctl.base
 
+const val DISPLAY_FRAME_WIDTH = 96
+const val DISPLAY_FRAME_HEIGHT = 32
+
 // One frame consists of 96x32 pixels, one bit
 // per pixel (hence the division by 8 to get the
 // number of bytes per frame.)
-const val NUM_DISPLAY_FRAME_BYTES = 96 * 32 / 8
+const val NUM_DISPLAY_FRAME_BYTES = DISPLAY_FRAME_WIDTH * DISPLAY_FRAME_HEIGHT / 8
 
 /**
  * Class containing a 96x32 pixel black&white Combo display frame.
@@ -49,7 +52,7 @@ data class DisplayFrame(private val displayFrameBytes: List<Byte>) : Iterable<By
      *         false if it is cleared.
      */
     fun getPixelAt(x: Int, y: Int) =
-        ((displayFrameBytes[(x + y * 96) / 8].toPosInt() and (1 shl (7 - (x % 8)))) != 0)
+        ((displayFrameBytes[(x + y * DISPLAY_FRAME_WIDTH) / 8].toPosInt() and (1 shl (7 - (x % 8)))) != 0)
 
     operator fun get(index: Int) = displayFrameBytes[index]
 

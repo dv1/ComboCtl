@@ -123,7 +123,7 @@ class DisplayFrameAssembler {
         // pixels from (x 94 y 0) to (x 94 y 7) etc. 
         for (row in 0 until 4) {
             val rtDisplayFrameRow = rtDisplayFrameRows[row]!!
-            for (column in 0 until 96) {
+            for (column in 0 until DISPLAY_FRAME_WIDTH) {
                 // Get the 8 pixels from the current column.
                 // We invert the index by subtracting it from
                 // 95, since, as described above, the first
@@ -137,7 +137,7 @@ class DisplayFrameAssembler {
                     if (pixel) {
                         // Get the index of the location on our output video frame bytes
                         // (that's the destination, hence the "dest" naming).
-                        val destBitIndex = column + (y + row * 8) * 96
+                        val destBitIndex = column + (y + row * 8) * DISPLAY_FRAME_WIDTH
                         val destByteIndex = destBitIndex / 8
                         // Get the index of the bit within the destination byte.
                         val bitIndexWithinDestByte = 7 - (destBitIndex % 8)
