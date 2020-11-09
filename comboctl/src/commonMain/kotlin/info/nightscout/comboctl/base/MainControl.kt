@@ -235,59 +235,47 @@ class MainControl(
     }
 
     /**
-     * Establishes a regular connection to a previously paired pump.
+     * Returns a [Pump] instance for a previously paired pump with the given address.
      *
-     * "Regular" means "not pairing". This is the type of connection
-     * one uses for regular operation.
+     * The returned instance is set up for interaction with the pump.
+     * However, it is not connected yet. Call [Pump.connect] afterwards
+     * to establish a connection.
      *
-     * Packets are received in a loop that runs in a background
-     * coroutine that operates in the [backgroundReceiveScope].
-     *
-     * That scope's context needs to be associated with the same thread
-     * this function is called in. Otherwise, the receive loop
-     * may run in a different thread than this function, potentially
-     * leading to race conditions.
-     *
-     * If an exception is thrown, the connection attempt is rolled
-     * back. The device is in a disconnected state afterwards. This
-     * applies to an exception thrown _during_ the connection setup;
-     * any exception thrown in the background receive loop will cause
-     * [onBackgroundReceiveException] to be called instead. Also,
-     * other [Pump] functions that involve IO to/from the Combo will
-     * throw that exception.
-     *
-     * @param pumpAddress Bluetooth address of the pump to connect to.
-     * @param backgroundReceiveScope [CoroutineScope] to run the
-     *        background packet receive loop in.
+     * @param pumpAddress Bluetooth address of the pump to access.
      * @param onNewDisplayFrame Callback invoked every time the pump
      *        receives a new complete remote terminal frame.
-     * @param onBackgroundReceiveException Callback that gets invoked
-     *        if an exception occurs in the Pump instance's background
-     *        receive loop.
-     * @throws ComboIOException if an IO error occurs during
-     *         the connection attempts.
-     * @throws IllegalStateException if the pump was not paired,
-     *         or if the Bluetooth interface is not in a state that
-     *         allows for getting access to Bluetooth devices, such
-     *         as a Bluetooth subsystem that has been shut down.
+     *        Note that this callback will not be invoked until
+     *        the pump is connected.
+     * @returns [Pump] instance.
+     * @throws PumpStateStoreRequestException if the request for
+     *         a pump state store for this pump failed.
+     *         (See [requestPersistentPumpStateStore] in the constructor.)
+     * @throws IllegalStateException if the pump was not paired. This
+     *         is indicated by a pump state store that isn't valid.
+     *         (See [PersistentPumpStateStore] for details about this.)
      */
-    suspend fun connect(
+    fun getPump(
         pumpAddress: BluetoothAddress,
-        backgroundReceiveScope: CoroutineScope,
-        onNewDisplayFrame: (displayFrame: DisplayFrame) -> Unit,
-        onBackgroundReceiveException: (e: Exception) -> Unit = { Unit }
+        onNewDisplayFrame: (displayFrame: DisplayFrame) -> Unit
     ): Pump {
+        // Get a pump state store for this pump.
         lateinit var persistentPumpStateStore: PersistentPumpStateStore
-
         try {
             persistentPumpStateStore = requestPersistentPumpStateStore(pumpAddress)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            // Note that an exception is not supposed to happen
+            // if there's no store for this pump. In such a case,
+            // we should get a not-yet-initialized store instead.
+            // An exception indicates a failure in the system that
+            // manages the pump state stores.
             logger(LogLevel.ERROR) { "Could not get persistent state store for pump $pumpAddress due to an exception: $e" }
             throw PumpStateStoreRequestException(e)
         }
 
+        // Check that this pump is paired. If it is paired, then
+        // the store is valid.
         require(persistentPumpStateStore.isValid())
 
         logger(LogLevel.DEBUG) { "About to connect to pump $pumpAddress" }
@@ -299,8 +287,6 @@ class MainControl(
             persistentPumpStateStore,
             onNewDisplayFrame
         )
-
-        pump.connect(backgroundReceiveScope, onBackgroundReceiveException)
 
         return pump
     }

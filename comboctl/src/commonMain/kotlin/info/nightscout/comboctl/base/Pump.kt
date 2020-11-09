@@ -31,7 +31,7 @@ private val logger = Logger.get("Pump")
  * The [performPairing] function can be used for this purpose.
  *
  * Instances of this class are typically not created manually,
- * but rather by calling [MainControl.connect]. Likewise, the
+ * but rather by calling [MainControl.getPump]. Likewise, the
  * [performPairing] function is typically not called directly,
  * but rather by [MainControl] during discovery.
  *
