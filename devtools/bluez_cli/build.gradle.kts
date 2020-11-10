@@ -1,5 +1,8 @@
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
 plugins {
     application
+    kotlin("jvm")
 }
 
 // TODO: Add some kind of condition to make sure this
@@ -19,7 +22,7 @@ sourceSets {
 dependencies {
     implementation(project(":comboctl"))
     implementation(project(":devtools:common"))
-    implementation(project(":platform-linux"))
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.4.0")
 }
 
 // TODO: Move this code to the root buildscript and refactor
@@ -39,4 +42,14 @@ tasks.jar {
     from({
         configurations.runtimeClasspath.get().filter { it.name.endsWith("jar") }.map { zipTree(it) }
     })
+}
+
+tasks {
+    val run by getting {
+        dependsOn(":comboctl:src:jvmMain:cpp:linuxBlueZCppJNI:build")
+    }
+}
+
+tasks.withType<KotlinCompile> {
+    kotlinOptions.jvmTarget = "1.8"
 }

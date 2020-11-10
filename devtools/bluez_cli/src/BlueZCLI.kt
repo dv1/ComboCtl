@@ -2,14 +2,14 @@ package devtools
 
 import devtools.common.*
 import info.nightscout.comboctl.base.*
-import info.nightscout.comboctl.linux_bluez.*
+import info.nightscout.comboctl.linuxBlueZ.BlueZInterface
 import kotlinx.coroutines.*
 
 // Tool for manually operating the BlueZ interface.
 //
 // It can be run from the command line like this:
 //
-//     java -Djava.library.path="platform-linux/linux-bluez-cpp/build/lib/main/debug" -jar devtools/bluez_cli/build/libs/bluez_cli-standalone.jar
+//     java -Djava.library.path="comboctl/src/jvmMain/cpp/linuxBlueZCppJNI/build/lib/main/debug" -jar devtools/bluez_cli/build/libs/bluez_cli-standalone.jar
 
 class MainApp(private val mainScope: CoroutineScope) {
     private val cli: CommandLineInterface

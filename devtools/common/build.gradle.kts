@@ -1,5 +1,8 @@
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
 plugins {
     `java-library`
+    kotlin("jvm")
 }
 
 sourceSets {
@@ -10,5 +13,10 @@ sourceSets {
 
 dependencies {
     implementation(project(":comboctl"))
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.4.0")
     implementation(group = "org.jline", name = "jline", version = "3.16.0")
+}
+
+tasks.withType<KotlinCompile> {
+    kotlinOptions.jvmTarget = "1.8"
 }
