@@ -2,14 +2,14 @@
 
 This is code for controlling and communicating with the Accu-Chek Spirit Combo, written in Kotlin.
 
-IMPORTANT: This is in the pre-alpha state, and far from being usable.
+WARNING: This project is in the alpha state.
 
 
 
 == Disclaimer and warning
 
-IMPORTANT: This documentation is intended purely for research. Any attempts
-at using this documentation for accessing and operating medical equipment
+IMPORTANT: This project is intended purely for research. Any attempts
+at using this project for accessing and operating medical equipment
 in a non certified way are _NOT_ supported. This document comes without
 warranty or formal support of *ANY* kind. **USE AT YOUR OWN RISK**.
 
@@ -23,30 +23,145 @@ with or endorsement by them.
 == Overview
 
 ComboCtl implements functionality for generating and parsing data sent to and
-received from the Combo. It is organized as follows:
+received from the Combo. Currently, the following modules exist:
 
-* *base* - The basic building blocks: CRC checksums, packet structure etc.
-* *display* - Code for interpreting / parsing display blocks sent by the Combo
+* *comboctl* - The base library. It includes core functionality for pairing,
+  setting up connections, running the communication with the Combo etc. It also
+  contains platform specific bits, like bindings to a platform's Bluetooth stack.
+  This module is set up as a Kotlin/Multiplatform subproject. It currently
+  supports the JVM and Android as targets, though Native may be added later.
+* *devtools* - Development tools. Currently, all of them are console based and
+  are built for the JVM.
+* *javafxApp* - JavaFX 8 based test application to operate Combo pumps.
+  Includes a UI to see the Combo's display frames.
 
 #TODO# More coming for Android support
 
-ComboCtl is mainly implemented in Kotlin. Platform specific bits may be written
+ComboCtl is primarily implemented in Kotlin. Platform specific bits may be written
 in other languages.
 
-It is divided into platform independent and platform specific parts, the former
-implementing the protocols and display parsing, the latter dealing with platform
-specific bits such as how Bluetooth connections are set up and controlled. The
-intent is to keep the platform independent parts as portable as possible. This
-allows for reusing them also on platforms where Kotlin isn't a first class citizen.
-In particular, Android specific APIs and features must not be used by these
-platform independent bits. Ultimately, ComboCtl is intended to eventually be used
-in projects such as AndroidAPS and OpenAPS, which is why portability is important.
+To use ComboCtl in other projects, only the code in the `comboctl` subproject
+is necessary.
+
+NOTE: ComboCtl makes heavy use of https://kotlinlang.org/docs/reference/coroutines-overview.html[Kotlin Coroutines]. Be sure to understand how to
+use them to be able to make sense of the ComboCtl API.
+
 
 
 === Communication specification
 
 The reverse engineered communication protocols and procedures are documented in
 <<docs/combo-comm-spec.adoc#,the Combo communication specification document>>.
+
+
+=== Main API
+
+The main class to use is `MainControl`. It allows for discovering and pairing
+with Combo pumps, and creates instances of the `Pump` class. This class is the
+second primary class to use. It provides access to a particular pump (specified
+by its Bluetooth address).
+
+IMPORTANT: ComboCtl is _not_ designed to be thread safe. The methods
+from the classes mentioned above are not to be called simultaneously
+in separate threads. Parts of `MainControl` will become thread safe
+in the future, but `Pump` will always be supposed to be used by only
+one thread. Also see the notes about threads in the `Pump` documentation.
+
+Integration requires that the user implements the following bits:
+
+* Persistent pump state store backend: For each Combo pump, a small
+  dataset needs to be kept stored in a persistent fashion. When
+  pairing with a pump, a new store is set up. The pairing process
+  will fill this store with data that will not change after pairing
+  (cipher keys etc). The store will also contain a nonce that will
+  be changed every time a data packet is sent to the Combo. See the
+  `PersistentPumpStateStore` class for details.
+* Logger backend: By default, a platform specific logger backend
+  is used. For example, on Android, that backend uses the
+  `android.util.Log` function for logging. It is not necessary that
+  the user defines a custom logger backend, but it is recommended
+  for a more seamless integration if the application that ComboCtl
+  gets integrated into uses its own logging framework.
+* Bluetooth interface: `MainControl` expects an objec that implements
+  the `BluetoothInterface` interface. On Linux, there is the
+  `BlueZInterface` class for this purpose.
+
+
+
+== Project structure
+
+
+=== comboctl/
+
+This is the base library. It is structured like a typical Kotlin/Multiplatform
+library. The directory structure goes as follows:
+
+* `comboctl/src/` - Base source directory
+* `comboctl/src/linuxBlueZCpp/` - static C++ library for operating BlueZ, the
+  Linux Bluetooth stack
+* `comboctl/src/commonMain/` - Core ComboCtl code, platform independent
+* `comboctl/src/jvmMain/` - JVM specific bits such as the BlueZ based
+  Bluetooth bindings and platform specific logging functionality
+* `comboctl/src/jvmMain/cpp/linuxBlueZCppJNI/` - C++ library for interfacing
+  linuxBlueZCpp with the JVM via the JNI
+* `comboctl/src/jvmTest/` - Unit tests for the core functionality, using JUnit 5
+* `comboctl/src/androidMain/` - Android specific bits such as the Bluetooth
+  bindings and platform specific logging functionality (only basic bits are
+  implemented here so far)
+
+The unit tests are kept in `comboctl/src/jvmTest/` to be able to run
+them easily on the PC. In the future, additional unit tests with
+Android dependencies may be added too, in a new `comboctl/src/androidTest/`
+subdirectory.
+
+
+=== devtools/
+
+The tools in here currently include:
+
+* `bluez_cli` - Command line interface for operating the Bluetooth stack.
+  Useful for testing the BlueZ bindings.
+* `dump_packets` - Command line tool for dumping Ruffy data dumps to stdout.
+  Useful for analyzing communication between Ruffy and the Combo.
+  Note that the main Ruffy version does not produce such data dumps. You
+  need to use https://github.com/dv1/ruffy[this fork] instead,
+  specifically its `datadumps` branch.
+
+
+=== javafxApp/
+
+This is a JavaFX 8 based application to operate Combo pumps interactively.
+It consists of a main window with a list of all paired pumps and controls
+for initiating discovery and pairing. For each paired pump, a dedicated pump
+window can be opened by clicking on the pump's Bluetooth address in the
+list in the main window. This pump window contains buttons for simulating
+Combo button presses and for connecting/disconnecting/unpairing (the last
+one is not implemented yet in the application). The pump window also contains
+a JavaFX ImageView for showing the display frames sent by the Combo.
+
+This application can be started by running: `./gradlew :javafxApp:run`
+
+
+
+== Prerequisites
+
+To build ComboCtl with IDEA or Android Studio, make sure that Kotlin 1.4.10
+support is installed. Preinstalled Kotlin plugins may not be up to date.
+
+On Android Studio, also install the KMM plugin.
+
+To build the linuxBlueZCpp library, C headers and libraries for GLib 2.0
+are needed. On Ubuntu, run: `apt install libglib2.0-dev`
+
+Make sure that `pkg-config` is installed.
+
+To build the linuxBlueZCppJNI library, the JNI needs to be installed.
+On Ubuntu, run: `apt install default-jdk`
+
+The `JAVA_HOME` environment variable must be set to point to where the
+JNI headers and libraries are. For example, on an x86-64 Ubuntu machine,
+that variable must be set to something like `/usr/lib/jvm/default-java`.
+Other distributions may already have that variable set.
 
 
 
@@ -56,10 +171,20 @@ ComboCtl is built using Gradle.
 
 To build with the command line and run the unit tests, run:
 
-  ./gradlew build test
+  ./gradlew build
 
 The project can also be imported into Android Studio and Intellij IDEA. Simply
 open/import this project's root directory.
+
+Note that this builds _all_ modules, including the JavaFX application,
+development tools, and C++ bindings. It is also possible to build specific
+subprojects. For example, to just build the C++ JNI bindings (and their
+dependencies), run:
+
+  ./gradlew :comboctl:src:jvmMain:cpp:linuxBlueZCppJNI:build
+
+Look into `settings.gradle.kts` for the list of subprojects.
+
 
 
 == Contributing
@@ -70,13 +195,21 @@ Before opening a pull request please make sure to run
 
 Many issues like ordering imports alphabetically can be resolved automatically with:
 
-  ./gradlew ktlintCheck
+  ./gradlew ktlintFormat
 
 
 == TODO
 
-* Base session management code ("session" here being the code that handles the
-  correct sequence of packets for pairing, regular communcation etc.)
-* Display parser code
-* Platform specific code for Android
-* Try to figure out the remaining TODOs in combo-comm-spec.adoc
+* Integrate the [detekt static analyzer](https://detekt.github.io/detekt/)
+  in addition to ktlint may be useful.
+* Try to figure out the remaining TODOs in combo-comm-spec.adoc.
+* Implement the display frame parser, using the code from Ruffy
+  as an example.
+* Try to integrate the Command Mode commands. These may be very
+  useful, since with them, administering a bolus and reading the
+  history can be done much faster.
+* Implement the scripter, using the code from AndroidAPS as an
+  example. Also rename it to something like "rtModeCommandTranslator"
+  which describes the nature of the code better.
+* Write Android test app, an Android counterpart to `javafxApp/`.
+* Thorough testing to cover all sorts of use cases.
