@@ -1,5 +1,3 @@
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
-
 plugins {
     kotlin("multiplatform") version "1.4.10" apply false
     id("org.jlleitschuh.gradle.ktlint") version "9.2.1"
