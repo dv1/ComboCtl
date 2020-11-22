@@ -19,9 +19,7 @@ val glibCflagsStdout = ByteArrayOutputStream()
 val glibLibsStdout = ByteArrayOutputStream()
 
 fun getJNICflags(): List<String> {
-    val javaHome = System.getenv("JAVA_HOME") ?: throw GradleException(
-        "Cannot build JNI bindings without the JAVA_HOME environment variable being present")
-
+    val javaHome = System.getProperty("java.home")
     return listOf("-I$javaHome/include", "-I$javaHome/include/linux")
 }
 

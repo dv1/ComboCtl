@@ -158,11 +158,6 @@ Make sure that `pkg-config` is installed.
 To build the linuxBlueZCppJNI library, the JNI needs to be installed.
 On Ubuntu, run: `apt install default-jdk`
 
-The `JAVA_HOME` environment variable must be set to point to where the
-JNI headers and libraries are. For example, on an x86-64 Ubuntu machine,
-that variable must be set to something like `/usr/lib/jvm/default-java`.
-Other distributions may already have that variable set.
-
 
 
 == Building
