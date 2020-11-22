@@ -87,17 +87,14 @@ class ComboFrameParser {
             // escaped bytes.
             val currentByteInfo = readNextFrameByte(currentReadOffset)
 
-            // This happens when readNextFrameByte() finds an escape byte,
-            // but there's currently no more data after that byte. See
-            // readNextFrameByte() for more about this.
-            if (currentByteInfo.first == null)
-                return null
+            // Get the current byte. It is set to null when readNextFrameByte()
+            // finds an escape byte, but there's currently no more data after
+            // that byte. See readNextFrameByte() for more about this.
+            val currentByte: Byte = currentByteInfo.first ?: return null
+            val currentByteWasEscaped = currentByteInfo.third
 
             val oldReadOffset = currentReadOffset
             currentReadOffset = currentByteInfo.second
-
-            val currentByte = currentByteInfo.first!!
-            val currentByteWasEscaped = currentByteInfo.third
 
             if (frameStarted) {
                 // The start of a frame was previously detected. Continue
