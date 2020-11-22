@@ -18,6 +18,9 @@ kotlin {
         val commonMain by getting {
             dependencies {
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.4.0")
+                // Need to use project.dependencies.platform() instead of platform()
+                // due to this bug: https://youtrack.jetbrains.com/issue/KT-40489
+                implementation(project.dependencies.platform("org.jetbrains.kotlin:kotlin-bom"))
             }
         }
         val commonTest by getting {
@@ -30,7 +33,6 @@ kotlin {
         val jvmTest by getting {
             dependencies {
                 implementation(kotlin("test-junit5"))
-                implementation("org.jetbrains.kotlin:kotlin-reflect:1.4.10")
                 implementation("io.kotlintest:kotlintest-runner-junit5:3.4.2")
                 runtimeOnly("org.junit.jupiter:junit-jupiter-engine:5.7.0")
             }

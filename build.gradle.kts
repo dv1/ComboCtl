@@ -13,7 +13,7 @@ buildscript {
     }
     dependencies {
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.4.10")
-        classpath("com.android.tools.build:gradle:4.1.0")
+        classpath("com.android.tools.build:gradle:4.0.0")
     }
 }
 
@@ -31,7 +31,7 @@ ktlint {
 
 allprojects {
     val projectPath = project.path.split(":")
-    if (projectPath.any { it.endsWith("-cpp") }) {
+    if (projectPath.any { it.endsWith("Cpp") }) {
         logger.info("Not applying common Java/Kotlin plugins and settings to project \"${project.name}\" (path \"${project.path}\")")
         return@allprojects
     }
