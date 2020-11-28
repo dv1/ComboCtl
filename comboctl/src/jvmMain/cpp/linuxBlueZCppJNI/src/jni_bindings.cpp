@@ -174,18 +174,6 @@ public:
 		m_device->disconnect();
 	}
 
-	void cancel_send(jni::JNIEnv &)
-	{
-		assert(m_device != nullptr);
-		m_device->cancel_send();
-	}
-
-	void cancel_receive(jni::JNIEnv &)
-	{
-		assert(m_device != nullptr);
-		m_device->cancel_receive();
-	}
-
 	void send_impl(jni::JNIEnv &env, jni::Array<jni::jbyte> const &data)
 	{
 		assert(m_device != nullptr);
@@ -560,8 +548,6 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*)
 			"finalize",
 			METHOD(&bluetooth_device_jni::connect, "connect"),
 			METHOD(&bluetooth_device_jni::disconnect, "disconnect"),
-			METHOD(&bluetooth_device_jni::cancel_send, "cancelSend"),
-			METHOD(&bluetooth_device_jni::cancel_receive, "cancelReceive"),
 			METHOD(&bluetooth_device_jni::send_impl, "sendImpl"),
 			METHOD(&bluetooth_device_jni::receive_impl, "receiveImpl"),
 			METHOD(&bluetooth_device_jni::set_native_device_ptr, "setNativeDevicePtr")

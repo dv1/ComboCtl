@@ -54,10 +54,6 @@ class PairingSessionTest {
             val sequenceEntry = getNextSequenceEntry(PacketDirection.RECEIVE)
             return sequenceEntry.packet.toByteList()
         }
-
-        override fun cancelSend() = Unit
-
-        override fun cancelReceive() = Unit
     }
 
     private lateinit var tpLayer: TransportLayer

@@ -43,18 +43,10 @@ class MainApp(private val mainScope: CoroutineScope) {
                     1,
                     "Receive some data via RFCOMM from the Bluetooth device with the given address (must be connected first)",
                     "<bluetooth address>") { args -> receiveFromDevice(args) },
-                "cancelReceiveFromDevice" to CommandEntry(
-                    1,
-                    "Cancels any ongoing receive operation",
-                    "<bluetooth address>") { args -> cancelReceiveFromDevice(args) },
                 "sendToDevice" to CommandEntry(
                     2,
                     "Send some data via RFCOMM to the Bluetooth device with the given address (must be connected first)",
-                    "<bluetooth address> <first byte in hex> [<second byte in hex> ... ]") { args -> sendToDevice(args) },
-                "cancelSendToDevice" to CommandEntry(
-                    1,
-                    "Cancels any ongoing send operation",
-                    "<bluetooth address>") { args -> cancelSendToDevice(args) }
+                    "<bluetooth address> <first byte in hex> [<second byte in hex> ... ]") { args -> sendToDevice(args) }
             ),
             { quit() }
         )
@@ -175,14 +167,6 @@ class MainApp(private val mainScope: CoroutineScope) {
         }
     }
 
-    private fun cancelReceiveFromDevice(arguments: List<String>) {
-        val deviceAddress = getBluetoothAddressFromString(arguments[0])
-        val device = getBluetoothDevice(deviceAddress)
-
-        printLine("Canceling any ongoing receive operation on device $deviceAddress")
-        device.cancelReceive()
-    }
-
     private fun sendToDevice(arguments: List<String>) {
         val deviceAddress = getBluetoothAddressFromString(arguments[0])
         val device = getBluetoothDevice(deviceAddress)
@@ -197,14 +181,6 @@ class MainApp(private val mainScope: CoroutineScope) {
                 printLine("Failed to receive from device $deviceAddress: $e")
             }
         }
-    }
-
-    private fun cancelSendToDevice(arguments: List<String>) {
-        val deviceAddress = getBluetoothAddressFromString(arguments[0])
-        val device = getBluetoothDevice(deviceAddress)
-
-        printLine("Canceling any ongoing send operation on device $deviceAddress")
-        device.cancelSend()
     }
 
     // Misc private functions

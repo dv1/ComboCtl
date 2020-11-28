@@ -16,10 +16,6 @@ class HighLevelIOTest {
 
         override suspend fun receive(): List<Byte> =
             throw ComboException("No more")
-
-        override fun cancelSend() = Unit
-
-        override fun cancelReceive() = Unit
     }
 
     private fun checkRTButtonStatusPacketData(

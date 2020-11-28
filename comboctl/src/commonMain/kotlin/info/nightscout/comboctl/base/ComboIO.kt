@@ -29,7 +29,11 @@ interface ComboIO {
      * having been sent.
      *
      * @param dataToSend The data to send. Must not be empty.
-     * @throws CancellationException if cancelled by [cancelSend].
+     * @throws CancellationException if sending is aboted due to
+     *         a terminated IO, typically due to some sort of
+     *         disconnect function call. (This is _not_ thrown if
+     *         the remote side closes the connection! In such a
+     *         case, ComboIOException is thrown instead.)
      * @throws ComboIOException if sending fails.
      * @throws IllegalStateException if this object is in a state
      *         that does not permit sending, such as a device
@@ -45,47 +49,17 @@ interface ComboIO {
      * an error, like when a connection is closed.
      *
      * @return Received block of bytes. This is never empty.
-     * @throws CancellationException if cancelled by [cancelReceive].
+     * @throws CancellationException if receiving is aboted due to
+     *         a terminated IO, typically due to some sort of
+     *         disconnect function call. (This is _not_ thrown if
+     *         the remote side closes the connection! In such a
+     *         case, ComboIOException is thrown instead.)
      * @throws ComboIOException if receiving fails.
      * @throws IllegalStateException if this object is in a state
      *         that does not permit receiving, such as a device
      *         that has been shut down or isn't connected.
      */
     suspend fun receive(): List<Byte>
-
-    /**
-     * Cancels a currently suspended send call.
-     *
-     * The send call resumes immediately and throws a [CancellationException],
-     * and the specified data is not send.
-     *
-     * Canceling is atomic - either, none of the specified data is sent, or,
-     * if sending already started when the cancel call was made, all of the data
-     * is sent. (In the latter case, no [CancellationException] happens, since
-     * the send operation was successfully completed.)
-     *
-     * If no send call is ongoing, this does nothing.
-     */
-    fun cancelSend()
-
-    /**
-     * Cancels a currently suspended receive call.
-     *
-     * The receive call resumes immediately and throws a [CancellationException],
-     * and nothing is received.
-     *
-     * If the subclass implements some sort of internal receive aggregation buffer
-     * (for example to accumulate enough data to parse a full frame), this buffer
-     * must be cleared when the receive call is canceled.
-     *
-     * Canceling is atomic - either, no data is received, or, if receiving
-     * already started when the cancel call was made, it finishes, and is
-     * returned to the caller. (In the latter case, no [CancellationException]
-     * happens, since the receive operation was successfully completed.)
-     *
-     * If no receive call is ongoing, this does nothing.
-     */
-    fun cancelReceive()
 }
 
 /**
@@ -114,7 +88,7 @@ abstract class BlockingComboIO : ComboIO {
      * Blocks the calling thread until the given block of bytes is fully sent.
      *
      * In case of an error, or some other reason why sending
-     * cannot be done (like a cancellation), an exception
+     * cannot be done (like a closed connection), an exception
      * is thrown.
      *
      * This function sends atomically. Either, the entire data
@@ -122,7 +96,11 @@ abstract class BlockingComboIO : ComboIO {
      * case of an exception).
      *
      * @param dataToSend The data to send. Must not be empty.
-     * @throws CancellationException if cancelled by [cancelSend].
+     * @throws CancellationException if sending is aboted due to
+     *         a terminated IO, typically due to some sort of
+     *         disconnect function call. (This is _not_ thrown if
+     *         the remote side closes the connection! In such a
+     *         case, ComboIOException is thrown instead.)
      * @throws ComboIOException if sending fails.
      * @throws IllegalStateException if this object is in a state
      *         that does not permit sending, such as a device
@@ -134,12 +112,16 @@ abstract class BlockingComboIO : ComboIO {
      * Blocks the calling thread until a given block of bytes is received.
      *
      * In case of an error, or some other reason why receiving
-     * cannot be done (like a cancellation), an exception
+     * cannot be done (like a closed connection), an exception
      * is thrown.
      *
      * @return Received block of bytes. This is never empty.
      *
-     * @throws CancellationException if cancelled by [cancelReceive].
+     * @throws CancellationException if receiving is aboted due to
+     *         a terminated IO, typically due to some sort of
+     *         disconnect function call. (This is _not_ thrown if
+     *         the remote side closes the connection! In such a
+     *         case, ComboIOException is thrown instead.)
      * @throws ComboIOException if receiving fails.
      * @throws IllegalStateException if this object is in a state
      *         that does not permit receiving, such as a device
@@ -187,9 +169,6 @@ class FramedComboIO(private val io: ComboIO) : ComboIO {
             throw e
         }
     }
-
-    override fun cancelSend() = io.cancelSend()
-    override fun cancelReceive() = io.cancelReceive()
 
     /**
      * Resets the internal frame parser.

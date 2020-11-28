@@ -39,9 +39,6 @@ class BlueZDevice(
     external override fun connect()
     external override fun disconnect()
 
-    external override fun cancelSend()
-    external override fun cancelReceive()
-
     // Private external C++ functions.
 
     private external fun sendImpl(data: ByteArray)
