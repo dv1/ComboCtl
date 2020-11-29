@@ -157,8 +157,8 @@ class MainControl(
                         // onDiscoveryFailure() callback.
                         try {
                             logger(LogLevel.DEBUG) { "Found device with address $pumpAddress" }
-                            onNewPump(pumpAddress)
                             performPairing(backgroundDiscoveryEventScope, pumpAddress)
+                            onNewPump(pumpAddress)
                         } catch (e: CancellationException) {
                             logger(LogLevel.ERROR) { "Aborting pairing since this coroutine got cancelled" }
                             abortDiscovery(e)

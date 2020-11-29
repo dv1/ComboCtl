@@ -23,6 +23,7 @@ class JsonPumpStateStore(
     public val pumpAddress: BluetoothAddress,
     private var backend: JsonPumpStateStoreBackend,
     private var pairingData: PumpPairingData? = null,
+    pumpID: String = "",
     txNonce: Nonce = NullNonce
 ) : PersistentPumpStateStore {
     private var valid = (pairingData != null)
@@ -49,6 +50,13 @@ class JsonPumpStateStore(
     }
 
     override var currentTxNonce = txNonce
+        get() = field
+        set(value) {
+            field = value
+            backend.write()
+        }
+
+    override var pumpID = pumpID
         get() = field
         set(value) {
             field = value
@@ -83,6 +91,7 @@ class JsonPumpStateStoreBackend {
                         pumpClientCipher = jsonObj.string("pumpClientCipher")!!.toCipher(),
                         keyResponseAddress = jsonObj.int("keyResponseAddress")!!.toByte()
                     ),
+                    jsonObj.string("pumpID")!!,
                     jsonObj.string("currentTxNonce")!!.toNonce()
                 )
 
@@ -121,6 +130,7 @@ class JsonPumpStateStoreBackend {
                 "clientPumpCipher" to pumpPairingData.clientPumpCipher.toString(),
                 "pumpClientCipher" to pumpPairingData.pumpClientCipher.toString(),
                 "keyResponseAddress" to pumpPairingData.keyResponseAddress.toInt(),
+                "pumpID" to store.pumpID,
                 "currentTxNonce" to store.currentTxNonce.toString()
             ) }
 

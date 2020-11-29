@@ -830,6 +830,18 @@ class TransportLayer(private val persistentPumpStateStore: PersistentPumpStateSt
      *
      * @param packet The packet that came from the Combo.
      * @return The parsed IDs.
+     * @throws IllegalStateException if this is called before
+     *         the persistent pump state store becomes valid,
+     *         indicating that this was called before a
+     *         KEY_RESPONSE packet was parsed.
+     * @throws IncorrectPacketException if packet is not an
+     *         ID_RESPONSE packet.
+     * @throws InvalidPayloadException if the payload size is
+     *         not the one expected from ID_RESPONSE packets.
+     * @throws PacketVerificationException if the packet
+     *         verification fails.
+     * @throws PumpStateStoreStorageException if placing the
+     *         pump ID into the persistent pump state store fails.
      */
     fun parseIDResponsePacket(packet: Packet): ComboIDs {
         if (packet.commandID != CommandID.ID_RESPONSE)
@@ -856,6 +868,16 @@ class TransportLayer(private val persistentPumpStateStore: PersistentPumpStateSt
             else pumpIDStrBuilder.append(pumpIDByte.toChar())
         }
         val pumpID = pumpIDStrBuilder.toString()
+
+        // Catch any exception (other than CancellationException) and
+        // wrap it into a PumpStateStoreStorageException instance.
+        try {
+            persistentPumpStateStore.pumpID = pumpID
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw PumpStateStoreStorageException(e)
+        }
 
         return ComboIDs(serverID, pumpID)
     }

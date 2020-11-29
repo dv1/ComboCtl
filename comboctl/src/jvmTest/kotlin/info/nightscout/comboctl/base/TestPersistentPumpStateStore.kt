@@ -23,5 +23,7 @@ class TestPersistentPumpStateStore : PersistentPumpStateStore {
         valid = false
     }
 
+    override var pumpID = ""
+
     override var currentTxNonce = NullNonce
 }

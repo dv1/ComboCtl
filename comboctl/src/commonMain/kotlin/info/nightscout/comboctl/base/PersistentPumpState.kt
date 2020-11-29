@@ -12,14 +12,14 @@ package info.nightscout.comboctl.base
  *           packets going to the Combo.
  * @property pumpClientCipher This cipher is used for verifying
  *           packets coming from the Combo.
- * @property The address byte of a previously received KEY_RESPONSE
- *           packet. The source and destination address values inside
- *           this address byte must have been reordered to match the
- *           order that outgoing packets expect. That is: Source
- *           address stored in the upper, destination address in the
- *           lower 4 bit of the byte. (In incoming packets - and
- *           KEY_RESPONSE is an incoming packet - these two are
- *           ordered the other way round.)
+ * @property keyResponseAddress The address byte of a previously
+ *           received KEY_RESPONSE packet. The source and destination
+ *           address values inside this address byte must have been
+ *           reordered to match the order that outgoing packets expect.
+ *           That is: Source address stored in the upper, destination
+ *           address in the lower 4 bit of the byte. (In incoming
+ *           packets - and KEY_RESPONSE is an incoming packet - these
+ *           two are ordered the other way round.)
  */
 data class PumpPairingData(
     val clientPumpCipher: Cipher,
@@ -110,6 +110,17 @@ interface PersistentPumpStateStore {
      * returns false after this call.
      */
     fun reset(): Unit
+
+    /*
+     * The pump ID from the ID_RESPONSE packet.
+     * This is useful for displaying the pump in a UI, since the
+     * Bluetooth address itself may not be very clear to the user.
+     * @throws PumpStateStoreStorageException if storing or retrieving
+     *         the pump ID fails. This happens when trying to fetch
+     *         the pump ID while the store is in an invalid state
+     *         (see [isValid] for more).
+     */
+    var pumpID: String
 
     /**
      * Current Tx nonce.
