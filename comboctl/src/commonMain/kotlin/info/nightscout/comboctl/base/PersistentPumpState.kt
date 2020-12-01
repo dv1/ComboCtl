@@ -30,20 +30,18 @@ data class PumpPairingData(
 /**
  * Exception thrown when a request to get a store for a specific pump fails.
  *
- * Such a request is typically done via a callback, for example in [MainControl].
- *
  * @param cause The exception that was thrown in the loop specifying
  *        want went wrong there.
  */
 class PumpStateStoreRequestException(cause: Exception) : ComboException(cause)
 
 /**
- * Exception thrown when storing [PumpPairingData] fails.
+ * Exception thrown when accessing data from a store fails.
  *
  * @param cause The exception that was thrown in the loop specifying
  *        want went wrong there.
  */
-class PumpStateStoreStorageException(cause: Exception) : ComboException(cause)
+class PumpStateStoreAccessException(cause: Exception) : ComboException(cause)
 
 /**
  * Persistent state store interface for a specific pump.
@@ -78,7 +76,19 @@ class PumpStateStoreStorageException(cause: Exception) : ComboException(cause)
  * a valid store.
  *
  * Instances of [PersistentPumpStateStore] subclasses are requested
- * by [MainControl] and other classes via callbacks.
+ * via [PersistentPumpStateStoreBackend.requestStore].
+ *
+ * If a function or property access throws [PumpStateStoreAccessException],
+ * then the store is to be considered invalid, any existing connections
+ * to a pump that use this store must be terminated, and the pump must
+ * be unpaired. This is because such an exception indicates an error in
+ * the underlying pump state store implementation that said implementation
+ * could not recover from. And this also implies that the data inside the
+ * store is in an undefined state - it cannot be relied upon anymore.
+ * Internally, the implementation must delete any remaining store data when
+ * such an error occurs, invalidating said store immediately. Callers must
+ * then also unpair the pump at the Bluetooth level. The user must be told
+ * about this error, and instructed that the pump must be paired again.
  */
 interface PersistentPumpStateStore {
     /**
@@ -86,14 +96,21 @@ interface PersistentPumpStateStore {
      *
      * @throws IllegalStateException if [isValid] returns false,
      *         since then, there is no such data in the store.
+     * @throws PumpStateStoreAccessException if retrieving the data
+     *         fails due to an error that occurred in the underlying
+     *         implementation.
      */
     fun retrievePumpPairingData(): PumpPairingData
 
     /**
      * Persistently stores the given pairing data.
      *
-     * This is called during the pairing process. If this throws
-     * an exception, the pairing process is aborted.
+     * This is called during the pairing process. In regular
+     * connections, this is not used.
+     *
+     * @throws PumpStateStoreAccessException if storing the data
+     *         fails due to an error that occurred in the underlying
+     *         implementation.
      */
     fun storePumpPairingData(pumpPairingData: PumpPairingData): Unit
 
@@ -106,8 +123,15 @@ interface PersistentPumpStateStore {
      * Resets the store back to its initial state.
      *
      * The [PumpPairingData] in the store is erased. The
-     * [currentTxNonce] returns a null nonce. [isValid]
+     * [currentTxNonce] returns a null nonce and [isValid]
      * returns false after this call.
+     *
+     * Implementations are encouraged to completely wipe any data
+     * associated with this pump state store when this is called.
+     *
+     * @throws PumpStateStoreAccessException if resetting the data
+     *         fails due to an error that occurred in the underlying
+     *         implementation.
      */
     fun reset(): Unit
 
@@ -115,10 +139,11 @@ interface PersistentPumpStateStore {
      * The pump ID from the ID_RESPONSE packet.
      * This is useful for displaying the pump in a UI, since the
      * Bluetooth address itself may not be very clear to the user.
-     * @throws PumpStateStoreStorageException if storing or retrieving
-     *         the pump ID fails. This happens when trying to fetch
-     *         the pump ID while the store is in an invalid state
-     *         (see [isValid] for more).
+     * @throws IllegalStateException if an attempt is made to
+     *         read this property while [isValid] returns false.
+     * @throws PumpStateStoreAccessException if accessing the pump
+     *         ID fails due to an error that occurred in the
+     *         underlying implementation.
      */
     var pumpID: String
 
@@ -131,8 +156,46 @@ interface PersistentPumpStateStore {
      * Every time a new value is set, said value must be stored
      * persistently and immediately by subclasses.
      *
-     * If the store is in its initial state, this must return
-     * a null nonce.
+     * @throws IllegalStateException if an attempt is made to
+     *         read this property while [isValid] returns false.
+     * @throws PumpStateStoreAccessException if accessing the pump
+     *         ID fails due to an error that occurred in the
+     *         underlying implementation.
      */
     var currentTxNonce: Nonce
+}
+
+/**
+ * Backend for retrieving and querying [PersistentPumpStateStore] instances.
+ *
+ * This is used by [MainControl] to fetch a [PersistentPumpStateStore]
+ * when creating a new [Pump] instance.
+ */
+interface PersistentPumpStateStoreBackend {
+    /**
+     * Requests a [PersistentPumpStateStore] instance for a pump with the given address.
+     *
+     * If no such store exists, this returns an instance which is set to the
+     * initial state (see the [PersistentPumpStateStore] store for details).
+     * It throws only if a non-recoverable error happens while fetching the
+     * pump state store data. In such a case, implementations must wipe any
+     * stored data associated with [pumpAddress], and callers must unpair the
+     * pump at the Bluetooth level. This is because failure to retrieve the
+     * store data may be caused by data corruption, so even if a subsequent
+     * attempt to retrieve the store suceeds, the data may no longer be valid.
+     *
+     * pumpAddress Bluetooth address of the pump this call shall fetch a
+     *             [PersistentPumpStateStore] for.
+     * @return [PersistentPumpStateStore] instance for the given address.
+     * @throws PumpStateStoreRequestException in case of an error while
+     *         retrieving the store.
+     */
+    fun requestStore(pumpAddress: BluetoothAddress): PersistentPumpStateStore
+
+    /**
+     * Checks if there is a valid store associated with the given address.
+     *
+     * @return true if there is one, false otherwise.
+     */
+    fun hasValidStore(pumpAddress: BluetoothAddress): Boolean
 }

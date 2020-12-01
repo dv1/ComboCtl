@@ -293,6 +293,8 @@ class ApplicationLayer {
          *
          * @param transportLayer TransportLayer instance used for generating the packet.
          * @return Transport layer DATA packet.
+         * @throws PumpStateStoreAccessException if writing the new Tx nonce fails
+         *         (done after a MAC-authenticated transport layer packet has been created).
          */
         fun toTransportLayerPacket(transportLayer: TransportLayer): TransportLayer.Packet {
             val appLayerPacketPayload = ArrayList<Byte>(PACKET_HEADER_SIZE + payload.size)

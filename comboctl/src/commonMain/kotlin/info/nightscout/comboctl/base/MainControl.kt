@@ -19,14 +19,6 @@ private val logger = Logger.get("MainControl")
  * Bluetooth and performing the pairing once a pump is
  * discovered, along with connecting to pumps.
  *
- * The [requestPersistentPumpStateStore] must return a
- * usable state store, even if one does not exist yet.
- * If it does not exist for the pump with the given address,
- * the state store is in its initial invalid state
- * (see [PersistentPumpStateStore] for details). Exceptions
- * can be thrown if something goes wrong while retrieving
- * an existing state store.
- *
  * The [pairingPINCallback] is called when the control
  * needs the 10-digit pairing PIN that is shown on the
  * Combo's LCD. This typically leads to a dialog box
@@ -38,17 +30,17 @@ private val logger = Logger.get("MainControl")
  *
  * @param bluetoothInterface Bluetooth interface to use
  *        for discovery, pairing, and connection setup.
- * @param requestPersistentPumpStateStore Callback that
- *        gets invoked whenever a [Pump] instance is
- *        created for pairing or for establishing a
- *        regular connection to the pump.
+ * @param persistentPumpStateStoreBackend Backend used
+ *        for retrieving pump state stores whenever
+ *        [getPump] is called or a pump is paired during
+ *        the discovery process.
  * @param pairingPINCallback Callback that gets invoked
  *        as soon as a pump pairing process needs the
  *        10-digit-PIN.
  */
 class MainControl(
     private val bluetoothInterface: BluetoothInterface,
-    private val requestPersistentPumpStateStore: (newPumpAddress: BluetoothAddress) -> PersistentPumpStateStore,
+    private val persistentPumpStateStoreBackend: PersistentPumpStateStoreBackend,
     private val pairingPINCallback: (
         newPumpAddress: BluetoothAddress,
         previousAttemptFailed: Boolean,
@@ -58,7 +50,9 @@ class MainControl(
     private var discoveryEventLoopJob: Job? = null
 
     private enum class EventType {
+        // Newly Bluetooth-paired pump detected.
         NEW_PUMP,
+        // Bluetooth-paired pump is now gone (= unpaired).
         PUMP_GONE
     }
 
@@ -116,6 +110,8 @@ class MainControl(
      *        that discovery failed / got aborted. The cause for the
      *        failure is supplied along with the Bluetooth address of
      *        the pump associated with the failure.
+     *        IMPORTANT: This callback must _not_ throw exceptions,
+     *        since it is called as part of an ongoing error handling.
      * @throws IllegalStateException if a discovery is already ongoing.
      * @throws BluetoothException if discovery fails due to an underlying
      *         Bluetooth issue.
@@ -157,8 +153,13 @@ class MainControl(
                         // onDiscoveryFailure() callback.
                         try {
                             logger(LogLevel.DEBUG) { "Found device with address $pumpAddress" }
-                            performPairing(backgroundDiscoveryEventScope, pumpAddress)
-                            onNewPump(pumpAddress)
+
+                            if (persistentPumpStateStoreBackend.hasValidStore(pumpAddress)) {
+                                logger(LogLevel.DEBUG) { "Skipping added device since it has already been paired" }
+                            } else {
+                                performPairing(backgroundDiscoveryEventScope, pumpAddress)
+                                onNewPump(pumpAddress)
+                            }
                         } catch (e: CancellationException) {
                             logger(LogLevel.ERROR) { "Aborting pairing since this coroutine got cancelled" }
                             abortDiscovery(e)
@@ -171,8 +172,37 @@ class MainControl(
                         }
                     }
                     EventType.PUMP_GONE -> {
+                        // NOTE: Not performing a Bluetooth unpairing here,
+                        // since we reach this location _because_ a device
+                        // was removed (= unpaired) from the system's
+                        // Bluetooth stack (for example because the user
+                        // unpaired the pump via the Bluetooth settings).
+
                         logger(LogLevel.DEBUG) { "Previously paired device with address $pumpAddress removed" }
-                        onPumpGone(pumpAddress)
+
+                        if (persistentPumpStateStoreBackend.hasValidStore(pumpAddress)) {
+                            logger(LogLevel.DEBUG) { "Skipping removed device since it has not been paired or already was unpaired" }
+                        } else {
+                            // Reset the pump state store for the removed pump.
+                            try {
+                                val persistentPumpStateStore = persistentPumpStateStoreBackend.requestStore(pumpAddress)
+                                persistentPumpStateStore.reset()
+                            } catch (e: PumpStateStoreAccessException) {
+                                logger(LogLevel.ERROR) { "Caught exception while resetting store of removed pump $pumpAddress: $e" }
+                                abortDiscovery(e)
+                                onDiscoveryFailure(pumpAddress, e)
+                            }
+
+                            // Now run the user supplied callback, and catch
+                            // any exception it might throw.
+                            try {
+                                onPumpGone(pumpAddress)
+                            } catch (e: Exception) {
+                                logger(LogLevel.ERROR) { "Caught exception while running onPumpGone callback for pump with address $pumpAddress: $e" }
+                                abortDiscovery(e)
+                                onDiscoveryFailure(pumpAddress, e)
+                            }
+                        }
                     }
                 }
             }
@@ -258,29 +288,16 @@ class MainControl(
         pumpAddress: BluetoothAddress,
         onNewDisplayFrame: (displayFrame: DisplayFrame) -> Unit
     ): Pump {
-        // Get a pump state store for this pump.
-        lateinit var persistentPumpStateStore: PersistentPumpStateStore
-        try {
-            persistentPumpStateStore = requestPersistentPumpStateStore(pumpAddress)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            // Note that an exception is not supposed to happen
-            // if there's no store for this pump. In such a case,
-            // we should get a not-yet-initialized store instead.
-            // An exception indicates a failure in the system that
-            // manages the pump state stores.
-            logger(LogLevel.ERROR) { "Could not get persistent state store for pump $pumpAddress due to an exception: $e" }
-            throw PumpStateStoreRequestException(e)
-        }
+        logger(LogLevel.DEBUG) { "About to connect to pump $pumpAddress" }
+
+        val persistentPumpStateStore = persistentPumpStateStoreBackend.requestStore(pumpAddress)
 
         // Check that this pump is paired. If it is paired, then
         // the store is valid.
         require(persistentPumpStateStore.isValid())
 
-        logger(LogLevel.DEBUG) { "About to connect to pump $pumpAddress" }
-
         val bluetoothDevice = bluetoothInterface.getDevice(pumpAddress)
+        logger(LogLevel.DEBUG) { "Got Bluetooth device instance for pump" }
 
         val pump = Pump(
             bluetoothDevice,
@@ -297,16 +314,7 @@ class MainControl(
 
         logger(LogLevel.DEBUG) { "About to perform pairing with pump $pumpAddress" }
 
-        lateinit var persistentPumpStateStore: PersistentPumpStateStore
-
-        try {
-            persistentPumpStateStore = requestPersistentPumpStateStore(pumpAddress)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            logger(LogLevel.ERROR) { "Could not get persistent state store for pump $pumpAddress due to an exception: $e" }
-            throw PumpStateStoreRequestException(e)
-        }
+        val persistentPumpStateStore = persistentPumpStateStoreBackend.requestStore(pumpAddress)
 
         val bluetoothDevice = bluetoothInterface.getDevice(pumpAddress)
         logger(LogLevel.DEBUG) { "Got Bluetooth device instance for pump" }

@@ -35,6 +35,14 @@ private val logger = Logger.get("Pump")
  * [performPairing] function is typically not called directly,
  * but rather by [MainControl] during discovery.
  *
+ * The documentation of functions in this class may state that
+ * the function can throw [PumpStateStoreAccessException]. This is
+ * because in most cases, the persistent pump state store is accessed
+ * when generating a packet due to the store's Tx nonce, which needs
+ * to be incremented after each sent packet. If updating the Tx
+ * nonce fails, this exception can be thrown by the store, and
+ * propagate all the way up to here.
+ *
  * WARNING: Do not create more than one Pump instance for the same
  * pump at the same time. Two Pump instances operating the same pump
  * leads to undefined behavior.
@@ -51,8 +59,6 @@ class Pump(
     private val persistentPumpStateStore: PersistentPumpStateStore,
     private val onNewDisplayFrame: (displayFrame: DisplayFrame) -> Unit
 ) {
-    private val transportLayer: TransportLayer
-    private val applicationLayer = ApplicationLayer()
     private val highLevelIO: HighLevelIO
     private val framedComboIO: FramedComboIO
 
@@ -63,10 +69,8 @@ class Pump(
         // sends packets in a framed form (See [ComboFrameParser]
         // and [List<Byte>.toComboFrame] for details).
         framedComboIO = FramedComboIO(bluetoothDevice)
-        transportLayer = TransportLayer(persistentPumpStateStore)
         highLevelIO = HighLevelIO(
-            transportLayer,
-            applicationLayer,
+            persistentPumpStateStore,
             framedComboIO,
             onNewDisplayFrame
         )
@@ -146,6 +150,8 @@ class Pump(
      *         IO issue.
      * @throws ReceiveLoopFailureException if the background
      *         receive loop failed.
+     * @throws PumpStateStoreAccessException if writing to the pump state
+     *         store fails.
      */
     suspend fun performPairing(
         backgroundReceiveScope: CoroutineScope,
@@ -267,6 +273,8 @@ class Pump(
      *         the device. This is indicated by [isPaired] returning
      *         false. Also thrown if this is called after a connection
      *         was already established.
+     * @throws PumpStateStoreAccessException if writing to the pump state
+     *         store fails.
      */
     suspend fun connect(
         backgroundReceiveScope: CoroutineScope,
@@ -341,6 +349,8 @@ class Pump(
      * @throws IllegalStateException if a long button press is
      *         ongoing, the pump is not in the RT mode, or the
      *         pump is not connected.
+     * @throws PumpStateStoreAccessException if writing to the pump state
+     *         store fails.
      */
     suspend fun sendSingleRTButtonPress(button: HighLevelIO.Button) {
         if (!isConnected)
@@ -377,6 +387,8 @@ class Pump(
      * @throws ComboIOException if an IO error occurs during
      *         the button press.
      * @throws IllegalStateException if the pump is not connected.
+     * @throws PumpStateStoreAccessException if writing to the pump state
+     *         store fails.
      */
     suspend fun startLongRTButtonPress(button: HighLevelIO.Button, scope: CoroutineScope) {
         if (!isConnected)
@@ -403,6 +415,8 @@ class Pump(
      *
      * @throws ComboIOException if an IO error occurs during
      *         the button press.
+     * @throws PumpStateStoreAccessException if writing to the pump state
+     *         store fails.
      */
     suspend fun stopLongRTButtonPress() {
         if (!isConnected)
@@ -459,17 +473,14 @@ class Pump(
     }
 
     private suspend fun runChecked(block: suspend () -> Unit) {
-        // Runs a block in a try-finally block to disconnect from
+        // Runs a block in a try-catch block to disconnect from
         // the pump in case of an exception being thrown.
-
-        var doDisconnect = true
 
         try {
             block()
-            doDisconnect = false
-        } finally {
-            if (doDisconnect)
-                disconnect()
+        } catch (e: Exception) {
+            disconnect()
+            throw e
         }
     }
 }

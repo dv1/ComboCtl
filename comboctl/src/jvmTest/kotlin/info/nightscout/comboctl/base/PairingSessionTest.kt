@@ -1,6 +1,5 @@
 package info.nightscout.comboctl.base
 
-import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.fail
@@ -54,16 +53,6 @@ class PairingSessionTest {
             val sequenceEntry = getNextSequenceEntry(PacketDirection.RECEIVE)
             return sequenceEntry.packet.toByteList()
         }
-    }
-
-    private lateinit var tpLayer: TransportLayer
-    private lateinit var appLayer: ApplicationLayer
-
-    @BeforeTest
-    fun setup() {
-        val tpLayerState = TestPersistentPumpStateStore()
-        tpLayer = TransportLayer(tpLayerState)
-        appLayer = ApplicationLayer()
     }
 
     @Test
@@ -367,11 +356,11 @@ class PairingSessionTest {
         )
 
         val testIO = PairingTestComboIO(expectedTestSequence)
+        val tpLayerState = TestPersistentPumpStateStore()
 
         runBlocking {
             val highLevelIO = HighLevelIO(
-                tpLayer,
-                appLayer,
+                tpLayerState,
                 testIO,
                 { Unit }
             )

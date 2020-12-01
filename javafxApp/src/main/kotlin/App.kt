@@ -39,7 +39,7 @@ class App : Application(), CoroutineScope {
         bluezInterface = BlueZInterface()
         mainControl = MainControl(
             bluezInterface,
-            { address -> pumpStoreBackend.getStore(address) },
+            pumpStoreBackend,
             { newPumpAddress, _, getPINDeferred -> askUserForPIN(newPumpAddress, getPINDeferred) }
         )
     }

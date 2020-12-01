@@ -200,7 +200,7 @@ class TransportLayerTest {
             0xab, 0xc6, 0x89, 0x7f, 0x14, 0x9b, 0xdf, 0x3b))
 
         val tpLayerState = TestPersistentPumpStateStore()
-        val tpLayer = TransportLayer(tpLayerState)
+        val tpLayer = TransportLayer(tpLayerState, doResetStates = true)
 
         // Send the first 3 pairing setup packets. After REQUEST_PAIRING_CONNECTION,
         // the Combo would normally send back PAIRING_CONNECTION_REQUEST_ACCEPTED,

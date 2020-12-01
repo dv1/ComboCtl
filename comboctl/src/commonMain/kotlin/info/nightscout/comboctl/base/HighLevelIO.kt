@@ -69,8 +69,7 @@ class ReceiveLoopFailureException(cause: Exception) : ComboException(cause.messa
  *        fresh new display frame.
  */
 class HighLevelIO(
-    private val transportLayer: TransportLayer,
-    private val applicationLayer: ApplicationLayer,
+    private val persistentPumpStateStore: PersistentPumpStateStore,
     private val io: ComboIO,
     private val onNewDisplayFrame: (displayFrame: DisplayFrame) -> Unit
 ) {
@@ -122,6 +121,9 @@ class HighLevelIO(
         MENU("MENU"),
         CHECK("CHECK")
     }
+
+    private val transportLayer = TransportLayer(persistentPumpStateStore, doResetStates = false)
+    private val applicationLayer = ApplicationLayer()
 
     private var appPacketChannel = Channel<ApplicationLayer.Packet>(Channel.UNLIMITED)
     private var tpPacketChannel = Channel<TransportLayer.Packet>(Channel.UNLIMITED)
@@ -194,6 +196,8 @@ class HighLevelIO(
      *         for details about this.
      * @throws ReceiveLoopFailureException if the background
      *         receive loop failed.
+     * @throws PumpStateStoreAccessException if writing to the pump state
+     *         store fails.
      */
     suspend fun performPairing(
         backgroundReceiveScope: CoroutineScope,
@@ -205,6 +209,11 @@ class HighLevelIO(
                 "Attempted to pair even though a receive job is running (-> we are currently connected)"
             )
         }
+
+        // Reset the transport layer's states to make sure we start from
+        // scratch and do not carry over stale states from a previous
+        // interaction with the pump.
+        transportLayer.resetStates()
 
         // Make sure we get channels that are in their initial states.
         resetPacketChannels()
@@ -406,6 +415,8 @@ class HighLevelIO(
      *         state in [HighLevelIO.transportLayer] not being
      *         filled with valid data. Also thrown if this is
      *         called after a connection was already established.
+     * @throws PumpStateStoreAccessException if accessing the pump
+     *         state store's data fails.
      */
     suspend fun connect(
         backgroundReceiveScope: CoroutineScope,
@@ -426,6 +437,11 @@ class HighLevelIO(
         // Keep a reference to the coroutine scope to be able to run
         // the RT_KEEPALIVE packet send loop in the background later.
         rtKeepAliveScope = backgroundReceiveScope
+
+        // Reset the transport layer's states to make sure we start from
+        // scratch and do not carry over stale states from a previous
+        // interaction with the pump.
+        transportLayer.resetStates()
 
         // Make sure we get channels that are in their initial states.
         resetPacketChannels()
@@ -543,6 +559,8 @@ class HighLevelIO(
      *         the mode switch.
      * @throws ReceiveLoopFailureException if the background
      *         receive loop failed.
+     * @throws PumpStateStoreAccessException if accessing the pump
+     *         state store's data fails.
      */
     suspend fun switchToMode(newMode: Mode) {
         if (caughtBackgroundReceiveException != null)
@@ -580,6 +598,8 @@ class HighLevelIO(
      *         ongoing or the pump is not in the RT mode.
      * @throws ReceiveLoopFailureException if the background
      *         receive loop failed.
+     * @throws PumpStateStoreAccessException if accessing the pump
+     *         state store's data fails.
      */
     suspend fun sendSingleRTButtonPress(button: Button) {
         // A single RT button press is performed by sending the button code,
@@ -637,6 +657,8 @@ class HighLevelIO(
      * @throws IllegalStateException if the pump is not in the RT mode.
      * @throws ReceiveLoopFailureException if the background
      *         receive loop failed.
+     * @throws PumpStateStoreAccessException if accessing the pump
+     *         state store's data fails.
      */
     suspend fun startLongRTButtonPress(button: Button, scope: CoroutineScope) {
         if (currentMode != Mode.REMOTE_TERMINAL)
@@ -675,6 +697,8 @@ class HighLevelIO(
      * @throws IllegalStateException if the pump is not in the RT mode.
      * @throws ReceiveLoopFailureException if the background
      *         receive loop failed.
+     * @throws PumpStateStoreAccessException if accessing the pump
+     *         state store's data fails.
      */
     suspend fun stopLongRTButtonPress() {
         if (currentMode != Mode.REMOTE_TERMINAL)

@@ -9,6 +9,7 @@ import info.nightscout.comboctl.base.Logger
 import info.nightscout.comboctl.base.Nonce
 import info.nightscout.comboctl.base.NullNonce
 import info.nightscout.comboctl.base.PersistentPumpStateStore
+import info.nightscout.comboctl.base.PersistentPumpStateStoreBackend
 import info.nightscout.comboctl.base.PumpPairingData
 import info.nightscout.comboctl.base.toBluetoothAddress
 import info.nightscout.comboctl.base.toCipher
@@ -64,7 +65,7 @@ class JsonPumpStateStore(
         }
 }
 
-class JsonPumpStateStoreBackend {
+class JsonPumpStateStoreBackend : PersistentPumpStateStoreBackend {
     private val jsonFilename = "jsonPumpStores.json"
     private val storeMap = mutableMapOf<BluetoothAddress, JsonPumpStateStore>()
 
@@ -104,7 +105,7 @@ class JsonPumpStateStoreBackend {
 
     fun getAvailableStores() = storeMap.keys
 
-    fun getStore(pumpAddress: BluetoothAddress): PersistentPumpStateStore {
+    override fun requestStore(pumpAddress: BluetoothAddress): PersistentPumpStateStore {
         var store = storeMap[pumpAddress]
 
         if (store == null) {
@@ -114,6 +115,8 @@ class JsonPumpStateStoreBackend {
 
         return store
     }
+
+    override fun hasValidStore(pumpAddress: BluetoothAddress): Boolean = storeMap.containsKey(pumpAddress)
 
     fun write() {
         val jsonStores = JsonObject()

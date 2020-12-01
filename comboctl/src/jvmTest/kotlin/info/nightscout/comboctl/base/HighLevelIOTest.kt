@@ -51,12 +51,9 @@ class HighLevelIOTest {
 
         tpLayerState.storePumpPairingData(pumpPairingData)
 
-        tpLayer = TransportLayer(tpLayerState)
-        appLayer = ApplicationLayer()
         testIO = TestComboIO()
         highLevelIO = HighLevelIO(
-            tpLayer,
-            appLayer,
+            tpLayerState,
             testIO,
             {}
         )

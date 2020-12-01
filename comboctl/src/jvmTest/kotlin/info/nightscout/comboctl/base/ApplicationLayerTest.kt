@@ -51,7 +51,7 @@ class ApplicationLayerTest {
 
         tpLayerState.storePumpPairingData(pumpPairingData)
 
-        tpLayer = TransportLayer(tpLayerState)
+        tpLayer = TransportLayer(tpLayerState, doResetStates = true)
         appLayer = ApplicationLayer()
     }
 

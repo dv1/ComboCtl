@@ -1,7 +1,5 @@
 package info.nightscout.comboctl.base
 
-import kotlinx.coroutines.CancellationException
-
 private val logger = Logger.get("TransportLayer")
 
 // Transport layer packet structure:
@@ -63,8 +61,21 @@ const val MAX_VALID_TL_PAYLOAD_SIZE = 65535
  *
  * This class is typically not directly touched by users. Instead, it is typically
  * used by higher-level code that handles the pairing and regular connection processes.
+ *
+ * doResetStates can be set to false in cases where the constructor should not
+ * immediately reset the states. This makes sense because resetting states implies
+ * that the pump pairing data is retrieved from the pump state store. This operation
+ * may not be quick, and may throw exceptions, so the user may want to control where
+ * this can happen by explicitely calling [resetStates].
+ *
+ * @param persistentPumpStateStore Persistent state store to use for authenticating
+ *        and verifying packets (except for the CRC-verified ones). During pairing,
+ *        this store will be filled with pairing data.
+ * @param doResetStates If true, the constructor will call [resetStates].
+ * @throws PumpStateStoreAccessException if doResetStates is set to true and retrieving
+ *         the pairing data fails (see [resetStates]).
  */
-class TransportLayer(private val persistentPumpStateStore: PersistentPumpStateStore) {
+class TransportLayer(private val persistentPumpStateStore: PersistentPumpStateStore, doResetStates: Boolean) {
     /**
      * Current sequence flag, used in reliable data packets.
      *
@@ -80,9 +91,35 @@ class TransportLayer(private val persistentPumpStateStore: PersistentPumpStateSt
      */
     private var weakCipher: Cipher? = null
 
-    private var cachedPumpPairingData: PumpPairingData
+    private var cachedPumpPairingData = PumpPairingData(
+        Cipher(ByteArray(CIPHER_KEY_SIZE)),
+        Cipher(ByteArray(CIPHER_KEY_SIZE)),
+        0x00.toByte()
+    )
 
     init {
+        if (doResetStates)
+            resetStates()
+    }
+
+    /**
+     * Resets the internal states back to their initial values.
+     *
+     * This should be called before starting a pairing process
+     * or establishing a connection to make sure said connections
+     * do not use stale states.
+     *
+     * Since the pairing data is cached internally, this also retrieves
+     * pairing data from the [persistentPumpStateStore]. This operation
+     * may not be quick, and may throw an exception in case of a retrieval
+     * failure, so this function should not be called often,
+     *
+     * @throws PumpStateStoreAccessException if retrieving the pairing data fails.
+     */
+    fun resetStates() {
+        currentSequenceFlag = false
+        weakCipher = null
+
         if (persistentPumpStateStore.isValid())
             cachedPumpPairingData = persistentPumpStateStore.retrievePumpPairingData()
         else
@@ -625,6 +662,8 @@ class TransportLayer(private val persistentPumpStateStore: PersistentPumpStateSt
      *        See the Bluetooth specification, Vol. 3 part C section 3.2.2
      *        for details about Bluetooth friendly names.
      * @return The produced packet.
+     * @throws PumpStateStoreAccessException if writing the new Tx nonce
+     *         fails (done after a MAC-authenticated packet has been created).
      */
     fun createRequestIDPacket(bluetoothFriendlyName: String): Packet {
         // The nonce is set to 1 in the REQUEST_ID packet, and
@@ -659,6 +698,8 @@ class TransportLayer(private val persistentPumpStateStore: PersistentPumpStateSt
      * file for details.
      *
      * @return The produced packet.
+     * @throws PumpStateStoreAccessException if writing the new Tx nonce
+     *         fails (done after a MAC-authenticated packet has been created).
      */
     fun createRequestRegularConnectionPacket(): Packet {
         // NOTE: Technically, this is not entirely correct, since currentSequenceFlag
@@ -679,6 +720,8 @@ class TransportLayer(private val persistentPumpStateStore: PersistentPumpStateSt
      *
      * @param sequenceBit Sequence bit to set in the ACK_RESPONSE packet.
      * @return The produced packet.
+     * @throws PumpStateStoreAccessException if writing the new Tx nonce
+     *         fails (done after a MAC-authenticated packet has been created).
      */
     fun createAckResponsePacket(sequenceBit: Boolean): Packet {
         return createMACAuthenticatedPacket(CommandID.ACK_RESPONSE, sequenceBit = sequenceBit)
@@ -698,6 +741,8 @@ class TransportLayer(private val persistentPumpStateStore: PersistentPumpStateSt
      * @param reliabilityBit Reliability bit to set in the DATA packet.
      * @param payload Payload to assign to the DATA packet.
      * @return The produced packet.
+     * @throws PumpStateStoreAccessException if writing the new Tx nonce
+     *         fails (done after a MAC-authenticated packet has been created).
      */
     fun createDataPacket(reliabilityBit: Boolean, payload: ArrayList<Byte>): Packet {
         val sequenceBit: Boolean
@@ -752,7 +797,7 @@ class TransportLayer(private val persistentPumpStateStore: PersistentPumpStateSt
      *         the one expected from KEY_RESPONSE packets.
      * @throws PacketVerificationException if the packet
      *         verification fails.
-     * @throws PumpStateStoreStorageException if placing the
+     * @throws PumpStateStoreAccessException if placing the
      *         parsed keys and the key response address into
      *         the persistent pump state store fails.
      */
@@ -797,15 +842,7 @@ class TransportLayer(private val persistentPumpStateStore: PersistentPumpStateSt
             "  decrypted pump->client key: ${cachedPumpPairingData.pumpClientCipher.key.toHexString()}"
         }
 
-        // Catch any exception (other than CancellationException) and
-        // wrap it into a PumpStateStoreStorageException instance.
-        try {
-            persistentPumpStateStore.storePumpPairingData(cachedPumpPairingData)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            throw PumpStateStoreStorageException(e)
-        }
+        persistentPumpStateStore.storePumpPairingData(cachedPumpPairingData)
     }
 
     /**
@@ -840,8 +877,8 @@ class TransportLayer(private val persistentPumpStateStore: PersistentPumpStateSt
      *         not the one expected from ID_RESPONSE packets.
      * @throws PacketVerificationException if the packet
      *         verification fails.
-     * @throws PumpStateStoreStorageException if placing the
-     *         pump ID into the persistent pump state store fails.
+     * @throws PumpStateStoreAccessException if placing the pump
+     *         ID into the persistent pump state store fails.
      */
     fun parseIDResponsePacket(packet: Packet): ComboIDs {
         if (packet.commandID != CommandID.ID_RESPONSE)
@@ -869,15 +906,7 @@ class TransportLayer(private val persistentPumpStateStore: PersistentPumpStateSt
         }
         val pumpID = pumpIDStrBuilder.toString()
 
-        // Catch any exception (other than CancellationException) and
-        // wrap it into a PumpStateStoreStorageException instance.
-        try {
-            persistentPumpStateStore.pumpID = pumpID
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            throw PumpStateStoreStorageException(e)
-        }
+        persistentPumpStateStore.pumpID = pumpID
 
         return ComboIDs(serverID, pumpID)
     }
