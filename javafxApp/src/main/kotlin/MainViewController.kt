@@ -45,7 +45,7 @@ class MainViewController {
         require(mainControl != null)
         require(mainScope != null)
         try {
-            mainControl!!.startDiscovery(mainScope!!)
+            mainControl!!.startDiscovery()
         } catch (e: IllegalStateException) {
             println("Attempted to start discovery even though it is running already")
         } catch (e: BluetoothException) {

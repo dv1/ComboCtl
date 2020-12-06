@@ -38,10 +38,12 @@ class App : Application(), CoroutineScope {
     init {
         bluezInterface = BlueZInterface()
         mainControl = MainControl(
+            this,
             bluezInterface,
             pumpStoreBackend,
             { newPumpAddress, _, getPINDeferred -> askUserForPIN(newPumpAddress, getPINDeferred) }
         )
+        mainControl.startBackgroundEventHandlingLoop()
     }
 
     override val coroutineContext: CoroutineContext
@@ -82,6 +84,7 @@ class App : Application(), CoroutineScope {
 
     override fun stop() {
         mainControl.stopDiscovery()
+        mainControl.stopBackgroundEventHandlingLoop()
         bluezInterface.shutdown()
     }
 
