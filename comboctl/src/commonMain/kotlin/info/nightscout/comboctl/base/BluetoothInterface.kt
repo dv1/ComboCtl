@@ -13,6 +13,45 @@ package info.nightscout.comboctl.base
  */
 interface BluetoothInterface {
     /**
+     * Callback for when a previously paired device is unpaired.
+     *
+     * This is independent of the device discovery. That is, this callback
+     * can be invoked by the implementation even when discovery is inactive.
+     *
+     * The unpairing may have been done via [unpairDevice] or via some
+     * sort of system settings.
+     *
+     * Note that this callback may be called from another thread. Using
+     * synchronization primitives to avoid race conditions is recommended.
+     * Also, implementations must make sure that setting the callback
+     * can not cause data races.
+     *
+     * Do not spend too much time in this callback, since it may block
+     * internal threads.
+     */
+    var onDeviceUnpaired: (deviceAddress: BluetoothAddress) -> Unit
+
+    /**
+     * Callback for filtering devices based on their Bluetooth addresses.
+     *
+     * This is used for checking if a device shall be processed or ignored.
+     * When a newly paired device is discovered, or a paired device is
+     * unpaired, this callback is invoked. If it returns false, then
+     * the device is ignored, and those callbacks don't get called.
+     *
+     * Note that this callback may be called from another thread. Using
+     * synchronization primitives to avoid race conditions is recommended.
+     * Also, implementations must make sure that setting the callback
+     * can not cause data races.
+     *
+     * Do not spend too much time in this callback, since it may block
+     * internal threads.
+     *
+     * The default callback always returns true.
+     */
+    var deviceFilter: (deviceAddress: BluetoothAddress) -> Boolean
+
+    /**
      * Starts discovery of Bluetooth devices that haven't been paired yet.
      *
      * Discovery is actually a process that involves multiple parts:
@@ -23,26 +62,18 @@ interface BluetoothInterface {
      * 2. Pairing is set up so that when a device tries to pair with the
      *    interface, it is authenticated using the given PIN.
      * 3. Each detected device is filtered via its address by calling
-     *    the filterDevice callback. Only those devices whose addresses
+     *    the [deviceFilter] callback. Only those devices whose addresses
      *    pass this filter are forwarded to the pairing authorization
      *    (see step 2 above). As a result, only the filtered devices
      *    can eventually have their address passed to the
-     *    foundNewPairedDevice callback. This allows for filtering for
-     *    specific device types by checking their address. (Typically,
-     *    device that can be filtered this way have a common address
-     *    prefix for example):
-     *
-     * The filtering step is optional, and disabled by default, that
-     * is, the default filter lets everything through.
-     *
-     * Filtering is also applied to devices that were detected by the
-     * Bluetooth stack as being gone. A device may be gone if for example
-     * it was turned off, or is now out of range. If a device is detected
-     * as gone, but gets filtered out, it is not reported as gone.
+     *    foundNewPairedDevice callback.
      *
      * Note that the callbacks typically are called from a different
      * thread, so make sure that thread synchronization primitives like
      * mutexes are used.
+     *
+     * Do not spend too much time in the [foundNewPairedDevice], since it
+     * may block internal threads.
      *
      * This function may only be called after creating the interface
      * and after having called [stopDiscovery].
@@ -58,20 +89,8 @@ interface BluetoothInterface {
      *        This PIN is a sequence of characters used by the Bluetooth
      *        stack for its pairing/authorization.
      * @param foundNewPairedDevice Callback that gets invoked when
-     *        a device was found that passed the filter (see filterDevice)
+     *        a device was found that passed the filter (see [deviceFilter])
      *        and is paired.
-     * @param deviceIsGone Callback that gets invoked when a device
-     *        that previously was discovered by the Bluetooth stack
-     *        is now gone and said device has been filtered.
-     *        Default callback does nothing.
-     * @param filterDevice Callback that gets invoked every time a device
-     *        is discovered or detected as gone by the stack. If it
-     *        returns true, then foundNewPairedDevice or deviceIsGone
-     *        is called, depending on whether the device has been discovered
-     *        or detected as gone. If filterDevice returns false, the
-     *        activity is ignored; discovered devices are skipped, devices
-     *        detected as gone are not reported as such.
-     *        Default callback just lets everything pass through.
      * @throws IllegalStateException if this is called again after
      *         discovery has been started already, or if the interface
      *         is in a state in which discovery is not possible, such as
@@ -84,9 +103,7 @@ interface BluetoothInterface {
         sdpServiceProvider: String,
         sdpServiceDescription: String,
         btPairingPin: String,
-        foundNewPairedDevice: (deviceAddress: BluetoothAddress) -> Unit,
-        deviceIsGone: (deviceAddress: BluetoothAddress) -> Unit = { Unit },
-        filterDevice: (deviceAddress: BluetoothAddress) -> Boolean = { true }
+        foundNewPairedDevice: (deviceAddress: BluetoothAddress) -> Unit
     )
 
     /**
@@ -127,4 +144,12 @@ interface BluetoothInterface {
      * Returns the friendly (= human-readable) name for the adapter.
      */
     fun getAdapterFriendlyName(): String
+
+    /**
+     * Returns a set of addresses of paired Bluetooth devices.
+     *
+     * The [deviceFilter] is applied here. That is, the returned set
+     * only contains addresses of devices which passed that filter.
+     */
+    fun getPairedDeviceAddresses(): Set<BluetoothAddress>
 }

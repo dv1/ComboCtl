@@ -143,6 +143,23 @@ void adapter::setup(GDBusConnection *dbus_connection)
 		nullptr
 	);
 
+	// Look up what Bluetooth devices BlueZ already knows
+	// of (that is, were discovered earlier already).
+	gvariant_uptr managed_objects_gvariant = get_managed_bluez_objects();
+
+	LOG(debug, "Got list of DBus objects currently managed by BlueZ");
+
+	// We are ready to iterate over the enumerated objects. Get
+	// an iterator out of the retval GVariant and look at
+	// each enumerated object to see if it has the relevant
+	// Bluetooth device interface.
+	gvariant_iter_uptr iter = get_gvariant_iter_from(managed_objects_gvariant, obj_array_gvformat_string);
+
+	gchar *object_path;
+	GVariant *interfaces_dict_variant;
+	while (g_variant_iter_loop(iter.get(), "{o*}", &object_path, &interfaces_dict_variant))
+		process_added_dbus_object_interfaces(object_path, interfaces_dict_variant);
+
 	// Our adapter is ready. Dismiss the guard to make
 	// sure it is not torn down again.
 
@@ -178,10 +195,19 @@ void adapter::teardown()
 }
 
 
-void adapter::start_discovery(
-	found_new_device_callback on_found_new_device,
-	device_is_gone_callback on_device_is_gone
-)
+void adapter::on_device_unpaired(device_unpaired_callback callback)
+{
+	m_on_device_unpaired = std::move(callback);
+}
+
+
+void adapter::set_device_filter(filter_device_callback callback)
+{
+	m_device_filter = std::move(callback);
+}
+
+
+void adapter::start_discovery(found_new_paired_device_callback on_found_new_device)
 {
 	GError *error = nullptr;
 
@@ -193,7 +219,6 @@ void adapter::start_discovery(
 	// That way, the start_discovery call behaves
 	// in a more intuitive manner.
 	m_on_found_new_device = std::move(on_found_new_device);
-	m_on_device_is_gone = std::move(on_device_is_gone);
 
 	// Exit early if discovery is already active.
 	if (m_discovery_started)
@@ -204,23 +229,6 @@ void adapter::start_discovery(
 
 	// Start the discovery.
 	send_discovery_call(true);
-
-	// Look up what Bluetooth devices BlueZ already knows
-	// of (that is, were discovered earlier already).
-	gvariant_uptr managed_objects_gvariant = get_managed_bluez_objects();
-
-	LOG(debug, "Got list of DBus objects currently managed by BlueZ");
-
-	// We are ready to iterate over the enumerated objects. Get
-	// an iterator out of the retval GVariant and look at
-	// each enumerated object to see if it has the relevant
-	// Bluetooth device interface.
-	gvariant_iter_uptr iter = get_gvariant_iter_from(managed_objects_gvariant, obj_array_gvformat_string);
-
-	gchar *object_path;
-	GVariant *interfaces_dict_variant;
-	while (g_variant_iter_loop(iter.get(), "{o*}", &object_path, &interfaces_dict_variant))
-		process_added_dbus_object_interfaces(object_path, interfaces_dict_variant);
 
 	m_discovery_started = true;
 
@@ -290,6 +298,21 @@ std::string adapter::get_name() const
 }
 
 
+bluetooth_address_set adapter::get_paired_device_addresses() const
+{
+	bluetooth_address_set addresses;
+
+	for (auto const &element : m_observed_devices)
+	{
+		bool is_paired = element.second;
+		if (is_paired)
+			addresses.insert(element.first);
+	}
+
+	return addresses;
+}
+
+
 void adapter::send_discovery_call(bool do_start)
 {
 	GError *error = nullptr;
@@ -308,6 +331,73 @@ void adapter::send_discovery_call(bool do_start)
 		LOG(error, "Could not {} discovery: {}", do_start ? "start" : "stop", error->message);
 		if (do_start)
 			throw gerror_exception(error);
+	}
+}
+
+
+void adapter::handle_observed_device(bluetooth_address const &bdaddr, bool is_paired)
+{
+	// This is called when a new device shows up (handled in
+	// process_added_dbus_object_interfaces) or if the Device1
+	// property in its D-Bus object has its "Paired" property
+	// changed (process_dbus_object_interface_property_changes()
+	// deals with this). In all cases, the device filter is
+	// applied first; that is, this is never called for a device
+	// that does not pass that filter.
+
+	auto device_iter = m_observed_devices.find(bdaddr);
+	std::optional<bool> old_is_paired_flag;
+
+	if (device_iter != m_observed_devices.end())
+		old_is_paired_flag = device_iter->second;
+	else
+		old_is_paired_flag = std::nullopt;
+
+	m_observed_devices[bdaddr] = is_paired;
+
+	if (is_paired)
+	{
+		if ((old_is_paired_flag == std::nullopt) || !(*old_is_paired_flag))
+		{
+			// Invoke m_on_found_new_device and catch any thrown
+			// exceptions. It is important to do that, since we
+			// reach this point after dbus_connection_signal_cb()
+			// was called by GLib, and an exception traveling
+			// through there results in undefined behavior.
+			if (m_on_found_new_device)
+			{
+				try
+				{
+					m_on_found_new_device(bdaddr);
+				}
+				catch (comboctl::exception const &exc)
+				{
+					LOG(error, "Caught exception: {}", exc.what());
+				}
+			}
+		}
+	}
+	else
+	{
+		if ((old_is_paired_flag != std::nullopt) && (*old_is_paired_flag))
+		{
+			// Invoke m_on_device_unpaired and catch any thrown
+			// exceptions. It is important to do that, since we
+			// reach this point after dbus_connection_signal_cb()
+			// was called by GLib, and an exception traveling
+			// through there results in undefined behavior.
+			if (m_on_device_unpaired)
+			{
+				try
+				{
+					m_on_device_unpaired(bdaddr);
+				}
+				catch (comboctl::exception const &exc)
+				{
+					LOG(error, "Caught exception: {}", exc.what());
+				}
+			}
+		}
 	}
 }
 
@@ -363,22 +453,17 @@ void adapter::process_added_dbus_object_interfaces(gchar const *object_path, GVa
 		{
 			LOG(debug, "Found new Bluetooth device:  object path: {}  Bluetooth address: {}  paired: {}", object_path, to_string(*bdaddr), is_paired);
 
+			// Check if the device passes the filter.
+			// If not, we skip the entire device.
+			if (!filter_device(*bdaddr))
+				return;
+
 			m_bt_address_dbus_object_paths.insert(bt_address_dbus_object_paths_map::value_type(*bdaddr, std::string(object_path)));
 
-			// Invoke m_on_found_new_device and catch any thrown
-			// exceptions. It is important to do that, since we
-			// reach this point after dbus_connection_signal_cb()
-			// was called by GLib, and an exception traveling
-			// through there results in undefined behavior.
-			try
-			{
-				m_on_found_new_device(*bdaddr, is_paired);
-			}
-			catch (comboctl::exception const &exc)
-			{
-				LOG(error, "Caught exception: {}", exc.what());
-			}
+			handle_observed_device(*bdaddr, is_paired);
 		}
+
+		break;
 	}
 }
 
@@ -401,6 +486,15 @@ void adapter::process_removed_dbus_object_interfaces(gchar const *object_path, G
 
 	bluetooth_address bdaddr = std::move(bt_address_iter->second);
 
+	auto observed_devices_iter = m_observed_devices.find(bdaddr);
+	if (observed_devices_iter == m_observed_devices.end())
+	{
+		LOG(trace, "No device with Bluetooth address {} known; ignoring removed interface", to_string(bdaddr));
+		return;
+	}
+
+	bool is_paired = observed_devices_iter->second;
+
 	gvariant_iter_uptr interface_iter = get_gvariant_iter_from(interfaces_array_variant, "as");
 
 	while (g_variant_iter_loop(interface_iter.get(), "s", &interface_name))
@@ -409,29 +503,36 @@ void adapter::process_removed_dbus_object_interfaces(gchar const *object_path, G
 		if (g_strcmp0(interface_name, "org.bluez.Device1") != 0)
 			continue;
 
-		// Remove the device from the bimap.
-		if (bt_address_iter != m_bt_address_dbus_object_paths.right.end())
-		{
-			m_bt_address_dbus_object_paths.right.erase(bt_address_iter);
-			bt_address_iter = m_bt_address_dbus_object_paths.right.end();
-		}
+		// Check if the device passes the filter.
+		// If not, we skip the entire device.
+		if (!filter_device(bdaddr))
+			return;
 
-		// Invoke m_on_device_is_gone and catch any thrown
+		// Remove the device from the bimap.
+		m_bt_address_dbus_object_paths.right.erase(bt_address_iter);
+		bt_address_iter = m_bt_address_dbus_object_paths.right.end();
+
+		// Remove the device from the list of observed devices.
+		m_observed_devices.erase(observed_devices_iter);
+
+		// Invoke m_on_device_unpaired and catch any thrown
 		// exceptions. It is important to do that, since we
 		// reach this point after dbus_connection_signal_cb()
 		// was called by GLib, and an exception traveling
 		// through there results in undefined behavior.
-		if (m_on_device_is_gone)
+		if (m_on_device_unpaired && is_paired)
 		{
 			try
 			{
-				m_on_device_is_gone(bdaddr);
+				m_on_device_unpaired(bdaddr);
 			}
 			catch (comboctl::exception const &exc)
 			{
 				LOG(error, "Caught exception: {}", exc.what());
 			}
 		}
+
+		break;
 	}
 }
 
@@ -472,14 +573,10 @@ void adapter::process_dbus_object_interface_property_changes(gchar const *object
 		is_paired
 	);
 
-	try
-	{
-		m_on_found_new_device(bdaddr, is_paired);
-	}
-	catch (comboctl::exception const &exc)
-	{
-		LOG(error, "Caught exception: {}", exc.what());
-	}
+	if (!is_paired)
+		return;
+
+	handle_observed_device(bdaddr, is_paired);
 }
 
 
@@ -511,9 +608,7 @@ void adapter::dbus_connection_signal_cb(gchar const *object_path, gchar const *i
 			// most notably when an object is removed, for example because
 			// the Bluetooth device was deleted from the list of known
 			// devices. In that case, we want to remove that device from
-			// the m_bt_address_dbus_object_paths bimap. We also inform
-			// the outside world of this by invoking m_on_device_is_gone
-			// if that callback is set.
+			// the m_bt_address_dbus_object_paths bimap.
 
 			gchar *added_if_object_path;
 			GVariant *interfaces_array_variant;
@@ -578,6 +673,17 @@ gvariant_uptr adapter::get_managed_bluez_objects()
 	}
 
 	return make_gvariant_uptr(retval);
+}
+
+
+bool adapter::filter_device(bluetooth_address device_address)
+{
+	bool retval = (m_device_filter) ? m_device_filter(device_address) : true;
+
+	if (!retval)
+		LOG(debug, "Rejecting device {} because it was filtered out", to_string(device_address));
+
+	return retval;
 }
 
 

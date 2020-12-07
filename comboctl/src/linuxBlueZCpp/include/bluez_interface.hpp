@@ -210,9 +210,6 @@ public:
 	 * device that was found and is paired already. Unpaired devices
 	 * are ignored until they get paired.
 	 *
-	 * If during discovery a device is removed, on_device_is_gone
-	 * is invoked.
-	 *
 	 * @param service_name Name the SDP service record shall use.
 	 *        Must not be empty.
 	 * @param service_provider Name of the provider that shall be added
@@ -229,16 +226,10 @@ public:
 	 *        used during discovery.
 	 * @param on_found_new_device Callback invoked whenever a new
 	 *        paired device is found. The device's Bluetooth address
-	 *        is given to the callback.
+	 *        is given to the callback. Only devices that pass the
+	 *        device filter will be passed to this callback.
+	 *        (See set_device_filter() for more.)
 	 *        This argument must be set to a valid function.
-	 * @param on_device_is_gone Callback invoked whenever a device
-	 *        is removed from BlueZ's list of known devices. The
-	 *        device's Bluetooth address is given to the callback.
-	 *        This argument is optional. The default value disables
-	 *        this callback.
-	 * @param on_filter_device Callback for filtering out devices
-	 *        based on their address. See the filter_device_callback
-	 *        documentation for more.
 	 * @throws invalid_call_exception If the discovery is already ongoing.
 	 * @throws io_exception in case of an IO error.
 	 * @throws gerror_exception if something D-Bus related or GLib related fails.
@@ -250,9 +241,7 @@ public:
 		std::string bt_pairing_pin_code,
 		thread_func on_discovery_started,
 		thread_func on_discovery_stopped,
-		found_new_paired_device_callback on_found_new_device,
-		device_is_gone_callback on_device_is_gone,
-		filter_device_callback on_filter_device
+		found_new_paired_device_callback on_found_new_device
 	);
 
 	/**
@@ -265,6 +254,29 @@ public:
 	 * @throws gerror_exception if something D-Bus related or GLib related fails.
 	 */
 	void stop_discovery();
+
+	/**
+	 * Sets up a callback to be invoked when a previously paired device got unpaired.
+	 *
+	 * This callback is invoked even when the discovery is not running.
+	 *
+	 * Only devices which got filtered by the device filter will be
+	 * passed to this callback. (See set_device_filter() for more.)
+	 *
+	 * @param callback New callback to use.
+	 */
+	void on_device_unpaired(device_unpaired_callback callback);
+
+	/**
+	 * Installs a callback used for filtering devices by their Bluetooth address.
+	 *
+	 * The filter is used when a new paired device is detected (during discovery)
+	 * and when a previously paired device got unpaired. This affects the
+	 * behavior of start_discovery() and the on_device_unpaired() callback.
+	 *
+	 * @param callback New callback to use.
+	 */
+	void set_device_filter(filter_device_callback callback);
 
 	/**
 	 * Removes any existing pairing between BlueZ and the specified device.
@@ -295,6 +307,15 @@ public:
      * Returns the friendly (= human-readable) name for the adapter.
      */
 	std::string get_adapter_friendly_name() const;
+
+	/**
+	 * Returns a set of addresses of paired Bluetooth devices.
+	 *
+	 * The device filter is applied here. (See set_device_filter().)
+	 * That is, the returned set only contains addresses of devices
+	 * which passed that filter.
+	 */
+	bluetooth_address_set get_paired_device_addresses() const;
 
 
 private:

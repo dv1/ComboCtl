@@ -331,9 +331,7 @@ public:
 		jni::String const &sdp_service_provider,
 		jni::String const &sdp_service_description,
 		jni::String const &bt_pairing_pin_code,
-		bluetooth_device_no_return_callback_wrapper::jni_object &found_new_paired_device,
-		bluetooth_device_no_return_callback_wrapper::jni_object &device_is_gone,
-		bluetooth_device_boolean_return_callback_wrapper::jni_object &filter_device
+		bluetooth_device_no_return_callback_wrapper::jni_object &found_new_paired_device
 	)
 	{
 		call_with_jni_rethrow(env, [&]() mutable {
@@ -348,12 +346,9 @@ public:
 					jni::JNIEnv &env = get_jni_env_for_current_thread();
 
 					m_jni_found_new_paired_device_object = jni::NewGlobal(env, found_new_paired_device);
-					m_jni_device_is_gone_object = jni::NewGlobal(env, device_is_gone);
-					m_jni_filter_device_object = jni::NewGlobal(env, filter_device);
 				},
 				[this]() {
 					m_jni_found_new_paired_device_object.reset();
-					m_jni_device_is_gone_object.reset();
 					m_jni_filter_device_object.reset();
 				},
 				[this](comboctl::bluetooth_address paired_device_address) {
@@ -365,26 +360,6 @@ public:
 
 					auto method = m_jni_no_return_klass.GetMethod<void(jni::Array<jni::jbyte>)>(env, "invoke");
 					m_jni_found_new_paired_device_object.Call(env, method, jni_array);
-				},
-				[this](comboctl::bluetooth_address removed_device_address) {
-					std::unique_lock<std::mutex> lock(m_thread_env_map_mutex);
-
-					jni::JNIEnv &env = get_jni_env_for_current_thread();
-
-					auto jni_array = jni::Make<jni::Array<jni::jbyte>>(env, reinterpret_cast<jni::jbyte const *>(removed_device_address.data()), removed_device_address.size());
-
-					auto method = m_jni_no_return_klass.GetMethod<void(jni::Array<jni::jbyte>)>(env, "invoke");
-					m_jni_device_is_gone_object.Call(env, method, jni_array);
-				},
-				[this](comboctl::bluetooth_address device_address) -> bool {
-					std::unique_lock<std::mutex> lock(m_thread_env_map_mutex);
-
-					jni::JNIEnv &env = get_jni_env_for_current_thread();
-
-					auto jni_array = jni::Make<jni::Array<jni::jbyte>>(env, reinterpret_cast<jni::jbyte const *>(device_address.data()), device_address.size());
-
-					auto method = m_jni_boolean_return_klass.GetMethod<jni::jboolean(jni::Array<jni::jbyte>)>(env, "invoke");
-					return m_jni_filter_device_object.Call(env, method, jni_array);
 				}
 			);
 		});
@@ -398,6 +373,36 @@ public:
 	jni::Local<jni::String> get_adapter_friendly_name(jni::JNIEnv &env)
 	{
 		return jni::Make<jni::String>(env, m_iface.get_adapter_friendly_name());
+	}
+
+	void on_device_unpaired_impl(jni::JNIEnv &env, bluetooth_device_no_return_callback_wrapper::jni_object &device_unpaired_callback) {
+		m_jni_device_unpaired_callback_object = jni::NewGlobal(env, device_unpaired_callback);
+
+		m_iface.on_device_unpaired([this](comboctl::bluetooth_address paired_device_address) {
+			std::unique_lock<std::mutex> lock(m_thread_env_map_mutex);
+
+			jni::JNIEnv &env = get_jni_env_for_current_thread();
+
+			auto jni_array = jni::Make<jni::Array<jni::jbyte>>(env, reinterpret_cast<jni::jbyte const *>(paired_device_address.data()), paired_device_address.size());
+
+			auto method = m_jni_no_return_klass.GetMethod<void(jni::Array<jni::jbyte>)>(env, "invoke");
+			m_jni_device_unpaired_callback_object.Call(env, method, jni_array);
+		});
+	}
+
+	void set_device_filter_impl(jni::JNIEnv &env, bluetooth_device_boolean_return_callback_wrapper::jni_object &device_filter_callback) {
+		m_jni_filter_device_object = jni::NewGlobal(env, device_filter_callback);
+
+		m_iface.set_device_filter([this](comboctl::bluetooth_address device_address) -> bool {
+			std::unique_lock<std::mutex> lock(m_thread_env_map_mutex);
+
+			jni::JNIEnv &env = get_jni_env_for_current_thread();
+
+			auto jni_array = jni::Make<jni::Array<jni::jbyte>>(env, reinterpret_cast<jni::jbyte const *>(device_address.data()), device_address.size());
+
+			auto method = m_jni_boolean_return_klass.GetMethod<jni::jboolean(jni::Array<jni::jbyte>)>(env, "invoke");
+			return m_jni_filter_device_object.Call(env, method, jni_array);
+		});
 	}
 
 	void unpair_device_impl(jni::JNIEnv &env, jni::Array<jni::jbyte> const &device_address)
@@ -419,6 +424,35 @@ public:
 			// this note about ownership.)
 			return reinterpret_cast<jni::jlong>(new_device_uptr.release());
 		});
+	}
+
+	jni::Local<jni::Array<jni::jbyte>> get_paired_device_addresses_impl(jni::JNIEnv &env)
+	{
+		comboctl::bluetooth_address_set addresses = m_iface.get_paired_device_addresses();
+		auto num_bytes_per_address = comboctl::bluetooth_address().size();
+
+		// Passing a collection of ByteArrays from C+++ to
+		// the JVM is difficult and error prone, so we use
+		// a trick. ONE ByteArray is transferred, with the
+		// bytes of ALL Bluetooth addresses inside. So, to
+		// send these addresses, we create one ByteArray
+		// and fill it with the bytes of ALL addresses. One
+		// address immediately follows the other.
+
+		auto result = jni::Array<jni::jbyte>::New(env, addresses.size() * num_bytes_per_address);
+
+		std::size_t index = 0;
+		for (auto iter = addresses.begin(); iter != addresses.end(); ++iter, ++index)
+		{
+			result.SetRegion(
+				env,
+				index * num_bytes_per_address,
+				num_bytes_per_address,
+				reinterpret_cast<jni::jbyte const *>(iter->data())
+			);
+		}
+
+		return result;
 	}
 
 	static void log_to_kotlin(std::string const &tag, comboctl::log_level level, std::string log_string)
@@ -501,7 +535,9 @@ private:
 	jni::Global<bluetooth_device_boolean_return_callback_wrapper::jni_class> m_jni_boolean_return_klass;
 
 	jni::Global<bluetooth_device_no_return_callback_wrapper::jni_object> m_jni_found_new_paired_device_object;
-	jni::Global<bluetooth_device_no_return_callback_wrapper::jni_object> m_jni_device_is_gone_object;
+
+	jni::Global<bluetooth_device_no_return_callback_wrapper::jni_object> m_jni_device_unpaired_callback_object;
+
 	jni::Global<bluetooth_device_boolean_return_callback_wrapper::jni_object> m_jni_filter_device_object;
 
 	static std::mutex m_instance_mutex;
@@ -535,8 +571,11 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*)
 			METHOD(&bluez_interface_jni::stop_discovery, "stopDiscovery"),
 			METHOD(&bluez_interface_jni::get_adapter_friendly_name, "getAdapterFriendlyName"),
 			METHOD(&bluez_interface_jni::start_discovery_impl, "startDiscoveryImpl"),
+			METHOD(&bluez_interface_jni::on_device_unpaired_impl, "onDeviceUnpairedImpl"),
+			METHOD(&bluez_interface_jni::set_device_filter_impl, "setDeviceFilterImpl"),
 			METHOD(&bluez_interface_jni::unpair_device_impl, "unpairDeviceImpl"),
-			METHOD(&bluez_interface_jni::get_device_impl, "getDeviceImpl")
+			METHOD(&bluez_interface_jni::get_device_impl, "getDeviceImpl"),
+			METHOD(&bluez_interface_jni::get_paired_device_addresses_impl, "getPairedDeviceAddressesImpl")
 		);
 
 		jni::RegisterNativePeer<bluetooth_device_jni>(

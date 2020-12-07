@@ -119,7 +119,7 @@ class MainViewController {
         require(pumpStoreBackend != null)
 
         pumpList.clear()
-        for (storeBluetoothAddress in pumpStoreBackend!!.getAvailableStores())
+        for (storeBluetoothAddress in pumpStoreBackend!!.getAvailableStoreAddresses())
             pumpList.add(storeBluetoothAddress.toString())
     }
 }

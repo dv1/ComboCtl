@@ -198,4 +198,9 @@ interface PersistentPumpStateStoreBackend {
      * @return true if there is one, false otherwise.
      */
     fun hasValidStore(pumpAddress: BluetoothAddress): Boolean
+
+    /**
+     * Returns a list of Bluetooth addresses of the stores in this backend.
+     */
+    fun getAvailableStoreAddresses(): Set<BluetoothAddress>
 }

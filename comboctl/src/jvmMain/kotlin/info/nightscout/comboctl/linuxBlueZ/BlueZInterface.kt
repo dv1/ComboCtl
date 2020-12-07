@@ -5,7 +5,11 @@ import info.nightscout.comboctl.base.BluetoothDevice
 import info.nightscout.comboctl.base.BluetoothInterface
 import info.nightscout.comboctl.base.LogLevel
 import info.nightscout.comboctl.base.Logger
+import info.nightscout.comboctl.base.NUM_BLUETOOTH_ADDRESS_BYTES
 import info.nightscout.comboctl.base.toBluetoothAddress
+import info.nightscout.comboctl.base.toHexString
+
+private val logger = Logger.get("BlueZInterface")
 
 // Callback wrappers. We need these to be able to invoke
 // our callbacks from C++. We can't invoke the function
@@ -56,32 +60,34 @@ class BlueZInterface : BluetoothInterface {
 
     // Base class overrides.
 
-    // This isn't directly external, since we have to wrap
-    // the function literals in the wrapper classes first.
+    // Some of the overrides aren't directly external, since they may
+    // require one of the Callback wrappers to be applied first, or they
+    // may require conversion to/from ByteArrays due to JNI restrictions.
+
+    override var onDeviceUnpaired: (deviceAddress: BluetoothAddress) -> Unit = { Unit }
+        set(value) { onDeviceUnpairedImpl(BluetoothDeviceNoReturnCallback(value)) }
+
+    override var deviceFilter: (deviceAddress: BluetoothAddress) -> Boolean = { true }
+        set(value) { setDeviceFilterImpl(BluetoothDeviceBooleanReturnCallback(value)) }
+
     override fun startDiscovery(
         sdpServiceName: String,
         sdpServiceProvider: String,
         sdpServiceDescription: String,
         btPairingPin: String,
-        foundNewPairedDevice: (deviceAddress: BluetoothAddress) -> Unit,
-        deviceIsGone: (deviceAddress: BluetoothAddress) -> Unit,
-        filterDevice: (deviceAddress: BluetoothAddress) -> Boolean
+        foundNewPairedDevice: (deviceAddress: BluetoothAddress) -> Unit
     ) {
         startDiscoveryImpl(
             sdpServiceName,
             sdpServiceProvider,
             sdpServiceDescription,
             btPairingPin,
-            BluetoothDeviceNoReturnCallback(foundNewPairedDevice),
-            BluetoothDeviceNoReturnCallback(deviceIsGone),
-            BluetoothDeviceBooleanReturnCallback(filterDevice)
+            BluetoothDeviceNoReturnCallback(foundNewPairedDevice)
         )
     }
 
     external override fun stopDiscovery()
 
-    // This isn't directly external, since we have to convert
-    // the Bluetooth address to a bytearray first.
     override fun unpairDevice(deviceAddress: BluetoothAddress) = unpairDeviceImpl(deviceAddress.toByteArray())
 
     override fun getDevice(deviceAddress: BluetoothAddress): BluetoothDevice {
@@ -91,6 +97,35 @@ class BlueZInterface : BluetoothInterface {
 
     external override fun getAdapterFriendlyName(): String
 
+    override fun getPairedDeviceAddresses(): Set<BluetoothAddress> {
+        val result = mutableSetOf<BluetoothAddress>()
+
+        // Passing a collection of ByteArrays from C+++ to
+        // the JVM is difficult and error prone, so we use
+        // a trick. ONE ByteArray is transferred, with the
+        // bytes of ALL Bluetooth addresses inside. So, to
+        // get these addresses, we split up this ByteArray
+        // and produce a Set out of this.
+
+        val addressBytes = getPairedDeviceAddressesImpl()
+        val numAddresses = addressBytes.size / NUM_BLUETOOTH_ADDRESS_BYTES
+
+        for (index in 0 until numAddresses) {
+            try {
+                val range = IntRange(index * NUM_BLUETOOTH_ADDRESS_BYTES, (index + 1) * NUM_BLUETOOTH_ADDRESS_BYTES - 1)
+                val bluetoothAddress = BluetoothAddress(addressBytes.slice(range))
+                result.add(bluetoothAddress)
+            } catch (e: Exception) {
+                // XXX: This should never happen, since an
+                // address is considered invalid if it
+                // doesn't consist of exactly 6 bytes.
+                logger(LogLevel.WARN) { "Got invalid Bluetooth address ${addressBytes.toHexString()}; skipping" }
+            }
+        }
+
+        return result
+    }
+
     // Private external C++ functions.
 
     private external fun startDiscoveryImpl(
@@ -98,14 +133,18 @@ class BlueZInterface : BluetoothInterface {
         sdpServiceProvider: String,
         sdpServiceDescription: String,
         btPairingPin: String,
-        foundNewPairedDevice: BluetoothDeviceNoReturnCallback,
-        deviceIsGone: BluetoothDeviceNoReturnCallback,
-        filterDevice: BluetoothDeviceBooleanReturnCallback
+        foundNewPairedDevice: BluetoothDeviceNoReturnCallback
     )
+
+    private external fun onDeviceUnpairedImpl(callback: BluetoothDeviceNoReturnCallback)
+
+    private external fun setDeviceFilterImpl(callback: BluetoothDeviceBooleanReturnCallback)
 
     private external fun unpairDeviceImpl(deviceAddress: ByteArray)
 
     private external fun getDeviceImpl(deviceAddress: ByteArray): Long
+
+    private external fun getPairedDeviceAddressesImpl(): ByteArray
 
     // jni.hpp specifics.
 

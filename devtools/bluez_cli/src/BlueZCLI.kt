@@ -55,6 +55,19 @@ class MainApp(private val mainScope: CoroutineScope) {
         // since it does not belong there (it needs to be called
         // explicitely, outside of this class).
         bluezInterface = BlueZInterface()
+
+        bluezInterface.onDeviceUnpaired = {
+            deviceAddress -> println("Previously paired device with address $deviceAddress removed")
+        }
+
+        bluezInterface.deviceFilter = {
+            // Filter for Combo devices based on their address.
+            // The first 3 bytes of a Combo are always the same.
+            deviceAddress ->
+            (deviceAddress[0] == 0x00.toByte()) &&
+            (deviceAddress[1] == 0x0E.toByte()) &&
+            (deviceAddress[2] == 0x2F.toByte())
+        }
     }
 
     // Public functions
@@ -96,16 +109,7 @@ class MainApp(private val mainScope: CoroutineScope) {
                     "Custom ComboCtl SDP service",
                     "ComboCtl",
                     Constants.BT_PAIRING_PIN,
-                    { deviceAddress -> println("Found paired device with address $deviceAddress") },
-                    { deviceAddress -> println("Previously paired device with address $deviceAddress removed") },
-                    {
-                        // Filter for Combo devices based on their address.
-                        // The first 3 bytes of a Combo are always the same.
-                        deviceAddress ->
-                        (deviceAddress[0] == 0x00.toByte()) &&
-                        (deviceAddress[1] == 0x0E.toByte()) &&
-                        (deviceAddress[2] == 0x2F.toByte())
-                    }
+                    { deviceAddress -> println("Found paired device with address $deviceAddress") }
                 )
                 printLine("BT friendly name: ${bluezInterface.getAdapterFriendlyName()}")
             } catch (e: IllegalStateException) {

@@ -27,35 +27,33 @@ class JsonPumpStateStore(
     pumpID: String = "",
     txNonce: Nonce = NullNonce
 ) : PersistentPumpStateStore {
-    private var valid = (pairingData != null)
-
     override fun retrievePumpPairingData(): PumpPairingData {
-        if (!valid)
+        if (!isValid())
             throw IllegalStateException("Persistent pump state store is not valid")
         return pairingData!!
     }
 
     override fun storePumpPairingData(pumpPairingData: PumpPairingData) {
         pairingData = pumpPairingData
-        valid = true
         backend.write()
     }
 
-    override fun isValid() = valid
+    override fun isValid() = (pairingData != null)
 
     override fun reset() {
         pairingData = null
-        currentTxNonce = NullNonce
-        valid = false
+        txNonceValue = NullNonce
         backend.erase(this)
     }
 
-    override var currentTxNonce = txNonce
-        get() = field
+    override var currentTxNonce
+        get() = txNonceValue
         set(value) {
-            field = value
+            txNonceValue = value
             backend.write()
         }
+
+    private var txNonceValue = txNonce
 
     override var pumpID = pumpID
         get() = field
@@ -103,7 +101,7 @@ class JsonPumpStateStoreBackend : PersistentPumpStateStoreBackend {
         }
     }
 
-    fun getAvailableStores() = storeMap.keys
+    override fun getAvailableStoreAddresses() = storeMap.keys
 
     override fun requestStore(pumpAddress: BluetoothAddress): PersistentPumpStateStore {
         var store = storeMap[pumpAddress]
@@ -145,5 +143,6 @@ class JsonPumpStateStoreBackend : PersistentPumpStateStoreBackend {
 
     fun erase(store: JsonPumpStateStore) {
         storeMap.remove(store.pumpAddress)
+        write()
     }
 }

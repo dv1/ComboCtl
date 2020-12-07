@@ -78,17 +78,12 @@ struct bluez_interface_priv
 	adapter m_adapter;
 
 	found_new_paired_device_callback m_on_found_new_device;
-	device_is_gone_callback m_on_device_is_gone;
-	filter_device_callback m_on_filter_device;
 	bluez_interface::thread_func m_on_discovery_stopped;
 
 	bluez_interface::thread_func m_on_thread_starting;
 	bluez_interface::thread_func m_on_thread_stopping;
 
 	bool m_discovery_started = false;
-
-	typedef std::set<comboctl::bluetooth_address> bluetooth_address_set;
-	bluetooth_address_set m_discovered_paired_device_addresses;
 
 
 	bluez_interface_priv()
@@ -135,9 +130,18 @@ struct bluez_interface_priv
 		if (m_on_thread_starting)
 			m_on_thread_starting();
 
+		// Unlike the agent and the SDP service, we start
+		// the adapter here. This is because we only need
+		// the agent and SDP service during discovery, while
+		// we do need the adapter all the time (to be able to
+		// detect unpaired devices).
+		m_adapter.setup(m_gdbus_connection);
+
 		g_main_loop_run(m_mainloop);
 
 		LOG(trace, "Stopping internal BlueZ thread");
+
+		m_adapter.teardown();
 
 		if (m_on_thread_stopping)
 			m_on_thread_stopping();
@@ -264,9 +268,7 @@ struct bluez_interface_priv
 		std::string bt_pairing_pin_code,
 		bluez_interface::thread_func on_discovery_started,
 		bluez_interface::thread_func on_discovery_stopped,
-		found_new_paired_device_callback on_found_new_device,
-		device_is_gone_callback on_device_is_gone,
-		filter_device_callback on_filter_device
+		found_new_paired_device_callback on_found_new_device
 	)
 	{
 		if (m_discovery_started)
@@ -286,18 +288,14 @@ struct bluez_interface_priv
 
 		// Store the callbacks for later use.
 		m_on_found_new_device = std::move(on_found_new_device);
-		m_on_device_is_gone = std::move(on_device_is_gone);
-		m_on_filter_device = std::move(on_filter_device);
 		m_on_discovery_stopped = std::move(on_discovery_stopped);
 
 		// Set up all components.
 
 		m_agent.setup(
 			m_gdbus_connection,
-			std::move(bt_pairing_pin_code),
-			m_on_filter_device
+			std::move(bt_pairing_pin_code)
 		);
-		m_adapter.setup(m_gdbus_connection);
 		m_sdp_service.setup(
 			m_gdbus_connection,
 			std::move(sdp_service_name),
@@ -310,75 +308,27 @@ struct bluez_interface_priv
 		// supplied callbacks will not be invoked until
 		// the mainloop got a chance to iterate.
 		m_adapter.start_discovery(
-			[this](bluetooth_address device_address, bool paired) {
+			[this](bluetooth_address device_address) {
 				// In here, we get notified about newly found
-				// devices, which may be paired or unpaired.
+				// paired devices.
 				// We are only interested in paired devices,
 				// since this gives our agent the chance to
 				// provide authorization first. In other words,
 				// any device that shows up and is paired already
 				// got authorized successfully, either by our
-				// agent, or by other means.
-
-				if (!filter_device(device_address))
-				{
-					LOG(trace, "Filtered out newly discovered device {}", to_string(device_address));
-					return;
-				}
-
-				if (!paired)
-				{
-					auto device_iter = m_discovered_paired_device_addresses.find(device_address);
-
-					if (device_iter == m_discovered_paired_device_addresses.end())
-					{
-						LOG(trace, "Ignoring newly discovered device {} because it is not paired (yet)", to_string(device_address));
-						return;
-					}
-					else
-					{
-						// The device is in the set of paired device addresses,
-						// and now is unpaired. Calling device_is_gone callback
-						// since for us, this device effectively is "gone" due
-						// to it now being unpaired.
-						LOG(trace, "Previously paired device {} is now unpaired; calling device_is_gone", to_string(device_address));
-						invoke_on_device_is_gone(device_address);
-						return;
-					}
-				}
-
-				if (m_discovered_paired_device_addresses.find(device_address) != m_discovered_paired_device_addresses.end())
-				{
-					LOG(trace, "Ignoring newly discovered device {} because it was seen already", to_string(device_address));
-					return;
-				}
+				// agent, or by other means. The adapter applies
+				// a filter if one is defined, so we only get
+				// devices here that passed that filter.
 
 				try
 				{
-					m_discovered_paired_device_addresses.insert(device_address);
 					m_on_found_new_device(device_address);
 				}
 				catch (std::exception const &exc)
 				{
 					LOG(error, "Exception thrown while handling newly discovered paired device: {}", exc.what());
-					m_discovered_paired_device_addresses.erase(device_address);
 					// TODO: What should be done in this case?
 				}
-			},
-			[this](bluetooth_address device_address) {
-				// In here, we deal with devices that were removed from
-				// BlueZ' list of discovered devices (because they are gone).
-
-				auto device_iter = m_discovered_paired_device_addresses.find(device_address);
-				if (device_iter == m_discovered_paired_device_addresses.end())
-				{
-					LOG(trace, "Ignoring removed device {} because it wasn't seen before or wasn't paired", to_string(device_address));
-					return;
-				}
-
-				m_discovered_paired_device_addresses.erase(device_iter);
-
-				invoke_on_device_is_gone(device_address);
 			}
 		);
 
@@ -387,21 +337,6 @@ struct bluez_interface_priv
 		discovery_started_guard.dismiss();
 
 		m_discovery_started = true;
-	}
-
-
-	void invoke_on_device_is_gone(bluetooth_address device_address)
-	{
-		try
-		{
-			if (m_on_device_is_gone)
-				m_on_device_is_gone(device_address);
-		}
-		catch (std::exception const &exc)
-		{
-			LOG(error, "Exception thrown while handling device that's gone: {}", exc.what());
-			// TODO: What should be done in this case?
-		}
 	}
 
 
@@ -414,11 +349,8 @@ struct bluez_interface_priv
 
 		m_on_discovery_stopped();
 
-		m_adapter.teardown();
 		m_agent.teardown();
 		m_sdp_service.teardown();
-
-		m_discovered_paired_device_addresses.clear();
 	}
 
 
@@ -428,14 +360,6 @@ struct bluez_interface_priv
 		m_adapter.remove_device(device_address);
 
 		LOG(trace, "Unpaired device {} by removing it from the BlueZ adapter", to_string(device_address));
-	}
-
-	bool filter_device(bluetooth_address device_address)
-	{
-		if (m_on_filter_device)
-			return m_on_filter_device(device_address);
-		else
-			return true;
 	}
 };
 
@@ -608,9 +532,7 @@ void bluez_interface::start_discovery(
 	std::string bt_pairing_pin_code,
 	thread_func on_discovery_started,
 	thread_func on_discovery_stopped,
-	found_new_paired_device_callback on_found_new_device,
-	device_is_gone_callback on_device_is_gone,
-	filter_device_callback on_filter_device
+	found_new_paired_device_callback on_found_new_device
 )
 {
 	assert(on_found_new_device);
@@ -624,9 +546,7 @@ void bluez_interface::start_discovery(
 			std::move(bt_pairing_pin_code),
 			std::move(on_discovery_started),
 			std::move(on_discovery_stopped),
-			std::move(on_found_new_device),
-			std::move(on_device_is_gone),
-			std::move(on_filter_device)
+			std::move(on_found_new_device)
 		);
 	});
 }
@@ -638,6 +558,27 @@ void bluez_interface::stop_discovery()
 		return;
 
 	m_priv->run_in_thread([this]() { m_priv->stop_discovery_impl(); });
+}
+
+
+void bluez_interface::on_device_unpaired(device_unpaired_callback callback)
+{
+	assert(m_priv->m_thread_started);
+
+	m_priv->run_in_thread([this, callback = std::move(callback)]() mutable {
+		m_priv->m_adapter.on_device_unpaired(callback);
+	});
+}
+
+
+void bluez_interface::set_device_filter(filter_device_callback callback)
+{
+	assert(m_priv->m_thread_started);
+
+	m_priv->run_in_thread([this, callback = std::move(callback)]() mutable {
+		m_priv->m_adapter.set_device_filter(callback);
+		m_priv->m_agent.set_device_filter(callback);
+	});
 }
 
 
@@ -663,7 +604,23 @@ bluez_bluetooth_device_uptr bluez_interface::get_device(bluetooth_address device
 
 std::string bluez_interface::get_adapter_friendly_name() const
 {
-	return m_priv->m_adapter.get_name();
+	assert(m_priv->m_thread_started);
+
+	std::string name;
+	m_priv->run_in_thread([&]() mutable { name = m_priv->m_adapter.get_name(); });
+
+	return name;
+}
+
+
+bluetooth_address_set bluez_interface::get_paired_device_addresses() const
+{
+	assert(m_priv->m_thread_started);
+
+	bluetooth_address_set addresses;
+	m_priv->run_in_thread([&]() mutable { addresses = m_priv->m_adapter.get_paired_device_addresses(); });
+
+	return addresses;
 }
 
 

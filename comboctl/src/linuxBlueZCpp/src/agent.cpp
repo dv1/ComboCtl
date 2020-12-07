@@ -79,8 +79,7 @@ agent::~agent()
 
 void agent::setup(
 	GDBusConnection *dbus_connection,
-	std::string pairing_pin_code,
-	filter_device_callback on_filter_device
+	std::string pairing_pin_code
 )
 {
 	// Prerequisites.
@@ -95,7 +94,6 @@ void agent::setup(
 	// Store the arguments.
 	m_dbus_connection = dbus_connection;
 	m_pairing_pin_code = std::move(pairing_pin_code);
-	m_on_filter_device = std::move(on_filter_device);
 
 	// Install scope guard to call teardown() if something
 	// goes wrong. This makes sure that any changes done
@@ -262,6 +260,12 @@ void agent::teardown()
 }
 
 
+void agent::set_device_filter(filter_device_callback callback)
+{
+	m_device_filter = std::move(callback);
+}
+
+
 void agent::handle_agent_method_call(GDBusConnection *, gchar const *sender_name, gchar const *object_path, gchar const *interface_name, gchar const *method_name, GVariant *parameters, GDBusMethodInvocation *invocation)
 {
 	LOG(trace,
@@ -342,7 +346,7 @@ void agent::handle_agent_method_call(GDBusConnection *, gchar const *sender_name
 
 		// If there is a filter callback, use it. If it returns false,
 		// then this device is to be rejected.
-		if (m_on_filter_device)
+		if (m_device_filter)
 		{
 			comboctl::bluetooth_address device_address;
 			if (!comboctl::from_string(device_address, device_address_str))
@@ -351,7 +355,7 @@ void agent::handle_agent_method_call(GDBusConnection *, gchar const *sender_name
 				return;
 			}
 
-			if (!m_on_filter_device(device_address))
+			if (!m_device_filter(device_address))
 			{
 				LOG(debug, "Rejecting device {} because it was filtered out", device_address_str);
 				return;

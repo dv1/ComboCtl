@@ -5,6 +5,7 @@
 #include <array>
 #include <string>
 #include <functional>
+#include <set>
 
 
 namespace comboctl
@@ -51,24 +52,7 @@ bool from_string(bluetooth_address &address, std::string_view const &str);
 
 
 /**
- * Callback for when a device was found.
- *
- * This one is invoked for paired and unpaired devices. The
- * paired flag indicator distinguishes between these.
- *
- * This callback is not used outside of the C++ code.
- */
-typedef std::function<void(bluetooth_address paired_device_address, bool paired)> found_new_device_callback;
-
-/**
  * Callback for when a paired device was found.
- *
- * When a new device appears, the found_new_device_callback
- * is invoked. This then leads to the paired flag being
- * evaluated. If it is set to true, this callback is invoked
- * in turn. That way, users get notified only about devices
- * they can actually interact with right away (a detected)
- * but unpaired device is unusable until it is paired).
  *
  * This call is intended to be used in external code, since
  * only paired Combos are useful for comboctl.
@@ -76,13 +60,9 @@ typedef std::function<void(bluetooth_address paired_device_address, bool paired)
 typedef std::function<void(bluetooth_address paired_device_address)> found_new_paired_device_callback;
 
 /**
- * Callback for when a previously detected device is gone.
- *
- * In some situations, this may be called more than once for
- * the same device, so callbacks should check if the address
- * is still known to them, and ignore the call if it isn't.
+ * Callback for when a previously paired device got unpaired.
  */
-typedef std::function<void(bluetooth_address removed_device_address)> device_is_gone_callback;
+typedef std::function<void(bluetooth_address unpaired_device_address)> device_unpaired_callback;
 
 /**
  * Callback for filtering devices based on their address.
@@ -102,6 +82,8 @@ typedef std::function<void(bluetooth_address removed_device_address)> device_is_
  * by the callback (no matter if they are paired or not).
  */
 typedef std::function<bool(bluetooth_address device_address)> filter_device_callback;
+
+typedef std::set<bluetooth_address> bluetooth_address_set;
 
 
 } // namespace comboctl end
