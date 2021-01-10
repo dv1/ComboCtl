@@ -104,7 +104,17 @@ class DisplayFrameAssembler {
     fun processRTDisplayPayload(rtDisplayPayload: ApplicationLayer.RTDisplayPayload): DisplayFrame? =
         processRTDisplayPayload(rtDisplayPayload.index, rtDisplayPayload.row, rtDisplayPayload.pixels)
 
-    private fun reset() {
+    /**
+     * Resets the state of the assembler.
+     *
+     * This resets internal states to their initial values, discarding any
+     * partial frames that might have been received earlier.
+     *
+     * Usually, this is only called internally. However, it is useful to call
+     * this if the outside code itself got reset, for example after a reconnect
+     * event. In such situations, it is a good idea to discard any existing state.
+     */
+    fun reset() {
         rtDisplayFrameRows.fill(null)
         numRowsLeftUnset = 4
     }
