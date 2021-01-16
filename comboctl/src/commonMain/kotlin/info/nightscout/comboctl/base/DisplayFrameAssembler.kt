@@ -98,10 +98,10 @@ class DisplayFrameAssembler {
      * Main assembly function.
      *
      * This is an overloaded variant of [processRTDisplayPayload] that accepts
-     * an [ApplicationLayer.RTDisplayPayload] instance instead of the individual
+     * an [ApplicationLayerIO.RTDisplayPayload] instance instead of the individual
      * index, row, pixels arguments.
      */
-    fun processRTDisplayPayload(rtDisplayPayload: ApplicationLayer.RTDisplayPayload): DisplayFrame? =
+    fun processRTDisplayPayload(rtDisplayPayload: ApplicationLayerIO.RTDisplayPayload): DisplayFrame? =
         processRTDisplayPayload(rtDisplayPayload.index, rtDisplayPayload.row, rtDisplayPayload.pixels)
 
     /**

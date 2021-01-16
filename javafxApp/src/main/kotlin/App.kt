@@ -1,26 +1,21 @@
 package info.nightscout.comboctl.javafxApp
 
-import info.nightscout.comboctl.base.BluetoothAddress
 import info.nightscout.comboctl.base.MainControl
-import info.nightscout.comboctl.base.PairingPIN
 import info.nightscout.comboctl.linuxBlueZ.BlueZInterface
 import javafx.application.Application
 import javafx.application.Application.launch
-import javafx.beans.binding.Bindings
 import javafx.fxml.FXMLLoader
 import javafx.scene.Parent
 import javafx.scene.Scene
-import javafx.scene.control.ButtonType
 import javafx.scene.control.ListView
-import javafx.scene.control.TextInputDialog
 import javafx.stage.Stage
 import kotlin.coroutines.CoroutineContext
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.javafx.JavaFx
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 fun main() {
     launch(App::class.java)
@@ -34,16 +29,26 @@ class App : Application(), CoroutineScope {
     val bluezInterface: BlueZInterface
     val pumpStoreBackend = JsonPumpStateStoreBackend()
     val mainControl: MainControl
+    var mainViewController: MainViewController? = null
 
     init {
+        val scope = this
         bluezInterface = BlueZInterface()
         mainControl = MainControl(
-            this,
             bluezInterface,
-            pumpStoreBackend,
-            { newPumpAddress, _, getPINDeferred -> askUserForPIN(newPumpAddress, getPINDeferred) }
+            pumpStoreBackend
         )
-        mainControl.startBackgroundEventHandlingLoop()
+        mainControl.startEventHandling(
+            scope,
+            { pumpAddress ->
+                if (mainViewController != null)
+                    mainViewController!!.onNewPairedPump(pumpAddress)
+            },
+            { pumpAddress ->
+                if (mainViewController != null)
+                    mainViewController!!.onPumpUnpaired(pumpAddress)
+            }
+        )
     }
 
     override val coroutineContext: CoroutineContext
@@ -64,13 +69,13 @@ class App : Application(), CoroutineScope {
         }
 
         // getClassLoader() is needed, see: https://stackoverflow.com/a/25217393/560774
-        val loader = FXMLLoader(javaClass.getClassLoader().getResource("MainView.fxml"))
+        val loader = FXMLLoader(javaClass.classLoader.getResource("MainView.fxml"))
         val root: Parent = loader.load()
         val scene = Scene(root)
 
-        val mainViewController: MainViewController = loader.getController()
+        mainViewController = loader.getController()
 
-        mainViewController.setup(
+        mainViewController!!.setup(
             mainControl,
             this,
             pumpStoreBackend,
@@ -83,24 +88,25 @@ class App : Application(), CoroutineScope {
     }
 
     override fun stop() {
+        mainViewController = null
         mainControl.stopDiscovery()
-        mainControl.stopBackgroundEventHandlingLoop()
+        runBlocking { mainControl.stopEventHandling() }
         bluezInterface.shutdown()
     }
 
-    private fun askUserForPIN(pumpAddress: BluetoothAddress, getPINDeferred: CompletableDeferred<PairingPIN>) {
+    /* private fun askUserForPIN(pumpAddress: BluetoothAddress, getPINDeferred: CompletableDeferred<PairingPIN>) {
         val dialog = TextInputDialog("")
-        dialog.setTitle("Pairing PIN required")
-        dialog.setHeaderText("Enter the 10-digit pairing PIN as shown on the Combo's LCD (Combo Bluetooth address: $pumpAddress)")
+        dialog.title = "Pairing PIN required"
+        dialog.headerText = "Enter the 10-digit pairing PIN as shown on the Combo's LCD (Combo Bluetooth address: $pumpAddress)"
 
         // Do checks to make sure the user can only enter 10 digits
         // (no non-numeric characters, and not a length other than 10).
         val numericStringRegex = "-?\\d+(\\.\\d+)?".toRegex()
-        val okButton = dialog.getDialogPane().lookupButton(ButtonType.OK)
-        val inputField = dialog.getEditor()
+        val okButton = dialog.dialogPane.lookupButton(ButtonType.OK)
+        val inputField = dialog.editor
         val isInvalid = Bindings.createBooleanBinding(
             {
-                val str = inputField.getText()
+                val str = inputField.text
                 !((str.length == 10) && str.matches(numericStringRegex))
             },
             inputField.textProperty()
@@ -111,5 +117,5 @@ class App : Application(), CoroutineScope {
         result.ifPresent {
             enteredPINStr -> getPINDeferred.complete(PairingPIN(enteredPINStr.map { it - '0' }.toIntArray()))
         }
-    }
+    } */
 }

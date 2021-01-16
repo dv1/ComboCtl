@@ -1608,7 +1608,7 @@ the packet, it must be incremented as usual. If the Combo sent
 this packet to the client, it will take care of the increment.
 
 
-=== `AL_RT_KEY_CONFIRMATION` :
+=== `AL_RT_BUTTON_CONFIRMATION` :
 
 * Sent by: Combo
 * Service ID: 0x48

@@ -1,8 +1,8 @@
 package info.nightscout.comboctl.base
 
+import info.nightscout.comboctl.base.testUtils.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.fail
 import kotlinx.coroutines.*
 
 class PairingSessionTest {
@@ -11,7 +11,7 @@ class PairingSessionTest {
         RECEIVE
     }
 
-    data class PairingTestSequenceEntry(val direction: PacketDirection, val packet: TransportLayer.Packet)
+    data class PairingTestSequenceEntry(val direction: PacketDirection, val packet: TransportLayerIO.Packet)
 
     private class PairingTestComboIO(val pairingTestSequence: List<PairingTestSequenceEntry>) : ComboIO {
         private var curSequenceIndex = 0
@@ -68,8 +68,8 @@ class PairingSessionTest {
         val expectedTestSequence = listOf(
             PairingTestSequenceEntry(
                 PacketDirection.SEND,
-                TransportLayer.Packet(
-                    commandID = TransportLayer.CommandID.REQUEST_PAIRING_CONNECTION,
+                TransportLayerIO.Packet(
+                    command = TransportLayerIO.Command.REQUEST_PAIRING_CONNECTION,
                     version = 0x10.toByte(),
                     sequenceBit = false,
                     reliabilityBit = false,
@@ -81,8 +81,8 @@ class PairingSessionTest {
             ),
             PairingTestSequenceEntry(
                 PacketDirection.RECEIVE,
-                TransportLayer.Packet(
-                    commandID = TransportLayer.CommandID.PAIRING_CONNECTION_REQUEST_ACCEPTED,
+                TransportLayerIO.Packet(
+                    command = TransportLayerIO.Command.PAIRING_CONNECTION_REQUEST_ACCEPTED,
                     version = 0x10.toByte(),
                     sequenceBit = false,
                     reliabilityBit = false,
@@ -94,8 +94,8 @@ class PairingSessionTest {
             ),
             PairingTestSequenceEntry(
                 PacketDirection.SEND,
-                TransportLayer.Packet(
-                    commandID = TransportLayer.CommandID.REQUEST_KEYS,
+                TransportLayerIO.Packet(
+                    command = TransportLayerIO.Command.REQUEST_KEYS,
                     version = 0x10.toByte(),
                     sequenceBit = false,
                     reliabilityBit = false,
@@ -107,8 +107,8 @@ class PairingSessionTest {
             ),
             PairingTestSequenceEntry(
                 PacketDirection.SEND,
-                TransportLayer.Packet(
-                    commandID = TransportLayer.CommandID.GET_AVAILABLE_KEYS,
+                TransportLayerIO.Packet(
+                    command = TransportLayerIO.Command.GET_AVAILABLE_KEYS,
                     version = 0x10.toByte(),
                     sequenceBit = false,
                     reliabilityBit = false,
@@ -120,8 +120,8 @@ class PairingSessionTest {
             ),
             PairingTestSequenceEntry(
                 PacketDirection.RECEIVE,
-                TransportLayer.Packet(
-                    commandID = TransportLayer.CommandID.KEY_RESPONSE,
+                TransportLayerIO.Packet(
+                    command = TransportLayerIO.Command.KEY_RESPONSE,
                     version = 0x10.toByte(),
                     sequenceBit = false,
                     reliabilityBit = false,
@@ -135,8 +135,8 @@ class PairingSessionTest {
             ),
             PairingTestSequenceEntry(
                 PacketDirection.SEND,
-                TransportLayer.Packet(
-                    commandID = TransportLayer.CommandID.REQUEST_ID,
+                TransportLayerIO.Packet(
+                    command = TransportLayerIO.Command.REQUEST_ID,
                     version = 0x10.toByte(),
                     sequenceBit = false,
                     reliabilityBit = false,
@@ -149,8 +149,8 @@ class PairingSessionTest {
             ),
             PairingTestSequenceEntry(
                 PacketDirection.RECEIVE,
-                TransportLayer.Packet(
-                    commandID = TransportLayer.CommandID.ID_RESPONSE,
+                TransportLayerIO.Packet(
+                    command = TransportLayerIO.Command.ID_RESPONSE,
                     version = 0x10.toByte(),
                     sequenceBit = false,
                     reliabilityBit = false,
@@ -163,8 +163,8 @@ class PairingSessionTest {
             ),
             PairingTestSequenceEntry(
                 PacketDirection.SEND,
-                    TransportLayer.Packet(
-                    commandID = TransportLayer.CommandID.REQUEST_REGULAR_CONNECTION,
+                    TransportLayerIO.Packet(
+                    command = TransportLayerIO.Command.REQUEST_REGULAR_CONNECTION,
                     version = 0x10.toByte(),
                     sequenceBit = false,
                     reliabilityBit = false,
@@ -176,8 +176,8 @@ class PairingSessionTest {
             ),
             PairingTestSequenceEntry(
                 PacketDirection.RECEIVE,
-                TransportLayer.Packet(
-                    commandID = TransportLayer.CommandID.REGULAR_CONNECTION_REQUEST_ACCEPTED,
+                TransportLayerIO.Packet(
+                    command = TransportLayerIO.Command.REGULAR_CONNECTION_REQUEST_ACCEPTED,
                     version = 0x10.toByte(),
                     sequenceBit = false,
                     reliabilityBit = false,
@@ -190,8 +190,8 @@ class PairingSessionTest {
             // Application layer CTRL_CONNECT
             PairingTestSequenceEntry(
                 PacketDirection.SEND,
-                TransportLayer.Packet(
-                    commandID = TransportLayer.CommandID.DATA,
+                TransportLayerIO.Packet(
+                    command = TransportLayerIO.Command.DATA,
                     version = 0x10.toByte(),
                     sequenceBit = false,
                     reliabilityBit = true,
@@ -204,8 +204,8 @@ class PairingSessionTest {
             // Application layer CTRL_CONNECT
             PairingTestSequenceEntry(
                 PacketDirection.RECEIVE,
-                TransportLayer.Packet(
-                    commandID = TransportLayer.CommandID.DATA,
+                TransportLayerIO.Packet(
+                    command = TransportLayerIO.Command.DATA,
                     version = 0x10.toByte(),
                     sequenceBit = false,
                     reliabilityBit = true,
@@ -218,8 +218,8 @@ class PairingSessionTest {
             // Response due to the last packet's reliability bit set to true
             PairingTestSequenceEntry(
                 PacketDirection.SEND,
-                TransportLayer.Packet(
-                    commandID = TransportLayer.CommandID.ACK_RESPONSE,
+                TransportLayerIO.Packet(
+                    command = TransportLayerIO.Command.ACK_RESPONSE,
                     version = 0x10.toByte(),
                     sequenceBit = false,
                     reliabilityBit = false,
@@ -232,8 +232,8 @@ class PairingSessionTest {
             // Application layer CTRL_CONNECT
             PairingTestSequenceEntry(
                 PacketDirection.SEND,
-                TransportLayer.Packet(
-                    commandID = TransportLayer.CommandID.DATA,
+                TransportLayerIO.Packet(
+                    command = TransportLayerIO.Command.DATA,
                     version = 0x10.toByte(),
                     sequenceBit = true,
                     reliabilityBit = true,
@@ -246,8 +246,8 @@ class PairingSessionTest {
             // Application layer CTRL_CONNECT_RESPONSE
             PairingTestSequenceEntry(
                 PacketDirection.RECEIVE,
-                TransportLayer.Packet(
-                    commandID = TransportLayer.CommandID.DATA,
+                TransportLayerIO.Packet(
+                    command = TransportLayerIO.Command.DATA,
                     version = 0x10.toByte(),
                     sequenceBit = true,
                     reliabilityBit = true,
@@ -260,8 +260,8 @@ class PairingSessionTest {
             // Response due to the last packet's reliability bit set to true
             PairingTestSequenceEntry(
                 PacketDirection.SEND,
-                TransportLayer.Packet(
-                    commandID = TransportLayer.CommandID.ACK_RESPONSE,
+                TransportLayerIO.Packet(
+                    command = TransportLayerIO.Command.ACK_RESPONSE,
                     version = 0x10.toByte(),
                     sequenceBit = true,
                     reliabilityBit = false,
@@ -274,8 +274,8 @@ class PairingSessionTest {
             // Application layer CTRL_BIND
             PairingTestSequenceEntry(
                 PacketDirection.SEND,
-                TransportLayer.Packet(
-                    commandID = TransportLayer.CommandID.DATA,
+                TransportLayerIO.Packet(
+                    command = TransportLayerIO.Command.DATA,
                     version = 0x10.toByte(),
                     sequenceBit = false,
                     reliabilityBit = true,
@@ -288,8 +288,8 @@ class PairingSessionTest {
             // Application layer CTRL_BIND_RESPONSE
             PairingTestSequenceEntry(
                 PacketDirection.RECEIVE,
-                TransportLayer.Packet(
-                    commandID = TransportLayer.CommandID.DATA,
+                TransportLayerIO.Packet(
+                    command = TransportLayerIO.Command.DATA,
                     version = 0x10.toByte(),
                     sequenceBit = false,
                     reliabilityBit = true,
@@ -302,8 +302,8 @@ class PairingSessionTest {
             // Response due to the last packet's reliability bit set to true
             PairingTestSequenceEntry(
                 PacketDirection.SEND,
-                TransportLayer.Packet(
-                    commandID = TransportLayer.CommandID.ACK_RESPONSE,
+                TransportLayerIO.Packet(
+                    command = TransportLayerIO.Command.ACK_RESPONSE,
                     version = 0x10.toByte(),
                     sequenceBit = false,
                     reliabilityBit = false,
@@ -315,8 +315,8 @@ class PairingSessionTest {
             ),
             PairingTestSequenceEntry(
                 PacketDirection.SEND,
-                TransportLayer.Packet(
-                    commandID = TransportLayer.CommandID.REQUEST_REGULAR_CONNECTION,
+                TransportLayerIO.Packet(
+                    command = TransportLayerIO.Command.REQUEST_REGULAR_CONNECTION,
                     version = 0x10.toByte(),
                     sequenceBit = false,
                     reliabilityBit = false,
@@ -328,8 +328,8 @@ class PairingSessionTest {
             ),
             PairingTestSequenceEntry(
                 PacketDirection.RECEIVE,
-                TransportLayer.Packet(
-                    commandID = TransportLayer.CommandID.REGULAR_CONNECTION_REQUEST_ACCEPTED,
+                TransportLayerIO.Packet(
+                    command = TransportLayerIO.Command.REGULAR_CONNECTION_REQUEST_ACCEPTED,
                     version = 0x10.toByte(),
                     sequenceBit = false,
                     reliabilityBit = false,
@@ -342,8 +342,8 @@ class PairingSessionTest {
             // Application layer CTRL_DISCONNECT
             PairingTestSequenceEntry(
                 PacketDirection.SEND,
-                TransportLayer.Packet(
-                    commandID = TransportLayer.CommandID.DATA,
+                TransportLayerIO.Packet(
+                    command = TransportLayerIO.Command.DATA,
                     version = 0x10.toByte(),
                     sequenceBit = false,
                     reliabilityBit = true,
@@ -356,37 +356,14 @@ class PairingSessionTest {
         )
 
         val testIO = PairingTestComboIO(expectedTestSequence)
-        val tpLayerState = TestPersistentPumpStateStore()
+        val testPumpStateStore = TestPersistentPumpStateStore()
+        val pumpIO = PumpIO(testPumpStateStore, testIO)
 
-        runBlocking {
-            val highLevelIO = HighLevelIO(
-                tpLayerState,
-                testIO,
-                { Unit }
+        runBlockingWithWatchdog(6001) {
+            pumpIO.performPairing(
+                testBtFriendlyName,
+                { testPIN }
             )
-
-            // Install a watchdog job in case the pairing process gets
-            // deadlocked somehow.
-            val watchdogJob = launch {
-                delay(5 * 1000)
-                fail("Test run timeout reached")
-            }
-
-            // performPairing() does the actual pairing, and is implemented
-            // as a suspend function. It throws exceptions in case of errors.
-            // If pairing completes successfully, the incoming data channel
-            // will have its reception canceled (cancel() will be called),
-            // and the outgoingDataChannel will be close()d.
-
-            launch {
-                highLevelIO.performPairing(
-                    this,
-                    testBtFriendlyName,
-                    { _, getPINDeferred -> getPINDeferred.complete(testPIN) }
-                )
-
-                watchdogJob.cancel()
-            }
         }
     }
 }

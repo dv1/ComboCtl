@@ -61,12 +61,6 @@ with Combo pumps, and creates instances of the `Pump` class. This class is the
 second primary class to use. It provides access to a particular pump (specified
 by its Bluetooth address).
 
-IMPORTANT: ComboCtl is _not_ designed to be thread safe. The methods
-from the classes mentioned above are not to be called simultaneously
-in separate threads. Parts of `MainControl` will become thread safe
-in the future, but `Pump` will always be supposed to be used by only
-one thread. Also see the notes about threads in the `Pump` documentation.
-
 Integration requires that the user implements the following bits:
 
 * Persistent pump state store backend: For each Combo pump, a small

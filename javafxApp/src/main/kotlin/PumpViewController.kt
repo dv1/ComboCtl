@@ -3,13 +3,15 @@ package info.nightscout.comboctl.javafxApp
 import info.nightscout.comboctl.base.DISPLAY_FRAME_HEIGHT
 import info.nightscout.comboctl.base.DISPLAY_FRAME_WIDTH
 import info.nightscout.comboctl.base.DisplayFrame
-import info.nightscout.comboctl.base.HighLevelIO
 import info.nightscout.comboctl.base.Pump
+import info.nightscout.comboctl.base.PumpIO
 import javafx.scene.image.ImageView
 import javafx.scene.image.PixelFormat
 import javafx.scene.image.WritableImage
 import javafx.scene.layout.Pane
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 
 class PumpViewController {
@@ -31,7 +33,7 @@ class PumpViewController {
         displayFrameView.fitWidthProperty().bind(parentPane.widthProperty())
         displayFrameView.fitHeightProperty().bind(parentPane.heightProperty())
 
-        displayFrameView.setImage(displayFrameImage)
+        displayFrameView.image = displayFrameImage
 
         // Fill the image view with a checkerboard pattern initially.
         for (y in 0 until DISPLAY_FRAME_HEIGHT) {
@@ -42,7 +44,7 @@ class PumpViewController {
                 displayFramePixels[(x + y * DISPLAY_FRAME_WIDTH) * 3 + 2] = pixel
             }
         }
-        val pixelWriter = displayFrameImage.getPixelWriter()
+        val pixelWriter = displayFrameImage.pixelWriter
         pixelWriter.setPixels(
             0, 0, DISPLAY_FRAME_WIDTH, DISPLAY_FRAME_HEIGHT,
             PixelFormat.getByteRgbInstance(),
@@ -50,9 +52,13 @@ class PumpViewController {
             0,
             DISPLAY_FRAME_WIDTH * 3
         )
+
+        pump.displayFrameFlow
+            .onEach { displayFrame -> setDisplayFrame(displayFrame) }
+            .launchIn(mainScope)
     }
 
-    fun setDisplayFrame(displayFrame: DisplayFrame) {
+    private fun setDisplayFrame(displayFrame: DisplayFrame) {
         println("New display frame")
 
         for (y in 0 until DISPLAY_FRAME_HEIGHT) {
@@ -64,7 +70,7 @@ class PumpViewController {
             }
         }
 
-        val pixelWriter = displayFrameImage.getPixelWriter()
+        val pixelWriter = displayFrameImage.pixelWriter
         pixelWriter.setPixels(
             0, 0, DISPLAY_FRAME_WIDTH, DISPLAY_FRAME_HEIGHT,
             PixelFormat.getByteRgbInstance(),
@@ -79,7 +85,7 @@ class PumpViewController {
         require(mainScope != null)
 
         mainScope!!.launch {
-            pump!!.sendSingleRTButtonPress(HighLevelIO.Button.CHECK)
+            pump!!.sendShortRTButtonPress(PumpIO.Button.CHECK)
         }
     }
 
@@ -88,7 +94,7 @@ class PumpViewController {
         require(mainScope != null)
 
         mainScope!!.launch {
-            pump!!.sendSingleRTButtonPress(HighLevelIO.Button.MENU)
+            pump!!.sendShortRTButtonPress(PumpIO.Button.MENU)
         }
     }
 
@@ -97,7 +103,7 @@ class PumpViewController {
         require(mainScope != null)
 
         mainScope!!.launch {
-            pump!!.sendSingleRTButtonPress(HighLevelIO.Button.UP)
+            pump!!.sendShortRTButtonPress(PumpIO.Button.UP)
         }
     }
 
@@ -106,7 +112,7 @@ class PumpViewController {
         require(mainScope != null)
 
         mainScope!!.launch {
-            pump!!.sendSingleRTButtonPress(HighLevelIO.Button.DOWN)
+            pump!!.sendShortRTButtonPress(PumpIO.Button.DOWN)
         }
     }
 
@@ -114,9 +120,7 @@ class PumpViewController {
         require(pump != null)
         require(mainScope != null)
 
-        mainScope!!.launch {
-            pump!!.connect(mainScope!!)
-        }
+        pump!!.connect(mainScope!!)
     }
 
     fun disconnectPump() {

@@ -80,3 +80,5 @@ data class PairingPIN(val pinDigits: IntArray) : Iterable<Int> {
                               "${pinDigits[3]}${pinDigits[4]}${pinDigits[5]}-" +
                               "${pinDigits[6]}${pinDigits[7]}${pinDigits[8]}${pinDigits[9]}"
 }
+
+fun nullPairingPIN() = PairingPIN(intArrayOf(0, 0, 0, 0, 0, 0, 0, 0, 0, 0))

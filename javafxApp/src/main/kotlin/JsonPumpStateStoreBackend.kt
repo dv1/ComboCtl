@@ -21,7 +21,7 @@ import java.io.IOException
 private val logger = Logger.get("JsonPumpStateStore")
 
 class JsonPumpStateStore(
-    public val pumpAddress: BluetoothAddress,
+    val pumpAddress: BluetoothAddress,
     private var backend: JsonPumpStateStoreBackend,
     private var pairingData: PumpPairingData? = null,
     pumpID: String = "",
@@ -56,7 +56,6 @@ class JsonPumpStateStore(
     private var txNonceValue = txNonce
 
     override var pumpID = pumpID
-        get() = field
         set(value) {
             field = value
             backend.write()

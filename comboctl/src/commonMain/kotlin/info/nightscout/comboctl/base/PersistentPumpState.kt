@@ -3,7 +3,7 @@ package info.nightscout.comboctl.base
 /**
  * Pairing data for a pump.
  *
- * This data is created by [HighLevelIO.performPairing]. Once
+ * This data is created by [PumpIO.performPairing]. Once
  * it is created, it does not change until the pump is unpaired,
  * at which point it is erased. This data is managed by the
  * [PersistentPumpStateStore] class, which stores / retrieves it.

@@ -64,15 +64,15 @@ fun main(vararg args: String) {
                 "${if (frameData.isOutgoingData) "<=== Outgoing" else "===> Incoming"} packet:  $packet"
             }
 
-            if (packet.commandID == TransportLayer.CommandID.DATA) {
+            if (packet.command == TransportLayerIO.Command.DATA) {
                 try {
-                    val appLayerPacket = ApplicationLayer.Packet(packet)
+                    val appLayerPacket = ApplicationLayerIO.Packet(packet)
                     packetLogger(LogLevel.DEBUG) { "  Application layer packet: $appLayerPacket" }
-                } catch (exc: ApplicationLayer.ExceptionBase) {
+                } catch (exc: ApplicationLayerIO.ExceptionBase) {
                     packetLogger(LogLevel.ERROR) { "Could not parse DATA packet as application layer packet: $exc" }
                 }
             }
-        } catch (exc: TransportLayer.InvalidCommandIDException) {
+        } catch (exc: TransportLayerIO.InvalidCommandIDException) {
             packetLogger(LogLevel.ERROR) { exc.message ?: "<got InvalidCommandIDException with no message>" }
         } catch (exc: ComboException) {
             packetLogger(LogLevel.ERROR) { "Caught ComboException: $exc" }

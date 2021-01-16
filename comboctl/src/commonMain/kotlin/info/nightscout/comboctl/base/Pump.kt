@@ -1,8 +1,9 @@
 package info.nightscout.comboctl.base
 
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private val logger = Logger.get("Pump")
@@ -30,18 +31,17 @@ private val logger = Logger.get("Pump")
  * able to establish a connection, the pump must have been paired.
  * The [performPairing] function can be used for this purpose.
  *
+ * Internally, this class runs a "background worker", which is the
+ * sum of coroutines started by [connect] and [performPairing]. These
+ * coroutines are run by a special internal dispatcher that is single
+ * threaded. Internal states are updated in these coroutines. Since they
+ * run on the same thread, race conditions are prevented, and thread
+ * safety is established.
+ *
  * Instances of this class are typically not created manually,
  * but rather by calling [MainControl.getPump]. Likewise, the
  * [performPairing] function is typically not called directly,
  * but rather by [MainControl] during discovery.
- *
- * The documentation of functions in this class may state that
- * the function can throw [PumpStateStoreAccessException]. This is
- * because in most cases, the persistent pump state store is accessed
- * when generating a packet due to the store's Tx nonce, which needs
- * to be incremented after each sent packet. If updating the Tx
- * nonce fails, this exception can be thrown by the store, and
- * propagate all the way up to here.
  *
  * WARNING: Do not create more than one Pump instance for the same
  * pump at the same time. Two Pump instances operating the same pump
@@ -51,28 +51,22 @@ private val logger = Logger.get("Pump")
  *        Bluetooth I/O. Must be in a disconnected state when
  *        assigned to this instance.
  * @param persistentPumpStateStore Persistent state store for this pump.
- * @param onNewDisplayFrame Callback invoked every time the pump
- *        receives a new complete remote terminal frame.
  */
 class Pump(
     private val bluetoothDevice: BluetoothDevice,
-    private val persistentPumpStateStore: PersistentPumpStateStore,
-    private val onNewDisplayFrame: (displayFrame: DisplayFrame) -> Unit
+    private val persistentPumpStateStore: PersistentPumpStateStore
 ) {
-    private val highLevelIO: HighLevelIO
+    private val pumpIO: PumpIO
     private val framedComboIO: FramedComboIO
-
-    private var isConnected = false
 
     init {
         // Pass IO through the FramedComboIO class since the Combo
         // sends packets in a framed form (See [ComboFrameParser]
         // and [List<Byte>.toComboFrame] for details).
         framedComboIO = FramedComboIO(bluetoothDevice)
-        highLevelIO = HighLevelIO(
+        pumpIO = PumpIO(
             persistentPumpStateStore,
-            framedComboIO,
-            onNewDisplayFrame
+            framedComboIO
         )
     }
 
@@ -80,6 +74,13 @@ class Pump(
      * The pump's Bluetooth address.
      */
     val address = bluetoothDevice.address
+
+    /**
+     * Read-only [StateFlow] property that delivers newly assembled display frames.
+     *
+     * See [DisplayFrame] for details about these frames.
+     */
+    val displayFrameFlow = pumpIO.displayFrameFlow
 
     /**
      * Returns whether or not this pump has already been paired.
@@ -126,11 +127,9 @@ class Pump(
      * is set to false initially, and true if this is a repeated call due
      * to a previous failure to apply the PIN. Such a failure typically
      * happens because the user mistyped the PIN, but in rare cases can also
-     * happen due to corrupted packets. getPINDeferred is a CompletableDeferred
-     * that will suspend this function until the callback invokes its
-     * [CompletableDeferred.complete] function or the coroutine is cancelled.
+     * happen due to corrupted packets.
      *
-     * This internally uses [HighLevelIO.performPairing], but also
+     * This internally uses [PumpIO.performPairing], but also
      * handles the Bluetooth connection setup and teardown, so do
      * not connect to the Bluetooth device prior to this call.
      *
@@ -146,17 +145,13 @@ class Pump(
      *        the pairing process needs the 10-digit-PIN.
      * @throws IllegalStateException if this is ran while a connection
      *         is running, or if the pump is already paired.
-     * @throws ComboIOException if connection fails due to an underlying
-     *         IO issue.
-     * @throws ReceiveLoopFailureException if the background
-     *         receive loop failed.
-     * @throws PumpStateStoreAccessException if writing to the pump state
-     *         store fails.
+     * @throws TransportLayerIO.BackgroundIOException if an exception is
+     *         thrown inside the worker while an IO call is waiting for
+     *         completion.
      */
     suspend fun performPairing(
-        backgroundReceiveScope: CoroutineScope,
         bluetoothFriendlyName: String,
-        pairingPINCallback: (previousAttemptFailed: Boolean, getPINDeferred: CompletableDeferred<PairingPIN>) -> Unit
+        pairingPINCallback: PairingPINCallback
     ) {
         // This function is called once the Bluetooth pairing
         // has already been established. We still need to perform
@@ -166,7 +161,7 @@ class Pump(
             throw IllegalStateException(
                 "Attempting to pair with Combo with address ${bluetoothDevice.address} even though it is already paired")
 
-        if (isConnected)
+        if (pumpIO.isConnected())
             throw IllegalStateException(
                 "Attempting to pair with Combo with address ${bluetoothDevice.address} even though it is currently connected")
 
@@ -195,7 +190,7 @@ class Pump(
                 bluetoothDevice.connect()
             }
 
-            highLevelIO.performPairing(backgroundReceiveScope, bluetoothFriendlyName, pairingPINCallback)
+            pumpIO.performPairing(bluetoothFriendlyName, pairingPINCallback)
             doUnpair = false
             logger(LogLevel.INFO) { "Paired with Combo with address ${bluetoothDevice.address}" }
         } finally {
@@ -217,9 +212,12 @@ class Pump(
      * Unpairing consists of resetting the [persistentPumpStateStore],
      * followed by unpairing the Bluetooth device.
      *
+     * This calls [disconnect] before unpairing to make sure there
+     * is no ongoing connection before attempting to unpair.
+     *
      * If we aren't paired already, this function does nothing.
      */
-    fun unpair() {
+    suspend fun unpair() {
         // TODO: Currently, this function is not supposed to throw.
         // Are there legitimate cases when throwing in unpair()
         // makes sense? And if so, what should the caller do?
@@ -228,11 +226,17 @@ class Pump(
         if (!persistentPumpStateStore.isValid())
             return
 
+        disconnect()
+
         persistentPumpStateStore.reset()
 
+        // Unpairing in a coroutine with an IO dispatcher
+        // in case unpairing blocks.
         // NOTE: The user still has to manually unpair the client through
         // the Combo's UI before any communication with it can be resumed.
-        bluetoothDevice.unpair()
+        withContext(ioDispatcher()) {
+            bluetoothDevice.unpair()
+        }
 
         logger(LogLevel.INFO) { "Unpaired from Combo with address ${bluetoothDevice.address}" }
     }
@@ -240,47 +244,71 @@ class Pump(
     /**
      * Establishes a regular connection.
      *
-     * "Regular" means "not pairing". This is the type of connection
-     * one uses for regular operation.
+     * A "regular connection" is a connection that is used for
+     * regular Combo operation. The client must have been paired with
+     * the Combo before such connections can be established.
      *
-     * Packets are received in a loop that runs in a background
-     * coroutine that operates in the [backgroundReceiveScope].
+     * This must be called before [sendShortRTButtonPress], [startLongRTButtonPress],
+     * [stopLongRTButtonPress], and [switchMode] can be used.
      *
-     * That scope's context needs to be associated with the same thread
-     * this function is called in. Otherwise, the receive loop
-     * may run in a different thread than this function, potentially
-     * leading to race conditions.
+     * This function starts the background worker, using the
+     * [backgroundIOScope] as the scope for the coroutines that make up
+     * the worker. Some functions such as [startLongRTButtonPress] also
+     * launch coroutines. They use this same coroutine scope.
      *
-     * If an exception is thrown, the connection attempt is rolled
-     * back. The device is in a disconnected state afterwards. This
-     * applies to an exception thrown _during_ the connection setup;
-     * any exception thrown in the background receive loop will cause
-     * [onBackgroundReceiveException] to be called instead. Also,
-     * other functions that involve IO to/from the Combo will throw
-     * that exception.
+     * The actual connection procedure also happens in that scope. If
+     * during the connection setup an exception is thrown, then the
+     * connection is rolled back to the disconnected state, and
+     * [onBackgroundIOException] is called. If an exception happens
+     * inside the worker _after_ the connection is established, then
+     * [onBackgroundIOException] will be called. However, unlike with
+     * exceptions during the connection setup, exceptions from inside
+     * the worker cause the worker to "fail". In that failed state, any
+     * of the functions mentioned above will immediately fail with an
+     * [IllegalStateException]. The user has to call [disconnect] to
+     * change the worker from a failed to a disconnected state.
+     * Then, the user can attempt to connect again.
      *
-     * This internally uses [HighLevelIO.connect], but also
+     * The coroutine that runs connection setup procedure is represented
+     * by the [kotlinx.coroutines.Job] instance that is returned by this
+     * function. This makes it possible to wait until the connection is
+     * established or an error occurs. To do that, the user calls
+     * [kotlinx.coroutines.Job.join].
+     *
+     * [isConnected] will return true if the connection was established.
+     *
+     * [disconnect] is the counterpart to this function. It terminates
+     * an existing connection and stops the worker.
+     *
+     * This also laucnhes a loop inside the worker that keeps sending
+     * out RT_KEEP_ALIVE packets if the pump is operating in the
+     * REMOTE_TERMINAL (RT) mode. This is necessary to keep the connection
+     * alive (if the pump does not get these in RT mode it closes the
+     * connection). This is enabled by default, but can be disabled if
+     * needed. This is useful for unit tests for example.
+     *
+     * This internally uses [PumpIO.connect], but also
      * handles the Bluetooth connection setup. Also, it terminates
      * the Bluetooth connection in case of an exception.
      *
-     * @param backgroundReceiveScope [CoroutineScope] to run the background
-     *        packet receive loop in.
-     * @param onBackgroundReceiveException Callback that gets invoked if
-     *        an exception occurs in the background receive loop.
-     * @throws ComboIOException if an IO error occurs during
-     *         the connection attempts.
-     * @throws IllegalStateException if no pairing was done with
-     *         the device. This is indicated by [isPaired] returning
-     *         false. Also thrown if this is called after a connection
-     *         was already established.
-     * @throws PumpStateStoreAccessException if writing to the pump state
-     *         store fails.
+     * @param backgroundIOScope Coroutine scope to start the background
+     *        worker in.
+     * @param onBackgroundIOException Optional callback for notifying
+     *        about exceptions that get thrown inside the worker.
+     * @param runKeepAliveLoop Whether or not to run a loop in the worker
+     *        that repeatedly sends out RT_KEEP_ALIVE packets.
+     * @return [kotlinx.coroutines.Job] representing the coroutine that
+     *         runs the connection setup procedure.
+     * @throws IllegalStateException if IO was already started by a
+     *         previous [startIO] call or if the [PersistentPumpStateStore]
+     *         that was passed to the class constructor isn't initialized
+     *         (= [PersistentPumpStateStore.isValid] returns false).
      */
-    suspend fun connect(
-        backgroundReceiveScope: CoroutineScope,
+    fun connect(
+        backgroundIOScope: CoroutineScope,
         onBackgroundReceiveException: (e: Exception) -> Unit = { Unit }
-    ) {
-        if (isConnected)
+    ): Job {
+        if (pumpIO.isConnected())
             throw IllegalStateException("Already connected to Combo")
 
         if (!isPaired())
@@ -291,30 +319,43 @@ class Pump(
         // a previous connection.
         framedComboIO.reset()
 
-        withContext(ioDispatcher()) {
-            bluetoothDevice.connect()
+        // Run the actual connection attempt in the background IO scope.
+        val connectJob = backgroundIOScope.launch {
+            // Suspend the coroutine until Bluetooth is connected.
+            // Do this in a separate coroutine with an IO dispatcher
+            // since the connection setup may block.
+            withContext(ioDispatcher()) {
+                bluetoothDevice.connect()
+            }
+
+            // Establish the regular connection. Also call join() here
+            // to make sure the coroutine here waits until the sub-coroutine
+            // that is started by pumpIO.connect() finishes.
+            runChecked {
+                pumpIO.connect(backgroundIOScope, onBackgroundReceiveException).join()
+            }
         }
 
-        runChecked {
-            highLevelIO.connect(backgroundReceiveScope, onBackgroundReceiveException)
-            isConnected = true
-        }
+        return connectJob
     }
 
     /**
      * Disconnects from a pump.
      *
+     * This terminates the connection and stops the background worker that
+     * was started by [connect].
+     *
      * If no connection is running, this does nothing.
      *
-     * Other than the usual [kotlinx.coroutines.CancellationException]
-     * that is present in all suspending functions, this throws no
-     * exceptions.
+     * Calling this ensures an orderly IO shutdown and should
+     * not be omitted when shutting down an application.
+     * This also clears the "failed" mark on a failed worker.
      *
-     * This internally uses [HighLevelIO.disconnect], but also
+     * This internally uses [PumpIO.disconnect], but also
      * handles the Bluetooth connection teardown.
      */
     suspend fun disconnect() {
-        if (!isConnected) {
+        if (!pumpIO.isConnected()) {
             logger(LogLevel.DEBUG) {
                 "Attempted to disconnect from Combo with address ${bluetoothDevice.address} even though it is not connected; ignoring call"
             }
@@ -323,12 +364,13 @@ class Pump(
 
         // Wrap the disconnect packet sequence in a try-finally block
         // to make sure we always terminate the Bluetooth connection
-        // no matter what, even if it is a CancellationException.
+        // no matter what, even in case of an exception.
+        // (We only expect a CancellationException to happen here though,
+        // since pumpIO.disconnect() does not throw.)
         try {
-            highLevelIO.disconnect()
+            pumpIO.disconnect()
         } finally {
             disconnectBTDeviceAndCatchExceptions()
-            isConnected = false
             logger(LogLevel.INFO) { "Disconnected from Combo with address ${bluetoothDevice.address}" }
         }
     }
@@ -336,96 +378,115 @@ class Pump(
     /**
      * Performs a short button press.
      *
-     * This mimics the physical press of a button for a short
-     * moment, followed by that button being released.
+     * This mimics the physical pressing of buttons for a short
+     * moment, followed by those buttons being released.
      *
-     * Internally, this calls [HighLevelIO.sendSingleRTButtonPress],
+     * This may not be called while a long button press is ongoing.
+     * It can only be called in the remote terminal (RT) mode.
+     *
+     * It is possible to short-press multiple buttons at the same
+     * time. This is necessary for moving back in the Combo's menu
+     * example. The buttons in the specified list are combined to
+     * form a code that is transmitted to the pump.
+     *
+     * Internally, this calls [PumpIO.sendSingleRTButtonPress],
      * but also disconnects if this call throws an exception.
      * It also switches to the RT mode before issuing the call.
      *
-     * @param button What button to press.
-     * @throws ComboIOException if an IO error occurs during
-     *         the button press.
+     * @param buttons What button(s) to short-press.
+     * @throws IllegalArgumentException If the buttons list is empty.
      * @throws IllegalStateException if a long button press is
      *         ongoing, the pump is not in the RT mode, or the
-     *         pump is not connected.
-     * @throws PumpStateStoreAccessException if writing to the pump state
-     *         store fails.
+     *         worker has failed (see [connect]), or the pump
+     *         is not connected.
      */
-    suspend fun sendSingleRTButtonPress(button: HighLevelIO.Button) {
-        if (!isConnected)
+    suspend fun sendShortRTButtonPress(buttons: List<PumpIO.Button>) {
+        if (!pumpIO.isConnected())
             throw IllegalStateException("Not connected to Combo")
 
-        highLevelIO.switchToMode(HighLevelIO.Mode.REMOTE_TERMINAL)
+        switchMode(PumpIO.Mode.REMOTE_TERMINAL)
 
         runChecked {
-            highLevelIO.sendSingleRTButtonPress(button)
+            pumpIO.sendShortRTButtonPress(buttons)
         }
     }
 
     /**
-     * Starts a long RT button press, imitating a button being held down.
+     * Performs a short button press.
+     *
+     * This overload is for convenience in case exactly one button
+     * is to be pressed.
+     */
+    suspend fun sendShortRTButtonPress(button: PumpIO.Button) =
+        sendShortRTButtonPress(listOf(button))
+
+    /**
+     * Starts a long RT button press, imitating buttons being held down.
+     *
+     * This can only be called in the remote terminal (RT) mode.
      *
      * If a long button press is already ongoing, this function
      * does nothing.
      *
-     * The [scope] is where a loop will run, periodically transmitting
-     * codes to the Combo, until [stopLongRTButtonPress] is called,
-     * [disconnect] is called, or an error occurs.
+     * It is possible to long-press multiple buttons at the same
+     * time. This is necessary for moving back in the Combo's menu
+     * example. The buttons in the specified list are combined to
+     * form a code that is transmitted to the pump.
      *
-     * That scope's context needs to be associated with the same thread
-     * this function is called in. Otherwise, the press loop may run
-     * in a different thread than this function, potentially leading
-     * to race conditions.
-     *
-     * Internally, this calls [HighLevelIO.startLongRTButtonPress],
+     * Internally, this calls [PumpIO.startLongRTButtonPress],
      * but also disconnects if this call throws an exception.
      * It also switches to the RT mode before issuing the call.
      *
-     * @param button What button to press.
-     * @param scope CoroutineScope to run the press loop in.
-     * @throws ComboIOException if an IO error occurs during
-     *         the button press.
-     * @throws IllegalStateException if the pump is not connected.
-     * @throws PumpStateStoreAccessException if writing to the pump state
-     *         store fails.
+     * @param buttons What button(s) to long-press.
+     * @throws IllegalArgumentException If the buttons list is empty.
+     * @throws IllegalStateException if the pump is not in the RT mode,
+     *         or the worker has failed (see [connect]), or the pump
+     *         is not connected.
      */
-    suspend fun startLongRTButtonPress(button: HighLevelIO.Button, scope: CoroutineScope) {
-        if (!isConnected)
+    suspend fun startLongRTButtonPress(buttons: List<PumpIO.Button>) {
+        if (!pumpIO.isConnected())
             throw IllegalStateException("Not connected to Combo")
 
-        highLevelIO.switchToMode(HighLevelIO.Mode.REMOTE_TERMINAL)
+        switchMode(PumpIO.Mode.REMOTE_TERMINAL)
 
         runChecked {
-            highLevelIO.startLongRTButtonPress(button, scope)
+            pumpIO.startLongRTButtonPress(buttons)
         }
     }
 
     /**
-     * Stops an ongoing RT button press, imitating a button being released.
+     * Performs a long button press.
+     *
+     * This overload is for convenience in case exactly one button
+     * is to be pressed.
+     */
+    suspend fun startLongRTButtonPress(button: PumpIO.Button) =
+        startLongRTButtonPress(listOf(button))
+
+    /**
+     * Stops an ongoing RT button press, imitating buttons being released.
      *
      * This is the counterpart to [startLongRTButtonPress]. It stops
      * long button presses that were started by that function.
      *
      * If no long button press is ongoing, this function does nothing.
      *
-     * Internally, this calls [HighLevelIO.stopLongRTButtonPress],
+     * Internally, this calls [PumpIO.stopLongRTButtonPress],
      * but also disconnects if this call throws an exception.
      * It also switches to the RT mode before issuing the call.
      *
-     * @throws ComboIOException if an IO error occurs during
-     *         the button press.
-     * @throws PumpStateStoreAccessException if writing to the pump state
-     *         store fails.
+     * @throws IllegalStateException if the pump is not in the RT mode,
+     *         or the worker has failed (see [connect]), or the pump
+     *         is not connected.
      */
     suspend fun stopLongRTButtonPress() {
-        if (!isConnected)
+        if (!pumpIO.isConnected())
             throw IllegalStateException("Not connected to Combo")
 
-        highLevelIO.switchToMode(HighLevelIO.Mode.REMOTE_TERMINAL)
+        switchMode(PumpIO.Mode.REMOTE_TERMINAL)
 
         runChecked {
-            highLevelIO.stopLongRTButtonPress()
+            pumpIO.stopLongRTButtonPress()
         }
     }
 
@@ -448,9 +509,9 @@ class Pump(
         }
     }
 
-    private suspend fun switchToMode(newMode: HighLevelIO.Mode) {
+    private suspend fun switchMode(newMode: PumpIO.Mode) {
         try {
-            highLevelIO.switchToMode(newMode)
+            pumpIO.switchMode(newMode)
         } catch (e: Exception) {
             logger(LogLevel.ERROR) {
                 "Need to disconnect because an exception was thrown while switching to mode ${newMode.str}; exception: $e"
@@ -467,7 +528,6 @@ class Pump(
             // TODO: Can these packets be sent redundantly without error?
 
             disconnectBTDeviceAndCatchExceptions()
-            isConnected = false
             throw e
         }
     }

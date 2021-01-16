@@ -24,7 +24,9 @@ interface BluetoothInterface {
      * Note that this callback may be called from another thread. Using
      * synchronization primitives to avoid race conditions is recommended.
      * Also, implementations must make sure that setting the callback
-     * can not cause data races.
+     * can not cause data races; that is, it must not happen that a new
+     * callback is set while the existing callback is invoked due to an
+     * unpaired device.
      *
      * Do not spend too much time in this callback, since it may block
      * internal threads.

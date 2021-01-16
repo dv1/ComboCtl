@@ -31,7 +31,7 @@ class FrameParseException(message: String) : ComboException(message)
  * point, it extracts the payload from inside that frame, and returns it. This is
  * done by [parseFrame].
  *
- * The payload is a transport layer packet. See [TransportLayer.Packet] for details
+ * The payload is a transport layer packet. See [TransportLayerIO.Packet] for details
  * about those.
  */
 class ComboFrameParser {
@@ -229,7 +229,7 @@ class ComboFrameParser {
  *
  * The reverse functionality is provided by the [ComboFrameParser] class.
  *
- * The payload is a transport layer packet. See [TransportLayer.Packet] for
+ * The payload is a transport layer packet. See [TransportLayerIO.Packet] for
  * details about those.
  *
  * @return Framed version of this payload.

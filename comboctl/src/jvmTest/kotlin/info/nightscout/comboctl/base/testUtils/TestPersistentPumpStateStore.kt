@@ -1,7 +1,11 @@
-package info.nightscout.comboctl.base
+package info.nightscout.comboctl.base.testUtils
+
+import info.nightscout.comboctl.base.*
 
 class TestPersistentPumpStateStore : PersistentPumpStateStore {
-    private var pairingData: PumpPairingData? = null
+    var pairingData: PumpPairingData? = null
+        private set
+
     private var valid = false
 
     override fun retrievePumpPairingData(): PumpPairingData {

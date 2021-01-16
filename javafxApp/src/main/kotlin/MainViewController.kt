@@ -3,18 +3,25 @@ package info.nightscout.comboctl.javafxApp
 import info.nightscout.comboctl.base.BluetoothAddress
 import info.nightscout.comboctl.base.BluetoothException
 import info.nightscout.comboctl.base.MainControl
+import info.nightscout.comboctl.base.PairingPIN
 import info.nightscout.comboctl.base.Pump
+import info.nightscout.comboctl.base.TransportLayerIO
 import info.nightscout.comboctl.base.toBluetoothAddress
+import javafx.beans.binding.Bindings
 import javafx.collections.FXCollections
 import javafx.collections.ObservableList
 import javafx.fxml.FXMLLoader
 import javafx.scene.Parent
 import javafx.scene.Scene
+import javafx.scene.control.ButtonType
 import javafx.scene.control.ListView
+import javafx.scene.control.TextInputDialog
 import javafx.scene.image.ImageView
 import javafx.stage.Stage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 
 class MainViewController {
     private var mainControl: MainControl? = null
@@ -37,7 +44,7 @@ class MainViewController {
         this.pumpStoreBackend = pumpStoreBackend
         this.listView = listView
 
-        listView.setItems(pumpList)
+        listView.items = pumpList
         resetPumpList()
     }
 
@@ -45,7 +52,11 @@ class MainViewController {
         require(mainControl != null)
         require(mainScope != null)
         try {
-            mainControl!!.startDiscovery()
+            mainControl!!.startDiscovery(mainScope!!) { newPumpAddress, _ ->
+                withContext(mainScope!!.coroutineContext) {
+                    askUserForPIN(newPumpAddress)
+                }
+            }
         } catch (e: IllegalStateException) {
             println("Attempted to start discovery even though it is running already")
         } catch (e: BluetoothException) {
@@ -62,7 +73,7 @@ class MainViewController {
         require(mainControl != null)
         require(listView != null)
 
-        val selectedItems = listView!!.getSelectionModel().getSelectedItems()
+        val selectedItems = listView!!.selectionModel.selectedItems
 
         lateinit var pumpBluetoothAddressStr: String
         try {
@@ -83,16 +94,15 @@ class MainViewController {
 
         val pumpViewStage = Stage()
 
-        val loader = FXMLLoader(javaClass.getClassLoader().getResource("PumpView.fxml"))
+        val loader = FXMLLoader(javaClass.classLoader.getResource("PumpView.fxml"))
         val root: Parent = loader.load()
         val scene = Scene(root)
 
         val pumpViewController: PumpViewController = loader.getController()
 
-        val pump = mainControl!!.getPump(
-            pumpBluetoothAddress,
-            { displayFrame -> pumpViewController.setDisplayFrame(displayFrame) }
-        )
+        val pump = runBlocking {
+            mainControl!!.acquirePump(pumpBluetoothAddress)
+        }
         pumpInstances[pumpBluetoothAddress] = pump
 
         pumpViewController.setup(
@@ -109,10 +119,19 @@ class MainViewController {
                 mainScope!!.launch {
                     pumpToRemove.disconnect()
                     pumpInstances.remove(pumpBluetoothAddress)
+                    mainControl!!.releasePump(pumpBluetoothAddress)
                 }
             }
         }
         pumpViewStage.show()
+    }
+
+    fun onNewPairedPump(pumpAddress: BluetoothAddress) {
+        resetPumpList()
+    }
+
+    fun onPumpUnpaired(pumpAddress: BluetoothAddress) {
+        resetPumpList()
     }
 
     private fun resetPumpList() {
@@ -121,5 +140,31 @@ class MainViewController {
         pumpList.clear()
         for (storeBluetoothAddress in pumpStoreBackend!!.getAvailableStoreAddresses())
             pumpList.add(storeBluetoothAddress.toString())
+    }
+
+    private suspend fun askUserForPIN(pumpAddress: BluetoothAddress): PairingPIN {
+        val dialog = TextInputDialog("")
+        dialog.title = "Pairing PIN required"
+        dialog.headerText = "Enter the 10-digit pairing PIN as shown on the Combo's LCD (Combo Bluetooth address: $pumpAddress)"
+
+        // Do checks to make sure the user can only enter 10 digits
+        // (no non-numeric characters, and not a length other than 10).
+        val numericStringRegex = "-?\\d+(\\.\\d+)?".toRegex()
+        val okButton = dialog.dialogPane.lookupButton(ButtonType.OK)
+        val inputField = dialog.editor
+        val isInvalid = Bindings.createBooleanBinding(
+            {
+                val str = inputField.text
+                !((str.length == 10) && str.matches(numericStringRegex))
+            },
+            inputField.textProperty()
+        )
+        okButton.disableProperty().bind(isInvalid)
+
+        val result = dialog.showAndWait()
+        if (result.isPresent())
+            return PairingPIN(result.get().map { it - '0' }.toIntArray())
+        else
+            throw TransportLayerIO.PairingAbortedException()
     }
 }
