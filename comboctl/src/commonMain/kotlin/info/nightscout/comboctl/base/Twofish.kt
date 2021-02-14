@@ -313,7 +313,10 @@ object Twofish {
             1 -> calcb1(x)
             2 -> calcb2(x)
             3 -> calcb3(x)
-            else -> 0 // TODO: should never happen
+            // NOTE: This else-branch is only here to shut up build errors.
+            // This case cannot occur because the bitwise AND above excludes
+            // all values outside of the 0-3 range.
+            else -> 0
         }
 
     /*************************
