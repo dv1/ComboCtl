@@ -55,6 +55,13 @@ rfcomm_connection::rfcomm_connection()
 	// We do not expect this to ever fail. If we do, we reached hard
 	// system-wide resource limits, and can't really do anything.
 	assert(posix_ret == 0);
+
+	// Mark the read end of the pipe as non-blocking. We need this
+	// in connect() so we can "flush" the pipe by attempting to
+	// read out any stale data in it until the read() call reports
+	// an EAGAIN error.
+	int fd_flags = fcntl(m_connect_pipe_fds[0], F_GETFL, 0);
+	fcntl(m_connect_pipe_fds[0], F_SETFL, fd_flags | O_NONBLOCK);
 }
 
 
@@ -224,6 +231,28 @@ void rfcomm_connection::connect(bluetooth_address const &bt_address, unsigned in
 	{
 		LOG(debug, "Aborting connection attempt since we are shutting down");
 		return;
+	}
+
+	// Flush the pipe to get rid of stale data by reading it all.
+	{
+		char dummy_buf[1024];
+		bool flush_pipe = true;
+		while (flush_pipe)
+		{
+			if (::read(m_connect_pipe_fds[0], dummy_buf, sizeof(dummy_buf)) < 0)
+			{
+				switch (errno)
+				{
+					case 0:
+					case EAGAIN:
+						flush_pipe = false;
+						break;
+
+					default:
+						throw io_exception(fmt::format("IO error while flushing internal pipe: {} ({})", std::strerror(errno), errno));
+				}
+			}
+		}
 	}
 
 	// Install a special scope guard to make sure the condition
