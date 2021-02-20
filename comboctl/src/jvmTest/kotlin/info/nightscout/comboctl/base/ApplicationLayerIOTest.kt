@@ -147,11 +147,11 @@ class ApplicationLayerIOTest {
             val appLayerIO = object : ApplicationLayerIO(testPumpStateStore, testComboIO) {
                 var keepAliveCounter = 0
                 override fun processIncomingPacket(appLayerPacket: Packet): Boolean {
-                    if (appLayerPacket.command == ApplicationLayerIO.Command.RT_KEEP_ALIVE) {
+                    return if (appLayerPacket.command == ApplicationLayerIO.Command.RT_KEEP_ALIVE) {
                         keepAliveCounter++
-                        return false
+                        false
                     } else
-                        return true
+                        true
                 }
             }
 

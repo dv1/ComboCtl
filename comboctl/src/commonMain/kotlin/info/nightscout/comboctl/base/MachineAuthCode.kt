@@ -29,4 +29,4 @@ data class MachineAuthCode(private val macBytes: List<Byte>) : Iterable<Byte> {
  * MAC consisting of 8 nullbytes. Useful for initializations and
  * for the first few pairing packets that don't use MACs.
  */
-val NullMachineAuthCode = MachineAuthCode(List<Byte>(NUM_MAC_BYTES) { 0x00 })
+val NullMachineAuthCode = MachineAuthCode(List(NUM_MAC_BYTES) { 0x00 })

@@ -28,20 +28,21 @@ private fun checkedGetCommand(value: Int, bytes: List<Byte>): TransportLayerIO.C
 /**
  * Callback used during pairing for asking the user for the 10-digit PIN.
  *
- * This is passed to [startIO] when pairing.
+ * This is passed to [TransportLayerIO.startIO] when pairing.
  *
  * [previousAttemptFailed] is useful for showing in a GUI that the
  * previously entered PIN seems to be wrong and that the user needs
  * to try again.
  *
  * If the user wants to cancel the pairing instead of entering the
- * PIN, [PairingAbortedException] must be thrown by the callback.
- * See [TransportLayerIO] for information about exceptions that get
- * thrown from inside the background worker.
+ * PIN, [TransportLayerIO.PairingAbortedException] must be thrown by
+ * the callback. See [TransportLayerIO] for information about exceptions
+ * that get thrown from inside the background worker.
  *
  * @param previousAttemptFailed true if the user was already asked for
  *        the PIN and the KEY_RESPONSE authentication failed.
- * @throws PairingAbortedException if the user cancels the operation.
+ * @throws TransportLayerIO.PairingAbortedException if the user cancels
+ *         the operation.
  */
 typealias PairingPINCallback = suspend (previousAttemptFailed: Boolean) -> PairingPIN
 
@@ -106,7 +107,7 @@ open class TransportLayerIO(persistentPumpStateStore: PersistentPumpStateStore, 
     // The hasWorkerFailed() function does this check.
     private var backgroundIOWorkerJob: Job? = null
 
-    private var onBackgroundIOException: (e: Exception) -> Unit = { Unit }
+    private var onBackgroundIOException: (e: Exception) -> Unit = { }
 
     private var pairingPINCallback: PairingPINCallback = { nullPairingPIN() }
 
@@ -550,7 +551,7 @@ open class TransportLayerIO(persistentPumpStateStore: PersistentPumpStateStore, 
      */
     fun startIO(
         backgroundIOScope: CoroutineScope,
-        onBackgroundIOException: (e: Exception) -> Unit = { Unit },
+        onBackgroundIOException: (e: Exception) -> Unit = { },
         pairingPINCallback: PairingPINCallback = { nullPairingPIN() }
     ) {
         if (backgroundIOWorkerJob != null) {
@@ -671,7 +672,7 @@ open class TransportLayerIO(persistentPumpStateStore: PersistentPumpStateStore, 
      */
     data class OutgoingPacketInfo(
         val command: Command,
-        val payload: ArrayList<Byte> = ArrayList<Byte>(),
+        val payload: ArrayList<Byte> = ArrayList(),
         val reliable: Boolean = false,
         val sequenceBitOverride: Boolean? = null
     ) {
@@ -910,7 +911,7 @@ open class TransportLayerIO(persistentPumpStateStore: PersistentPumpStateStore, 
      * packet ACK_RESPONSE replies are done first, then this is called.
      *
      * If this function returns true, the packet will be forwarded
-     * to a waiting [receivedPacket] call. Modifications applied to
+     * to a waiting [receivePacket] call. Modifications applied to
      * the packet will persist, and reach that call. If however this
      * returns false, the packet is dropped. This is useful for
      * subclasses that only care about filtering out specific packets
@@ -986,10 +987,10 @@ open class TransportLayerIO(persistentPumpStateStore: PersistentPumpStateStore, 
         fun reset() {
             currentSequenceFlag = false
 
-            if (persistentPumpStateStore.isValid())
-                cachedPumpPairingData = persistentPumpStateStore.retrievePumpPairingData()
+            cachedPumpPairingData = if (persistentPumpStateStore.isValid())
+                persistentPumpStateStore.retrievePumpPairingData()
             else
-                cachedPumpPairingData = PumpPairingData(
+                PumpPairingData(
                     Cipher(ByteArray(CIPHER_KEY_SIZE)),
                     Cipher(ByteArray(CIPHER_KEY_SIZE)),
                     0x00.toByte()
@@ -1003,7 +1004,7 @@ open class TransportLayerIO(persistentPumpStateStore: PersistentPumpStateStore, 
     // it is to create a new instance. The GC will clean up the
     // old one automatically.
     private fun resetIncomingPacketChannel() {
-        incomingPacketChannel = Channel<Packet>(Channel.UNLIMITED)
+        incomingPacketChannel = Channel(Channel.UNLIMITED)
     }
 
     // Utility function for checking if the worker failed due to an
@@ -1233,14 +1234,15 @@ open class TransportLayerIO(persistentPumpStateStore: PersistentPumpStateStore, 
         // ACK_RESPONSE packets have to be sent to the Combo
         // (see the code in runIncomingPacketLoop()).
         val sequenceBit =
-            if (outgoingPacketInfo.sequenceBitOverride != null)
-                outgoingPacketInfo.sequenceBitOverride
-            else if (reliabilityBit) {
-                val currentSequenceFlag = packetState.currentSequenceFlag
-                packetState.currentSequenceFlag = !currentSequenceFlag
-                currentSequenceFlag
-            } else
-                false
+            when {
+                outgoingPacketInfo.sequenceBitOverride != null -> outgoingPacketInfo.sequenceBitOverride
+                reliabilityBit -> {
+                    val currentSequenceFlag = packetState.currentSequenceFlag
+                    packetState.currentSequenceFlag = !currentSequenceFlag
+                    currentSequenceFlag
+                }
+                else -> false
+            }
 
         val packet = Packet(
             command = outgoingPacketInfo.command,

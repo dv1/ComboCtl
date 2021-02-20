@@ -71,4 +71,4 @@ fun String.toNonce() = Nonce(this.split(" ").map { it.toInt(radix = 16).toByte()
 /**
  * Nonce consisting of 13 nullbytes. Useful for initializations.
  */
-val NullNonce = Nonce(List<Byte>(NUM_NONCE_BYTES) { 0x00 })
+val NullNonce = Nonce(List(NUM_NONCE_BYTES) { 0x00 })

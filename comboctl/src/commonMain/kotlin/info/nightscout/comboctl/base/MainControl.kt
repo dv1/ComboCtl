@@ -16,8 +16,8 @@ class MainControl(
 ) {
     // Event handling related properties.
     private var eventHandlingStarted = false
-    private var onNewPairedPump: suspend (pumpAddress: BluetoothAddress) -> Unit = { Unit }
-    private var onPumpUnpaired: suspend (pumpAddress: BluetoothAddress) -> Unit = { Unit }
+    private var onNewPairedPump: suspend (pumpAddress: BluetoothAddress) -> Unit = { }
+    private var onPumpUnpaired: suspend (pumpAddress: BluetoothAddress) -> Unit = { }
     private var onEventHandlingException: (e: Exception) -> Boolean = { true }
     private val eventHandlingMutex = Mutex()
 
@@ -105,8 +105,8 @@ class MainControl(
      */
     fun startEventHandling(
         miscEventHandlingScope: CoroutineScope,
-        onNewPairedPump: suspend (pumpAddress: BluetoothAddress) -> Unit = { Unit },
-        onPumpUnpaired: suspend (pumpAddress: BluetoothAddress) -> Unit = { Unit },
+        onNewPairedPump: suspend (pumpAddress: BluetoothAddress) -> Unit = { },
+        onPumpUnpaired: suspend (pumpAddress: BluetoothAddress) -> Unit = { },
         onEventHandlingException: (e: Exception) -> Boolean = { true }
     ) {
         if (eventHandlingStarted)
@@ -186,10 +186,10 @@ class MainControl(
         // callback would be called after that one got reset.
         // By resetting the onDeviceUnpaired first instead,
         // this cannot happen.
-        bluetoothInterface.onDeviceUnpaired = { Unit }
+        bluetoothInterface.onDeviceUnpaired = { }
 
-        onNewPairedPump = { Unit }
-        onPumpUnpaired = { Unit }
+        onNewPairedPump = { }
+        onPumpUnpaired = { }
         onEventHandlingException = { true }
 
         eventHandlingStarted = false
@@ -333,7 +333,7 @@ class MainControl(
      *
      * If no such pump was previously acquired, this function does nothing.
      *
-     * @param pumpAddress Bluetooth address of the pump to release.
+     * @param acquiredPumpAddress Bluetooth address of the pump to release.
      */
     suspend fun releasePump(acquiredPumpAddress: BluetoothAddress) {
         mutex.withLock {

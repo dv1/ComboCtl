@@ -26,10 +26,10 @@ fun main() {
 // This allows for integrating coroutines with the JavaFX mainloop,
 // avoiding multithreading issues.
 class App : Application(), CoroutineScope {
-    val bluezInterface: BlueZInterface
-    val pumpStoreBackend = JsonPumpStateStoreBackend()
-    val mainControl: MainControl
-    var mainViewController: MainViewController? = null
+    private val bluezInterface: BlueZInterface
+    private val pumpStoreBackend = JsonPumpStateStoreBackend()
+    private val mainControl: MainControl
+    private var mainViewController: MainViewController? = null
 
     init {
         val scope = this

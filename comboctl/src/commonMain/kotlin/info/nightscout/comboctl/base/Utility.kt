@@ -27,7 +27,7 @@ fun byteArrayOfInts(vararg ints: Int) = ByteArray(ints.size) { pos -> ints[pos].
  * @param ints Integers to convert to bytes for the new arraylist.
  * @return The new arraylist.
  */
-fun byteArrayListOfInts(vararg ints: Int) = ArrayList<Byte>(ints.map { it.toByte() })
+fun byteArrayListOfInts(vararg ints: Int) = ArrayList(ints.map { it.toByte() })
 
 /**
  * Produces a hexadecimal string representation of the bytes in the array.

@@ -125,7 +125,7 @@ class PumpIOTest {
             )
 
             checkTestPacketSequence(expectedInitialPacketSequence, testIO.sentPacketData)
-            for (i in 0 until expectedInitialPacketSequence.size)
+            for (i in expectedInitialPacketSequence.indices)
                 testIO.sentPacketData.removeAt(0)
         }
 

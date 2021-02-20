@@ -112,7 +112,7 @@ interface PersistentPumpStateStore {
      *         fails due to an error that occurred in the underlying
      *         implementation.
      */
-    fun storePumpPairingData(pumpPairingData: PumpPairingData): Unit
+    fun storePumpPairingData(pumpPairingData: PumpPairingData)
 
     /**
      * Returns true if the store is in a valid state.
@@ -133,7 +133,7 @@ interface PersistentPumpStateStore {
      *         fails due to an error that occurred in the underlying
      *         implementation.
      */
-    fun reset(): Unit
+    fun reset()
 
     /*
      * The pump ID from the ID_RESPONSE packet.
@@ -152,7 +152,7 @@ interface PersistentPumpStateStore {
      *
      * This is set to an initial value during pairing, and
      * incremented after every sent packet afterwards. Both
-     * of these steps are performed by [TransportLayer].
+     * of these steps are performed by [TransportLayerIO].
      * Every time a new value is set, said value must be stored
      * persistently and immediately by subclasses.
      *

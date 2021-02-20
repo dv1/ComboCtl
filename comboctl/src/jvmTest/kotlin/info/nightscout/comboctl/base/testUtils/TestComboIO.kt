@@ -21,6 +21,6 @@ class TestComboIO : ComboIO {
 
     fun resetIncomingPacketDataChannel() {
         incomingPacketDataChannel.close()
-        incomingPacketDataChannel = Channel<TestPacketData>(Channel.UNLIMITED)
+        incomingPacketDataChannel = Channel(Channel.UNLIMITED)
     }
 }

@@ -6,7 +6,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 // not available on all platforms.
 internal expect fun ioDispatcher(): CoroutineDispatcher
 
-// This dispatcher explicitely uses one thread for running tasks.
+// This dispatcher explicitly uses one thread for running tasks.
 // It is useful for cases where tasks must not be run in parallel
 // on separate threads (for thread safety reasons). Sometimes
 // achieving thread safety that way is more efficient than using

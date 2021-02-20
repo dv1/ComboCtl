@@ -63,7 +63,7 @@ class TwofishTest {
             private fun hexstringToByteArray(hexstring: String): ByteArray {
                 val array = ByteArray(hexstring.length / 2)
 
-                for (i in 0 until array.size) {
+                for (i in array.indices) {
                     val hexcharStr = hexstring.substring(IntRange(i * 2, i * 2 + 1))
                     array[i] = Integer.parseInt(hexcharStr, 16).toByte()
                 }

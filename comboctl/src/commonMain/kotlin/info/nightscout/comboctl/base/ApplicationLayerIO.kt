@@ -35,7 +35,7 @@ private fun checkedGetCommand(
         ?: throw ApplicationLayerIO.InvalidServiceIDException(
             tpLayerPacket,
             serviceIDInt,
-            ArrayList<Byte>(tpLayerPacket.payload.subList(PAYLOAD_BYTES_OFFSET, tpLayerPacket.payload.size))
+            ArrayList(tpLayerPacket.payload.subList(PAYLOAD_BYTES_OFFSET, tpLayerPacket.payload.size))
         )
 
     val commandID = (tpLayerPacket.payload[COMMAND_ID_BYTE_OFFSET + 0].toPosInt() shl 0) or
@@ -46,7 +46,7 @@ private fun checkedGetCommand(
             tpLayerPacket,
             serviceID,
             commandID,
-            ArrayList<Byte>(tpLayerPacket.payload.subList(PAYLOAD_BYTES_OFFSET, tpLayerPacket.payload.size))
+            ArrayList(tpLayerPacket.payload.subList(PAYLOAD_BYTES_OFFSET, tpLayerPacket.payload.size))
         )
 }
 
@@ -79,10 +79,11 @@ const val MAX_VALID_AL_PAYLOAD_SIZE = 65535 - PACKET_HEADER_SIZE
  * error handling in that worker.
  *
  * NOTE: This class is not designed to allow multiple concurrent
- * [sendPacket] or [receivePacket] calls. Such a use case is currently
- * not considered relevant for this class. So, adding synchronization
- * primitives to make them thread safe would add cost and not yield
- * enough benefit. This may change in the future though.
+ * [sendPacket] or [receiveAppLayerPacket]/[receiveTpLayerPacket] calls.
+ * Such a use case is currently not considered relevant for this class.
+ * So, adding synchronization primitives to make them thread safe would
+ * add cost and not yield enough benefit. This may change in the future
+ * though.
  *
  * @param persistentPumpStateStore Persistent state store to use.
  * @param comboIO Combo IO object to use for sending/receiving data.
@@ -764,10 +765,7 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
      * to properly start from scratch.
      *
      * [onBackgroundIOException] is an optional callback for when an
-     * exception is thrown inside the background worker. If the exception
-     * is thrown during a [sendPacket] or [receivePacket] call, these
-     * functions will throw [BackgroundIOException] and wrap the exception
-     * that happened in the worker.
+     * exception is thrown inside the background worker.
      *
      * [pairingPINCallback] is only used during pairing, otherwise it is
      * set to null. During pairing, when the KEY_RESPONSE packet is received,
@@ -790,7 +788,7 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
      */
     fun startIO(
         backgroundIOScope: CoroutineScope,
-        onBackgroundIOException: (e: Exception) -> Unit = { Unit },
+        onBackgroundIOException: (e: Exception) -> Unit = { },
         pairingPINCallback: PairingPINCallback = { nullPairingPIN() }
     ) {
         currentRTSequence = 0
@@ -834,7 +832,7 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
      * This function suspends the current coroutine until the send operation
      * is complete, or an exception is thrown.
      *
-     * @param packetInfo Information about the packet to generate and send.
+     * @param appLayerPacket Application layer packet to send.
      * @throws IllegalStateException if the background IO worker is not
      *         running or if it has failed.
      * @throws ComboIOException if sending fails due to an underlying IO error.
@@ -916,8 +914,8 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
      * @param expectedCommand Optional ApplicationLayerIO Packet command to check for.
      * @throws IllegalStateException if the background IO worker is not
      *         running or if it has failed.
-     * @throws BackgroundIOException if an exception is thrown inside the
-     *         worker while this call is waiting for a packet.
+     * @throws TransportLayerIO.BackgroundIOException if an exception is thrown
+     *         inside the worker while this call is waiting for a packet.
      * @throws IncorrectPacketException if expectedCommand is non-null and
      *         the received packet's command does not match expectedCommand.
      */

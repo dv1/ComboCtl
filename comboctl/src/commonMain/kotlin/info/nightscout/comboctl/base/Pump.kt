@@ -39,7 +39,7 @@ private val logger = Logger.get("Pump")
  * safety is established.
  *
  * Instances of this class are typically not created manually,
- * but rather by calling [MainControl.getPump]. Likewise, the
+ * but rather by calling [MainControl.acquirePump]. Likewise, the
  * [performPairing] function is typically not called directly,
  * but rather by [MainControl] during discovery.
  *
@@ -57,13 +57,12 @@ class Pump(
     private val persistentPumpStateStore: PersistentPumpStateStore
 ) {
     private val pumpIO: PumpIO
-    private val framedComboIO: FramedComboIO
+    private val framedComboIO = FramedComboIO(bluetoothDevice)
 
     init {
         // Pass IO through the FramedComboIO class since the Combo
         // sends packets in a framed form (See [ComboFrameParser]
         // and [List<Byte>.toComboFrame] for details).
-        framedComboIO = FramedComboIO(bluetoothDevice)
         pumpIO = PumpIO(
             persistentPumpStateStore,
             framedComboIO
@@ -115,9 +114,6 @@ class Pump(
      * with all of the necessary information (ciphers etc.) for
      * establishing regular connections with [connect].
      *
-     * Packets are received in a loop that runs in a background
-     * coroutine that operates in the [backgroundReceiveScope].
-     *
      * That scope's context needs to be associated with the same thread
      * this function is called in. Otherwise, the receive loop
      * may run in a different thread than this function, potentially
@@ -136,8 +132,6 @@ class Pump(
      * WARNING: Do not run multiple performPairing functions simultaneously
      *  on the same pump. Otherwise, undefined behavior occurs.
      *
-     * @param backgroundReceiveScope [CoroutineScope] to run the background
-     *        packet receive loop in.
      * @param bluetoothFriendlyName The Bluetooth friendly name to use in
      *        REQUEST_ID packets. Use [BluetoothInterface.getAdapterFriendlyName]
      *        to get the friendly name.
@@ -259,9 +253,9 @@ class Pump(
      * The actual connection procedure also happens in that scope. If
      * during the connection setup an exception is thrown, then the
      * connection is rolled back to the disconnected state, and
-     * [onBackgroundIOException] is called. If an exception happens
+     * [onBackgroundWorkerException] is called. If an exception happens
      * inside the worker _after_ the connection is established, then
-     * [onBackgroundIOException] will be called. However, unlike with
+     * [onBackgroundWorkerException] will be called. However, unlike with
      * exceptions during the connection setup, exceptions from inside
      * the worker cause the worker to "fail". In that failed state, any
      * of the functions mentioned above will immediately fail with an
@@ -293,10 +287,8 @@ class Pump(
      *
      * @param backgroundIOScope Coroutine scope to start the background
      *        worker in.
-     * @param onBackgroundIOException Optional callback for notifying
+     * @param onBackgroundWorkerException Optional callback for notifying
      *        about exceptions that get thrown inside the worker.
-     * @param runKeepAliveLoop Whether or not to run a loop in the worker
-     *        that repeatedly sends out RT_KEEP_ALIVE packets.
      * @return [kotlinx.coroutines.Job] representing the coroutine that
      *         runs the connection setup procedure.
      * @throws IllegalStateException if IO was already started by a
@@ -306,7 +298,7 @@ class Pump(
      */
     fun connect(
         backgroundIOScope: CoroutineScope,
-        onBackgroundReceiveException: (e: Exception) -> Unit = { Unit }
+        onBackgroundWorkerException: (e: Exception) -> Unit = { }
     ): Job {
         if (pumpIO.isConnected())
             throw IllegalStateException("Already connected to Combo")
@@ -320,7 +312,7 @@ class Pump(
         framedComboIO.reset()
 
         // Run the actual connection attempt in the background IO scope.
-        val connectJob = backgroundIOScope.launch {
+        return backgroundIOScope.launch {
             // Suspend the coroutine until Bluetooth is connected.
             // Do this in a separate coroutine with an IO dispatcher
             // since the connection setup may block.
@@ -332,11 +324,9 @@ class Pump(
             // to make sure the coroutine here waits until the sub-coroutine
             // that is started by pumpIO.connect() finishes.
             runChecked {
-                pumpIO.connect(backgroundIOScope, onBackgroundReceiveException).join()
+                pumpIO.connect(backgroundIOScope, onBackgroundWorkerException).join()
             }
         }
-
-        return connectJob
     }
 
     /**
@@ -375,6 +365,9 @@ class Pump(
         }
     }
 
+    /** Returns true if the pump is connected, false otherwise. */
+    fun isConnected() = pumpIO.isConnected()
+
     /**
      * Performs a short button press.
      *
@@ -389,7 +382,7 @@ class Pump(
      * example. The buttons in the specified list are combined to
      * form a code that is transmitted to the pump.
      *
-     * Internally, this calls [PumpIO.sendSingleRTButtonPress],
+     * Internally, this calls [PumpIO.sendShortRTButtonPress],
      * but also disconnects if this call throws an exception.
      * It also switches to the RT mode before issuing the call.
      *

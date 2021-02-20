@@ -64,7 +64,7 @@ class BlueZInterface : BluetoothInterface {
     // require one of the Callback wrappers to be applied first, or they
     // may require conversion to/from ByteArrays due to JNI restrictions.
 
-    override var onDeviceUnpaired: (deviceAddress: BluetoothAddress) -> Unit = { Unit }
+    override var onDeviceUnpaired: (deviceAddress: BluetoothAddress) -> Unit = { }
         set(value) { onDeviceUnpairedImpl(BluetoothDeviceNoReturnCallback(value)) }
 
     override var deviceFilter: (deviceAddress: BluetoothAddress) -> Boolean = { true }

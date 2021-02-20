@@ -82,7 +82,7 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
     // Members associated with display frame generation.
     // The mutable version of the displayFrameFlow is used internally
     // when a new frame is available.
-    private var mutableDisplayFrameFlow = MutableStateFlow<DisplayFrame>(NullDisplayFrame)
+    private var mutableDisplayFrameFlow = MutableStateFlow(NullDisplayFrame)
     private val displayFrameAssembler = DisplayFrameAssembler()
 
     // Whether we are in RT or COMMAND mode, or null at startup
@@ -362,7 +362,7 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
      */
     fun connect(
         backgroundIOScope: CoroutineScope,
-        onBackgroundIOException: (e: Exception) -> Unit = { Unit },
+        onBackgroundIOException: (e: Exception) -> Unit = { },
         runKeepAliveLoop: Boolean = true
     ): Job {
         // Prerequisites.
@@ -390,7 +390,7 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
         logger(LogLevel.DEBUG) { "Pump IO connecting asynchronously" }
 
         // Launch the coroutine that sets up the connection.
-        val connectJob = backgroundIOScope.launch {
+        return backgroundIOScope.launch {
             try {
                 logger(LogLevel.DEBUG) { "Sending regular connection request" }
 
@@ -416,8 +416,6 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
                 throw e
             }
         }
-
-        return connectJob
     }
 
     /**
@@ -442,7 +440,7 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
         logger(LogLevel.DEBUG) { "Pump IO disconnected" }
     }
 
-    /** Returns true if IO is ongoing (due to a [startIO] call), false otherwise. */
+    /** Returns true if IO is ongoing (due to a [connect] call), false otherwise. */
     fun isConnected() = applicationLayerIO.isIORunning()
 
     /**

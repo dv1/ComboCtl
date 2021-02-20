@@ -64,4 +64,4 @@ data class DisplayFrame(private val displayFrameBytes: List<Byte>) : Iterable<By
 /**
  * Display frame filled with empty pixels. Useful for initializations.
  */
-val NullDisplayFrame = DisplayFrame(List<Byte>(NUM_DISPLAY_FRAME_BYTES) { 0x00 })
+val NullDisplayFrame = DisplayFrame(List(NUM_DISPLAY_FRAME_BYTES) { 0x00 })

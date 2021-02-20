@@ -29,7 +29,7 @@ class MainViewController {
     private var pumpStoreBackend: JsonPumpStateStoreBackend? = null
     private var listView: ListView<String>? = null
 
-    private val pumpList: ObservableList<String> = FXCollections.observableArrayList<String>()
+    private val pumpList: ObservableList<String> = FXCollections.observableArrayList()
 
     private val pumpInstances = mutableMapOf<BluetoothAddress, Pump>()
 
@@ -114,7 +114,7 @@ class MainViewController {
         pumpViewStage.title = "Pump $pumpBluetoothAddress"
         pumpViewStage.scene = scene
         pumpViewStage.setOnHidden {
-            var pumpToRemove = pumpInstances[pumpBluetoothAddress]
+            val pumpToRemove = pumpInstances[pumpBluetoothAddress]
             if (pumpToRemove != null) {
                 mainScope!!.launch {
                     pumpToRemove.disconnect()
@@ -162,7 +162,7 @@ class MainViewController {
         okButton.disableProperty().bind(isInvalid)
 
         val result = dialog.showAndWait()
-        if (result.isPresent())
+        if (result.isPresent)
             return PairingPIN(result.get().map { it - '0' }.toIntArray())
         else
             throw TransportLayerIO.PairingAbortedException()
