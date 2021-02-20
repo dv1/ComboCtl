@@ -30,6 +30,11 @@ interface BluetoothInterface {
      *
      * Do not spend too much time in this callback, since it may block
      * internal threads.
+     *
+     * Exceptions thrown by this callback are logged, but not propagated.
+     *
+     * See the note at [getPairedDeviceAddresses] about using this callback
+     * and that function in the correct order.
      */
     var onDeviceUnpaired: (deviceAddress: BluetoothAddress) -> Unit
 
@@ -48,6 +53,8 @@ interface BluetoothInterface {
      *
      * Do not spend too much time in this callback, since it may block
      * internal threads.
+     *
+     * IMPORTANT: This callback must not throw.
      *
      * The default callback always returns true.
      */
@@ -92,7 +99,8 @@ interface BluetoothInterface {
      *        stack for its pairing/authorization.
      * @param foundNewPairedDevice Callback that gets invoked when
      *        a device was found that passed the filter (see [deviceFilter])
-     *        and is paired.
+     *        and is paired. Exceptions thrown by this callback are logged,
+     *        but not propagated.
      * @throws IllegalStateException if this is called again after
      *         discovery has been started already, or if the interface
      *         is in a state in which discovery is not possible, such as
@@ -152,6 +160,18 @@ interface BluetoothInterface {
      *
      * The [deviceFilter] is applied here. That is, the returned set
      * only contains addresses of devices which passed that filter.
+     *
+     * The return value is a new set, not a reference to an internal
+     * one, so it is safe to use even if devices get paired/unpaired
+     * in the meantime.
+     *
+     * To avoid a race condition where an unpaired device is missed
+     * when an application is starting, it is recommended to first
+     * assign the [onDeviceUnpaired] callback, and then retrieve the
+     * list of paired addresses here. If it is done the other way
+     * round, it is possible that between the [getPairedDeviceAddresses]
+     * call and the [onDeviceUnpaired] assignment, a device is
+     * unpaired, and thus does not get noticed.
      */
     fun getPairedDeviceAddresses(): Set<BluetoothAddress>
 }
