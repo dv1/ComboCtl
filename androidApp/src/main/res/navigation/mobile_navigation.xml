@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/mobile_navigation"
+    app:startDestination="@+id/nav_startup">
+
+    <fragment
+        android:id="@+id/nav_startup"
+        android:name="info.nightscout.comboctl.comboandroid.ui.startup.StartupFragment"
+        android:label="Home" >
+        <action
+            android:id="@+id/action_nav_startup_to_nav_pairing"
+            app:destination="@id/nav_pairing"
+            app:enterAnim="@anim/fragment_fade_enter"
+            app:exitAnim="@anim/fragment_fade_exit"
+            app:popEnterAnim="@anim/fragment_fade_enter"
+            app:popExitAnim="@anim/fragment_fade_exit" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/nav_pairing"
+        android:name="info.nightscout.comboctl.comboandroid.ui.pairing.PairingFragment"
+        android:label="Pairing" />
+
+    <fragment
+        android:id="@+id/nav_session"
+        android:name="info.nightscout.comboctl.comboandroid.ui.session.SessionFragment"
+        android:label="Session" />
+</navigation>

@@ -6,6 +6,7 @@ include(":comboctl:src:jvmMain:cpp:linuxBlueZCppJNI")
 include(":devtools:common")
 include(":devtools:dump_packets")
 include(":devtools:bluez_cli")
+include(":androidApp")
 
 val env = System.getProperties()
 
