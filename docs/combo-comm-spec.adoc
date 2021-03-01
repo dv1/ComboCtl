@@ -1533,6 +1533,38 @@ Command mode specific error codes:
 * 0xF63C: CMD pump has internal error (RAM values changed)
 
 
+=== `AL_CMD_PING` :
+
+* Sent by: Client
+* Service ID: 0xB7
+* Command ID: 0x9AAA
+* Reliable: yes
+* Payload length: 0
+
+This informs the Combo that the Client is still alive. It is the
+Client -> Combo command mode counterpart to the `AL_RT_KEEP_ALIVE`
+command.
+
+Once the connection is established, and the command mode is enabled,
+the client must send a PING packet once every second.
+
+
+=== `AL_CMD_PING_RESPONSE` :
+
+* Sent by: Combo
+* Service ID: 0xB7
+* Command ID: 0xAAAA
+* Reliable: yes
+* Payload length: 2
+
+This informs the Client that the Combo is still alive. It is the
+Combo -> Client command mode counterpart to the `AL_RT_KEEP_ALIVE`
+command.
+
+The 2 payload bytes seem to be an error code similar to the one
+from `AL_CTRL_SERVICE_ERROR`. #TODO: Clarify this.#
+
+
 === `AL_RT_BUTTON_STATUS` :
 
 * Sent by: Client

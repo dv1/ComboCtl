@@ -142,6 +142,9 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
         CTRL_ALL_SERVICES_DEACTIVATED(ServiceID.CONTROL, 0xA06A, true),
         CTRL_SERVICE_ERROR(ServiceID.CONTROL, 0x00AA, true),
 
+        CMD_PING(ServiceID.COMMAND_MODE, 0x9AAA, true),
+        CMD_PING_RESPONSE(ServiceID.COMMAND_MODE, 0xAAAA, true),
+
         RT_BUTTON_STATUS(ServiceID.RT_MODE, 0x0565, false),
         RT_KEEP_ALIVE(ServiceID.RT_MODE, 0x0566, false),
         RT_BUTTON_CONFIRMATION(ServiceID.RT_MODE, 0x0556, false),
@@ -624,6 +627,19 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
                 commandIDValue = (payload[3].toPosInt() shl 0) or (payload[4].toPosInt() shl 8)
             )
         }
+
+        /**
+         * Creates a CMD_PING packet.
+         *
+         * The command mode must have been activated before this can be sent to the Combo.
+         *
+         * See the combo-comm-spec.adoc file for details about this packet.
+         *
+         * @return The produced packet.
+         */
+        fun createCMDPingPacket() = Packet(
+            command = Command.CMD_PING
+        )
 
         /**
          * Creates an RT_BUTTON_STATUS packet.

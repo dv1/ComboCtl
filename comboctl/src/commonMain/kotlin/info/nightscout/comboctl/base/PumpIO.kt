@@ -68,6 +68,9 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
     // Used for starting other coroutines such as the RT keep-alive loop.
     private var backgroundIOScope: CoroutineScope? = null
 
+    // Job representing the coroutine that runs the CMD ping loop.
+    private var cmdPingJob: Job? = null
+
     // Job representing the coroutine that runs the RT keep-alive loop.
     private var rtKeepAliveJob: Job? = null
 
@@ -143,9 +146,14 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
                 // As for the RT_BUTTON_CONFIRMATION and RT_KEEP_ALIVE packets, they are
                 // notifications that we don't need here, so we ignore them. (Note that
                 // RT_KEEP_ALIVE serves a dual purpose; we _do_ have to also send such
-                // packets _to_ the Combo. The rtKeepAliveJob takes care of that.)
+                // packets _to_ the Combo. The rtKeepAliveJob takes care of that.) Same
+                // goes for CMD_PING_RESPONSE values (which, as the name suggests, are
+                // responses to CMD_PING packets previously sent to the Combo).
 
                 when (appLayerPacket.command) {
+                    ApplicationLayerIO.Command.CMD_PING_RESPONSE -> {
+                        logger(LogLevel.VERBOSE) { "Got CMD_PING packet from the Combo; ignoring" }
+                    }
                     ApplicationLayerIO.Command.RT_DISPLAY ->
                         processRTDisplayPayload(ApplicationLayerIO.parseRTDisplayPacket(appLayerPacket))
                     ApplicationLayerIO.Command.RT_BUTTON_CONFIRMATION -> {
@@ -338,12 +346,14 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
      * [disconnect] is the counterpart to this function. It terminates
      * an existing connection and stops the worker.
      *
-     * This also laucnhes a loop inside the worker that keeps sending
+     * This also launches a loop inside the worker that keeps sending
      * out RT_KEEP_ALIVE packets if the pump is operating in the
      * REMOTE_TERMINAL (RT) mode. This is necessary to keep the connection
      * alive (if the pump does not get these in RT mode it closes the
      * connection). This is enabled by default, but can be disabled if
-     * needed. This is useful for unit tests for example.
+     * needed. This is useful for unit tests for example. If the pump
+     * is operating in COMMAND mode, it transmits CMD_PING packets in
+     * that loop instead.
      *
      * @param backgroundIOScope Coroutine scope to start the background
      *        worker in.
@@ -351,8 +361,9 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
      *        about exceptions that get thrown inside the worker.
      * @param initialMode What mode to initially switch to.
      * @param runKeepAliveLoop Whether or not to run a loop in the worker
-     *        that repeatedly sends out RT_KEEP_ALIVE packets if the
-     *        pump is running in the REMOTE_TERMINAL mode.
+     *        that repeatedly sends out RT_KEEP_ALIVE or CMD_PING packets
+     *        if the pump is running in the REMOTE_TERMINAL or COMMAND mode
+     *        respectively.
      * @return [kotlinx.coroutines.Job] representing the coroutine that
      *         runs the connection setup procedure.
      * @throws IllegalStateException if IO was already started by a
@@ -434,6 +445,7 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
      * After this call, [isConnected] will return false.
      */
     suspend fun disconnect() {
+        stopCMDPingBackgroundLoop()
         stopRTKeepAliveBackgroundLoop()
         applicationLayerIO.stopIO()
 
@@ -612,7 +624,7 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
      *
      * @param newMode Mode to switch to.
      * @param runKeepAliveLoop Whether or not to run a loop in the worker
-     *        that repeatedly sends out RT_KEEP_ALIVE packets.
+     *        that repeatedly sends out RT_KEEP_ALIVE or CMD_PING packets.
      * @throws IllegalStateException if the pump is not in the RT mode
      *         or the worker has failed (see [connect]).
      */
@@ -639,17 +651,26 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
 
         currentMode = newMode
 
+        val cmdPingRunning = isCMDPingBackgroundLoopRunning()
         val rtKeepAliveRunning = isRTKeepAliveBackgroundLoopRunning()
 
         if (runKeepAliveLoop) {
+            // If we just switched to the COMMAND mode, enable the CMD_PING
+            // background loop. Disable it if we switched to the RT mode.
+            if ((newMode == Mode.COMMAND) && !cmdPingRunning)
+                startCMDPingBackgroundLoop()
+            else if ((newMode != Mode.COMMAND) && cmdPingRunning)
+                stopCMDPingBackgroundLoop()
+
             // If we just switched to the RT mode, enable the RT_KEEP_ALIVE
             // background loop. Disable it if we switched to the command mode.
-
             if ((newMode == Mode.REMOTE_TERMINAL) && !rtKeepAliveRunning)
                 startRTKeepAliveBackgroundLoop()
             else if ((newMode != Mode.REMOTE_TERMINAL) && rtKeepAliveRunning)
                 stopRTKeepAliveBackgroundLoop()
         } else {
+            if (cmdPingRunning)
+                stopCMDPingBackgroundLoop()
             if (rtKeepAliveRunning)
                 stopRTKeepAliveBackgroundLoop()
         }
@@ -671,6 +692,43 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
             Button.MENU -> ApplicationLayerIO.RTButtonCode.MENU
             Button.CHECK -> ApplicationLayerIO.RTButtonCode.CHECK
         }
+
+    private fun startCMDPingBackgroundLoop() {
+        if (isCMDPingBackgroundLoopRunning())
+            return
+
+        logger(LogLevel.DEBUG) { "Starting background CMD PING loop" }
+
+        require(backgroundIOScope != null)
+
+        cmdPingJob = backgroundIOScope!!.launch {
+            // We have to send a CMD_PING packet to the Combo
+            // every second to let the Combo know that we are still
+            // there. Otherwise, it will terminate the connection,
+            // since it then assumes that we are no longer connected
+            // (for example due to a system crash).
+            while (true) {
+                logger(LogLevel.VERBOSE) { "Transmitting CMD ping packet" }
+                applicationLayerIO.sendPacket(ApplicationLayerIO.createCMDPingPacket())
+                delay(1000)
+            }
+        }
+    }
+
+    private suspend fun stopCMDPingBackgroundLoop() {
+        if (!isCMDPingBackgroundLoopRunning())
+            return
+
+        logger(LogLevel.DEBUG) { "Stopping background CMD ping loop" }
+
+        cmdPingJob!!.cancel()
+        cmdPingJob!!.join()
+        cmdPingJob = null
+
+        logger(LogLevel.DEBUG) { "Background CMD ping loop stopped" }
+    }
+
+    private fun isCMDPingBackgroundLoopRunning() = (cmdPingJob != null)
 
     private fun startRTKeepAliveBackgroundLoop() {
         if (isRTKeepAliveBackgroundLoopRunning())
