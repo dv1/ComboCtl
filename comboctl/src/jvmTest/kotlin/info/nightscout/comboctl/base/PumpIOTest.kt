@@ -55,6 +55,9 @@ class PumpIOTest {
             )
             testIO.sentPacketData.removeAt(0)
 
+            checkDisconnectPacketData(testIO.sentPacketData.last())
+            testIO.sentPacketData.removeAt(testIO.sentPacketData.size - 1)
+
             checkRTButtonStatusPacketData(
                 testIO.sentPacketData.last(),
                 ApplicationLayerIO.RTButtonCode.NO_BUTTON,
@@ -138,6 +141,11 @@ class PumpIOTest {
             assertEquals(ApplicationLayerIO.Command.RT_BUTTON_STATUS, appLayerPacket.command, "Application layer packet command mismatch")
             assertEquals(rtButtonCode.id.toByte(), appLayerPacket.payload[2], "RT_BUTTON_STATUS button byte mismatch")
             assertEquals((if (buttonStatusChangedFlag) 0xB7 else 0x48).toByte(), appLayerPacket.payload[3], "RT_BUTTON_STATUS status flag mismatch")
+        }
+
+        fun checkDisconnectPacketData(packetData: List<Byte>) {
+            val appLayerPacket = ApplicationLayerIO.Packet(packetData.toTransportLayerPacket())
+            assertEquals(ApplicationLayerIO.Command.CTRL_DISCONNECT, appLayerPacket.command, "Application layer packet command mismatch")
         }
     }
 
@@ -289,18 +297,19 @@ class PumpIOTest {
 
             testStates.checkAndRemoveInitialSentPackets()
 
-            assertEquals(2, testIO.sentPacketData.size)
+            assertEquals(3, testIO.sentPacketData.size)
 
             testStates.checkRTButtonStatusPacketData(
-                testIO.sentPacketData.first(),
+                testIO.sentPacketData[0],
                 ApplicationLayerIO.RTButtonCode.UP,
                 true
             )
             testStates.checkRTButtonStatusPacketData(
-                testIO.sentPacketData.last(),
+                testIO.sentPacketData[1],
                 ApplicationLayerIO.RTButtonCode.NO_BUTTON,
                 true
             )
+            testStates.checkDisconnectPacketData(testIO.sentPacketData[2])
         }
     }
 }

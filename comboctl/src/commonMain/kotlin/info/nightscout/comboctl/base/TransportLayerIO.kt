@@ -606,8 +606,20 @@ open class TransportLayerIO(persistentPumpStateStore: PersistentPumpStateStore, 
      * This also clears the "failed" mark on a failed worker.
      *
      * After this call, [isIORunning] will return false.
+     *
+     * Optionally, disconnectPacketInfo can be sent after the internal
+     * worker is shut down but before the rest of IO is cleaned up.
+     * This is useful for sending out a final disconnect packet that
+     * informs the pump that we are disconnecting. Responses from
+     * the pump to this packet will _not_ be received, since the worker
+     * that receives data is shut down at this point.
+     *
+     * @param disconnectPacketInfo Information about the final packet
+     *        to generate and send after the worker was shut down but
+     *        before the rest is cleaned up. If set to null, no packet
+     *        will be generated and sent.
      */
-    suspend fun stopIO() {
+    suspend fun stopIO(disconnectPacketInfo: OutgoingPacketInfo? = null) {
         if (backgroundIOWorkerJob == null)
             return
 
@@ -616,6 +628,26 @@ open class TransportLayerIO(persistentPumpStateStore: PersistentPumpStateStore, 
         backgroundIOWorkerJob!!.cancel()
         backgroundIOWorkerJob!!.join()
         backgroundIOWorkerJob = null
+
+        if (disconnectPacketInfo != null) {
+            try {
+                // This is also done in sendPacket(), but we can't use that
+                // function, because we turned off the background worker.
+                // Our goal here is to send out one last packet to let the
+                // pump know that we are disconnecting. That way, the pump
+                // can safely terminate its Bluetooth connection.
+                withContext(workerThreadDispatcherManager.dispatcher) {
+                    val packet = produceOutgoingPacket(disconnectPacketInfo)
+
+                    logger(LogLevel.VERBOSE) { "Sending transport layer packet: $packet" }
+                    comboIO.send(packet.toByteList())
+                    logger(LogLevel.VERBOSE) { "Packet sent" }
+                }
+            } catch (e: Exception) {
+                // Swallowing exception since we are anyway already disconnecting.
+                logger(LogLevel.ERROR) { "Caught exception while sending disconnect packet: $e" }
+            }
+        }
 
         // Release the single-threaded dispatcher here, since we do not need
         // it anymore, and not releasing it would cause a resource leak.

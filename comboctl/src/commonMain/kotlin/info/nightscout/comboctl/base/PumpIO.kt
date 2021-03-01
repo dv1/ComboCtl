@@ -289,12 +289,10 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
                 applicationLayerIO.sendPacket(TransportLayerIO.createRequestRegularConnectionPacketInfo())
                 applicationLayerIO.receiveTpLayerPacket(TransportLayerIO.Command.REGULAR_CONNECTION_REQUEST_ACCEPTED)
 
-                // Disconnect the application layer connection.
-                logger(LogLevel.DEBUG) { "Disconnecting application layer connection" }
-                applicationLayerIO.sendPacket(ApplicationLayerIO.createCTRLDisconnectPacket())
-
                 // Pairing complete.
                 logger(LogLevel.DEBUG) { "Pairing finished successfully" }
+
+                // Disconnect packet is automatically sent by stopIO().
             } finally {
                 applicationLayerIO.stopIO()
             }
@@ -435,8 +433,10 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
     suspend fun disconnect() {
         stopRTKeepAliveBackgroundLoop()
         applicationLayerIO.stopIO()
+
         backgroundIOScope = null
         currentMode = null
+
         logger(LogLevel.DEBUG) { "Pump IO disconnected" }
     }
 

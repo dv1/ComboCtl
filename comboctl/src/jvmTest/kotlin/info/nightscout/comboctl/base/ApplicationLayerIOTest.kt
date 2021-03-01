@@ -58,10 +58,14 @@ class ApplicationLayerIOTest {
 
             appLayerIO.stopIO()
 
-            assertEquals(1, testComboIO.sentPacketData.size)
+            assertEquals(2, testComboIO.sentPacketData.size)
             assertEquals(
                 ctrlConnectPacket,
                 ApplicationLayerIO.Packet(testComboIO.sentPacketData[0].toTransportLayerPacket())
+            )
+            assertEquals(
+                ApplicationLayerIO.Command.CTRL_DISCONNECT,
+                ApplicationLayerIO.Packet(testComboIO.sentPacketData[1].toTransportLayerPacket()).command
             )
 
             assertEquals(ctrlConnectResponsePacket, receivedPacket)
@@ -108,7 +112,11 @@ class ApplicationLayerIOTest {
 
             appLayerIO.stopIO()
 
-            assertEquals(3, testComboIO.sentPacketData.size)
+            assertEquals(4, testComboIO.sentPacketData.size)
+
+            val disconnectPacket = ApplicationLayerIO.Packet(testComboIO.sentPacketData.last().toTransportLayerPacket())
+            assertEquals(ApplicationLayerIO.Command.CTRL_DISCONNECT, disconnectPacket.command)
+            testComboIO.sentPacketData.removeAt(testComboIO.sentPacketData.size - 1)
 
             testComboIO.sentPacketData.forEachIndexed {
                 index, tpLayerPacketData ->

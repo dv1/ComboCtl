@@ -807,9 +807,19 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
      * This also clears the "failed" mark on a failed worker.
      *
      * After this call, [isIORunning] will return false.
+     *
+     * This will call the underlying transport layer's [TransportLayerIO.stopIO]
+     * function, and pass a CTRL_DISCONNECT packet as its disconnect packet.
+     * This is necessary, otherwise the pump will not disconnect itself properly.
+     * Especially in command mode this means that the pump will not respond and
+     * any blocking receive call will block until the pump's internal watchdog
+     * times out and resets the Bluetooth connection.
      */
     suspend fun stopIO() {
-        transportLayerIO.stopIO()
+        val disconnectPacketInfo = ApplicationLayerIO.createCTRLDisconnectPacket()
+        logger(LogLevel.VERBOSE) { "Will send application layer disconnect packet:  $disconnectPacketInfo" }
+
+        transportLayerIO.stopIO(disconnectPacketInfo.toTransportLayerPacketInfo())
     }
 
     /** Returns true if IO is ongoing (due to a [startIO] call), false otherwise. */
