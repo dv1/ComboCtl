@@ -479,8 +479,8 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
      * Valid display update reasons that an RT_DISPLAY packet can contain in its payload.
      */
     enum class RTDisplayUpdateReason(val id: Int) {
-        PUMP(0x48),
-        DM(0xB7);
+        UPDATED_BY_COMBO(0x48),
+        UPDATED_BY_CLIENT(0xB7);
 
         companion object {
             private val values = RTDisplayUpdateReason.values()
