@@ -851,6 +851,10 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
         // stateless, and we keep the currentRTSequence state change
         // isolated in here.
 
+        logger(LogLevel.VERBOSE) {
+            "Sending application layer packet via transport layer:  $appLayerPacket"
+        }
+
         val outgoingPacketInfo = appLayerPacket.toTransportLayerPacketInfo()
 
         if (appLayerPacket.command.serviceID == ServiceID.RT_MODE) {
