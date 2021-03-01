@@ -349,8 +349,10 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
      *        worker in.
      * @param onBackgroundIOException Optional callback for notifying
      *        about exceptions that get thrown inside the worker.
+     * @param initialMode What mode to initially switch to.
      * @param runKeepAliveLoop Whether or not to run a loop in the worker
-     *        that repeatedly sends out RT_KEEP_ALIVE packets.
+     *        that repeatedly sends out RT_KEEP_ALIVE packets if the
+     *        pump is running in the REMOTE_TERMINAL mode.
      * @return [kotlinx.coroutines.Job] representing the coroutine that
      *         runs the connection setup procedure.
      * @throws IllegalStateException if IO was already started by a
@@ -361,6 +363,7 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
     fun connect(
         backgroundIOScope: CoroutineScope,
         onBackgroundIOException: (e: Exception) -> Unit = { },
+        initialMode: Mode = Mode.REMOTE_TERMINAL,
         runKeepAliveLoop: Boolean = true
     ): Job {
         // Prerequisites.
@@ -401,8 +404,8 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
                 applicationLayerIO.sendPacket(ApplicationLayerIO.createCTRLConnectPacket())
                 applicationLayerIO.receiveAppLayerPacket(ApplicationLayerIO.Command.CTRL_CONNECT_RESPONSE)
 
-                // Make sure we are in the RT mode initially.
-                switchMode(Mode.REMOTE_TERMINAL, runKeepAliveLoop)
+                // Explicitely switch to the initial mode.
+                switchMode(initialMode, runKeepAliveLoop)
 
                 logger(LogLevel.INFO) { "Pump IO connected" }
             } catch (e: Exception) {

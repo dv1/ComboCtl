@@ -289,6 +289,7 @@ class Pump(
      *        worker in.
      * @param onBackgroundWorkerException Optional callback for notifying
      *        about exceptions that get thrown inside the worker.
+     * @param initialMode What mode to initially switch to.
      * @return [kotlinx.coroutines.Job] representing the coroutine that
      *         runs the connection setup procedure.
      * @throws IllegalStateException if IO was already started by a
@@ -298,7 +299,8 @@ class Pump(
      */
     fun connect(
         backgroundIOScope: CoroutineScope,
-        onBackgroundWorkerException: (e: Exception) -> Unit = { }
+        onBackgroundWorkerException: (e: Exception) -> Unit = { },
+        initialMode: PumpIO.Mode = PumpIO.Mode.REMOTE_TERMINAL
     ): Job {
         if (pumpIO.isConnected())
             throw IllegalStateException("Already connected to Combo")
@@ -324,7 +326,12 @@ class Pump(
             // to make sure the coroutine here waits until the sub-coroutine
             // that is started by pumpIO.connect() finishes.
             runChecked {
-                pumpIO.connect(backgroundIOScope, onBackgroundWorkerException).join()
+                pumpIO.connect(
+                    backgroundIOScope = backgroundIOScope,
+                    onBackgroundIOException = onBackgroundWorkerException,
+                    initialMode = initialMode,
+                    runKeepAliveLoop = true
+                ).join()
             }
         }
     }
