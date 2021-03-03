@@ -17,7 +17,7 @@ kotlin {
     sourceSets {
         val commonMain by getting {
             dependencies {
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.4.0")
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.4.3")
                 // Need to use project.dependencies.platform() instead of platform()
                 // due to this bug: https://youtrack.jetbrains.com/issue/KT-40489
                 implementation(project.dependencies.platform("org.jetbrains.kotlin:kotlin-bom"))

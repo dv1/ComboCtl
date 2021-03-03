@@ -22,7 +22,7 @@ sourceSets {
 dependencies {
     implementation(project(":comboctl"))
     implementation(project(":devtools:common"))
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.4.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.4.3")
 }
 
 // TODO: Move this code to the root buildscript and refactor
