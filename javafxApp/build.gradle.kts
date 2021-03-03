@@ -23,10 +23,6 @@ sourceSets {
     // https://stackoverflow.com/a/20677016/560774
 }
 
-repositories {
-    jcenter()
-}
-
 javafx {
     modules = listOf("javafx.controls", "javafx.fxml", "javafx.web")
 }
