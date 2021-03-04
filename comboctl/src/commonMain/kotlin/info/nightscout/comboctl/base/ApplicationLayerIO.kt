@@ -1,6 +1,8 @@
 package info.nightscout.comboctl.base
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 private val logger = Logger.get("ApplicationLayerIO")
 
@@ -95,6 +97,9 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
     // Internal TransportLayerIO instance used as the
     // foundation for the application layer IO.
     private val transportLayerIO: TransportLayerIO
+
+    // Mutex to synchronize sendPacketWithResponse calls.
+    private val sendPacketWithResponseMutex = Mutex()
 
     /************************************
      *** PUBLIC FUNCTIONS AND CLASSES ***
@@ -846,7 +851,7 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
     fun isIORunning() = transportLayerIO.isIORunning()
 
     /**
-     * Sends application layer packets to the Combo.
+     * Sends application layer packets to the Combo, and does not wait for a response.
      *
      * This wraps the application layer packet in a transport layer
      * DATA packet by placing the application layer packet as the payload
@@ -870,7 +875,7 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
      *         and its payload is not big enough to contain the RT sequence
      *         number, indicating that this is an invalid / malformed packet.
      */
-    suspend fun sendPacket(appLayerPacket: Packet) {
+    suspend fun sendPacketNoResponse(appLayerPacket: Packet) {
         // RT packets contain a sequence number which is incremented
         // every time an RT packet is sent out. Since the create*
         // functions are stateless, the RT sequence number that is
@@ -917,14 +922,73 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
     }
 
     /**
-     * Sends transport layer packets to the Combo.
+     * Sends application layer packets to the Combo, and waits for a response.
+     *
+     * This is essentially a combination of [sendPacketNoResponse]
+     * and [receiveAppLayerPacket], but synchronized to prevent multiple
+     * sendPacketWithResponse calls from happening concurrently. This is
+     * necessary with many commands that have corresponding response commands
+     * coming from the Combo. With such commands, it is important to wait
+     * for the response before sending another such command.
+     *
+     * @param appLayerPacket Information about the application layer packet to send.
+     * @param expectedResponseCommand Optional TransportLayerIO Packet command to check for.
+     * @throws IllegalStateException if the background IO worker is not
+     *         running or if it has failed.
+     * @throws ComboIOException if sending fails due to an underlying IO error.
+     * @throws InvalidPayloadException if appLayerPacket is an RT packet
+     *         and its payload is not big enough to contain the RT sequence
+     *         number, indicating that this is an invalid / malformed packet.
+     * @throws TransportLayerIO.BackgroundIOException if an exception is thrown
+     *         inside the worker while this call is waiting for a response.
+     * @throws IncorrectPacketException if expectedCommand is non-null and
+     *         the received packet's command does not match expectedCommand.
+     */
+    suspend fun sendPacketWithResponse(
+        appLayerPacket: Packet,
+        expectedResponseCommand: ApplicationLayerIO.Command? = null
+    ): Packet = sendPacketWithResponseMutex.withLock {
+        sendPacketNoResponse(appLayerPacket)
+        return receiveAppLayerPacket(expectedResponseCommand)
+    }
+
+    /**
+     * Sends transport layer packets to the Combo, and does not wait for a response.
      *
      * This passes the [TransportLayerIO.OutgoingPacketInfo] instance
      * directly to the internal TransportLayerIO instance. Consult
      * the [TransportLayerIO.sendPacket] documentation for details.
      */
-    suspend fun sendPacket(tpLayerPacketInfo: TransportLayerIO.OutgoingPacketInfo) =
+    suspend fun sendPacketNoResponse(tpLayerPacketInfo: TransportLayerIO.OutgoingPacketInfo) =
         transportLayerIO.sendPacket(tpLayerPacketInfo)
+
+    /**
+     * Sends transport layer packets to the Combo, and waits for a response.
+     *
+     * This is essentially a combination of [transportLayerIO.sendPacket]
+     * and [receiveTpLayerPacket], but synchronized to prevent multiple
+     * sendPacketWithResponse calls from happening concurrently. This is
+     * necessary with many commands that have corresponding response commands
+     * coming from the Combo. With such commands, it is important to wait
+     * for the response before sending another such command.
+     *
+     * @param tpLayerPacketInfo Information about the transport layer packet to send.
+     * @param expectedResponseCommand Optional TransportLayerIO Packet command to check for.
+     * @throws IllegalStateException if the background IO worker is not
+     *         running or if it has failed.
+     * @throws ComboIOException if sending fails due to an underlying IO error.
+     * @throws TransportLayerIO.BackgroundIOException if an exception is thrown
+     *         inside the worker while this call is waiting for a response.
+     * @throws IncorrectPacketException if expectedCommand is non-null and
+     *         the received packet's command does not match expectedCommand.
+     */
+    suspend fun sendPacketWithResponse(
+        tpLayerPacketInfo: TransportLayerIO.OutgoingPacketInfo,
+        expectedResponseCommand: TransportLayerIO.Command? = null
+    ): TransportLayerIO.Packet = sendPacketWithResponseMutex.withLock {
+        transportLayerIO.sendPacket(tpLayerPacketInfo)
+        return receiveTpLayerPacket(expectedResponseCommand)
+    }
 
     /**
      * Receives application layer packets from the Combo.

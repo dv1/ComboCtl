@@ -45,7 +45,7 @@ class ApplicationLayerIOTest {
                 pairingPINCallback = { nullPairingPIN() }
             )
 
-            appLayerIO.sendPacket(ctrlConnectPacket)
+            appLayerIO.sendPacketNoResponse(ctrlConnectPacket)
 
             // "Receive" by feeding the simulated data into the IO object.
             testComboIO.feedIncomingData(
@@ -106,9 +106,9 @@ class ApplicationLayerIOTest {
                 pairingPINCallback = { nullPairingPIN() }
             )
 
-            appLayerIO.sendPacket(ApplicationLayerIO.createRTKeepAlivePacket())
-            appLayerIO.sendPacket(ApplicationLayerIO.createRTKeepAlivePacket())
-            appLayerIO.sendPacket(ApplicationLayerIO.createRTKeepAlivePacket())
+            appLayerIO.sendPacketNoResponse(ApplicationLayerIO.createRTKeepAlivePacket())
+            appLayerIO.sendPacketNoResponse(ApplicationLayerIO.createRTKeepAlivePacket())
+            appLayerIO.sendPacketNoResponse(ApplicationLayerIO.createRTKeepAlivePacket())
 
             appLayerIO.stopIO()
 
