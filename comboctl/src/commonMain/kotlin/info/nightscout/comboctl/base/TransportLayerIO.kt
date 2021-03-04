@@ -109,6 +109,11 @@ open class TransportLayerIO(persistentPumpStateStore: PersistentPumpStateStore, 
 
     private var onBackgroundIOException: (e: Exception) -> Unit = { }
 
+    // Flag set to suppress exceptions happening during shutdown.
+    // This is accessed only from within the single-threaded worker
+    // thread dispatcher (see below) to avoid race conditions.
+    private var ignoreBackgroundWorkerErrors = false
+
     private var pairingPINCallback: PairingPINCallback = { nullPairingPIN() }
 
     // The single-threaded dispatcher manager for the background worker coroutines.
@@ -583,10 +588,18 @@ open class TransportLayerIO(persistentPumpStateStore: PersistentPumpStateStore, 
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger(LogLevel.DEBUG) { "Caught exception in background IO worker: $e" }
+                // Don't pass the exception to the callback
+                // if errors are to be ignored.
+                if (ignoreBackgroundWorkerErrors) {
+                    logger(LogLevel.VERBOSE) {
+                        "Caught exception in background IO worker: $e ; will not propagate since background worker errors are to be ignored"
+                    }
+                } else {
+                    logger(LogLevel.DEBUG) { "Caught exception in background IO worker: $e" }
 
-                // Notify about the exception.
-                onBackgroundIOException(e)
+                    // Notify about the exception.
+                    onBackgroundIOException(e)
+                }
 
                 // Close the channel, citing the exception as the reason why.
                 incomingPacketChannel.close(e)
@@ -623,19 +636,24 @@ open class TransportLayerIO(persistentPumpStateStore: PersistentPumpStateStore, 
         if (backgroundIOWorkerJob == null)
             return
 
-        logger(LogLevel.VERBOSE) { "Stopping background IO worker" }
+        // Set the ignoreBackgroundWorkerErrors flag. This prevents exceptions
+        // in the worker from propagating. We don't want that here, since we
+        // are shutting down IO anyway, so error notifications here are not
+        // useful and just cause confusion. Exceptions can happen during
+        // shutdown when the connection is terminated by the Combo, so we
+        // do need to set that flag here.
+        withContext(workerThreadDispatcherManager.dispatcher) {
+            logger(LogLevel.VERBOSE) { "Set background worker errors as to be ignored since we are stopping IO anyway" }
+            ignoreBackgroundWorkerErrors = true
+        }
 
-        backgroundIOWorkerJob!!.cancel()
-        backgroundIOWorkerJob!!.join()
-        backgroundIOWorkerJob = null
-
+        // Send the disconnect packet. This will cause the Combo to terminate
+        // the connection, so any blocking read call in the worker will be
+        // interrupted and throw an IO exception. These are ignored (see above).
         if (disconnectPacketInfo != null) {
             try {
-                // This is also done in sendPacket(), but we can't use that
-                // function, because we turned off the background worker.
-                // Our goal here is to send out one last packet to let the
-                // pump know that we are disconnecting. That way, the pump
-                // can safely terminate its Bluetooth connection.
+                // We do not use sendPacke() here, since we need to send the
+                // disconnect packet even if the worker failed.
                 withContext(workerThreadDispatcherManager.dispatcher) {
                     val packet = produceOutgoingPacket(disconnectPacketInfo)
 
@@ -649,11 +667,21 @@ open class TransportLayerIO(persistentPumpStateStore: PersistentPumpStateStore, 
             }
         }
 
+        // Now shut down the worker.
+        logger(LogLevel.VERBOSE) { "Stopping background IO worker" }
+        backgroundIOWorkerJob!!.cancel()
+        backgroundIOWorkerJob!!.join()
+        backgroundIOWorkerJob = null
+        logger(LogLevel.VERBOSE) { "Background IO worker stopped" }
+
         // Release the single-threaded dispatcher here, since we do not need
         // it anymore, and not releasing it would cause a resource leak.
         workerThreadDispatcherManager.releaseDispatcher()
 
-        logger(LogLevel.VERBOSE) { "Background IO worker stopped" }
+        // Reset the ignoreBackgroundWorkerErrors flag. We can do this
+        // here, outside of the single-threaded dispatcher, since the
+        // worker is no longer running, so race conditions cannot happen.
+        ignoreBackgroundWorkerErrors = false
     }
 
     /** Returns true if IO is ongoing (due to a [startIO] call), false otherwise. */
