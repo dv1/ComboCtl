@@ -8,7 +8,7 @@ version = "1.0-SNAPSHOT"
 
 buildscript {
     repositories {
-        jcenter()
+        mavenCentral()
         google()
     }
     dependencies {
@@ -37,8 +37,15 @@ allprojects {
     }
 
     repositories {
-        jcenter()
+        mavenCentral()
         google()
+        // trove4j is currently not present in mavenCentral. See:
+        // https://stackoverflow.com/questions/66049196/replacing-jcenter-in-android-gradle-repositories
+        jcenter() {
+            content {
+                includeModule("org.jetbrains.trove4j", "trove4j")
+            }
+        }
     }
 
     apply(plugin = "org.jlleitschuh.gradle.ktlint")
