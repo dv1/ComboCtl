@@ -22,6 +22,7 @@ internal expect fun ioDispatcher(): CoroutineDispatcher
 // threaded executor service in the JVM, which provides this
 // functionality, but has to be manually ended by calling
 // its shutdown() function.
+// Note that the functions must not throw.
 internal expect class SingleThreadDispatcherManager() {
     fun acquireDispatcher()
     fun releaseDispatcher()
