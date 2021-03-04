@@ -3,6 +3,7 @@ package info.nightscout.comboctl.base
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -627,61 +628,100 @@ open class TransportLayerIO(persistentPumpStateStore: PersistentPumpStateStore, 
      * the pump to this packet will _not_ be received, since the worker
      * that receives data is shut down at this point.
      *
+     * Typically, to unblock ongoing blocking send / receive calls, it
+     * is necessary to close / disconnect a device object that is being
+     * used for communicating with the pump. Such a call must happen
+     * at a specific moment to not let blocking IO calls prevent the
+     * correct shutdown. For example, when the worker is being shut
+     * down, stopIO waits for the worker's coroutine to end. If the
+     * worker is currently blocked by a receive() call, the coroutine
+     * will never end, and stopIO will also never end. Thus, it is
+     * necessary to unblock that receive() call. By invoking the
+     * disconnectDeviceCallback _before_ stopping the worker, this
+     * problem is avoided.
+     *
      * @param disconnectPacketInfo Information about the final packet
      *        to generate and send after the worker was shut down but
      *        before the rest is cleaned up. If set to null, no packet
      *        will be generated and sent.
+     * @param disconnectDeviceCallback Callback to be invoked during
+     *        the shutdown procedure.
      */
-    suspend fun stopIO(disconnectPacketInfo: OutgoingPacketInfo? = null) {
-        if (backgroundIOWorkerJob == null)
+    suspend fun stopIO(disconnectPacketInfo: OutgoingPacketInfo? = null, disconnectDeviceCallback: suspend () -> Unit = { }) {
+        if (backgroundIOWorkerJob == null) {
+            disconnectDeviceCallback()
             return
-
-        // Set the ignoreBackgroundWorkerErrors flag. This prevents exceptions
-        // in the worker from propagating. We don't want that here, since we
-        // are shutting down IO anyway, so error notifications here are not
-        // useful and just cause confusion. Exceptions can happen during
-        // shutdown when the connection is terminated by the Combo, so we
-        // do need to set that flag here.
-        withContext(workerThreadDispatcherManager.dispatcher) {
-            logger(LogLevel.VERBOSE) { "Set background worker errors as to be ignored since we are stopping IO anyway" }
-            ignoreBackgroundWorkerErrors = true
         }
 
-        // Send the disconnect packet. This will cause the Combo to terminate
-        // the connection, so any blocking read call in the worker will be
-        // interrupted and throw an IO exception. These are ignored (see above).
-        if (disconnectPacketInfo != null) {
-            try {
-                // We do not use sendPacke() here, since we need to send the
-                // disconnect packet even if the worker failed.
-                withContext(workerThreadDispatcherManager.dispatcher) {
-                    val packet = produceOutgoingPacket(disconnectPacketInfo)
-
-                    logger(LogLevel.VERBOSE) { "Sending transport layer packet: $packet" }
-                    comboIO.send(packet.toByteList())
-                    logger(LogLevel.VERBOSE) { "Packet sent" }
-                }
-            } catch (e: Exception) {
-                // Swallowing exception since we are anyway already disconnecting.
-                logger(LogLevel.ERROR) { "Caught exception while sending disconnect packet: $e" }
+        try {
+            // Set the ignoreBackgroundWorkerErrors flag. This prevents exceptions
+            // in the worker from propagating. We don't want that here, since we
+            // are shutting down IO anyway, so error notifications here are not
+            // useful and just cause confusion. Exceptions can happen during
+            // shutdown when the connection is terminated by the Combo, so we
+            // do need to set that flag here.
+            withContext(workerThreadDispatcherManager.dispatcher) {
+                logger(LogLevel.VERBOSE) { "Set background worker errors as to be ignored since we are stopping IO anyway" }
+                ignoreBackgroundWorkerErrors = true
             }
+
+            // Send the disconnect packet. This will cause the Combo to terminate
+            // the connection, so any blocking read call in the worker will be
+            // interrupted and throw an IO exception. These are ignored (see above).
+            if (disconnectPacketInfo != null) {
+                try {
+                    // We do not use sendPacke() here, since we need to send the
+                    // disconnect packet even if the worker failed.
+                    withContext(workerThreadDispatcherManager.dispatcher) {
+                        val packet = produceOutgoingPacket(disconnectPacketInfo)
+
+                        logger(LogLevel.VERBOSE) { "Sending transport layer packet: $packet" }
+                        comboIO.send(packet.toByteList())
+                        logger(LogLevel.VERBOSE) { "Packet sent" }
+                    }
+                } catch (e: Exception) {
+                    // Swallowing exception since we are anyway already disconnecting.
+                    logger(LogLevel.ERROR) { "Caught exception while sending disconnect packet: $e" }
+                }
+            }
+        } finally {
+            // The rest of the function concerns itself with the actual
+            // disconnect and with cleanup, which must always happen.
+            // Therefore, we perform this in the finally block.
+
+            // Do device specific disconnect here to unblock any ongoing
+            // blocking receive / send calls. Normally, this is not
+            // necessary, since the Combo terminates the connection once
+            // the disconnect packet gets transmitted. But in case the
+            // Combo doesn't terminate the connection (for example, because
+            // the packet never arrived), we still have to make sure that
+            // the blocking calls are unblocked right away.
+            //
+            // We call this in a finally block to make sure it is always
+            // called, even if for example a CancellationException is thrown.
+            disconnectDeviceCallback()
+
+            // Now shut down the worker.
+            logger(LogLevel.VERBOSE) { "Stopping background IO worker" }
+            try {
+                backgroundIOWorkerJob!!.cancelAndJoin()
+            } catch (e: Exception) {
+                logger(LogLevel.WARN) { "Exception while cancelling worker: $e ; swallowing this exception" }
+                // We are tearing down the worker job already,
+                // so we swallow exceptions here.
+            }
+            backgroundIOWorkerJob = null
+            logger(LogLevel.VERBOSE) { "Background IO worker stopped" }
+
+            // Release the single-threaded dispatcher here, since we do not need
+            // it anymore, and not releasing it would cause a resource leak.
+            workerThreadDispatcherManager.releaseDispatcher()
+
+            // Reset the ignoreBackgroundWorkerErrors flag. We can do this
+            // here, outside of the single-threaded dispatcher, since the
+            // worker is no longer running, so race conditions cannot happen.
+            ignoreBackgroundWorkerErrors = false
         }
-
-        // Now shut down the worker.
-        logger(LogLevel.VERBOSE) { "Stopping background IO worker" }
-        backgroundIOWorkerJob!!.cancel()
-        backgroundIOWorkerJob!!.join()
-        backgroundIOWorkerJob = null
-        logger(LogLevel.VERBOSE) { "Background IO worker stopped" }
-
-        // Release the single-threaded dispatcher here, since we do not need
-        // it anymore, and not releasing it would cause a resource leak.
-        workerThreadDispatcherManager.releaseDispatcher()
-
-        // Reset the ignoreBackgroundWorkerErrors flag. We can do this
-        // here, outside of the single-threaded dispatcher, since the
-        // worker is no longer running, so race conditions cannot happen.
-        ignoreBackgroundWorkerErrors = false
     }
 
     /** Returns true if IO is ongoing (due to a [startIO] call), false otherwise. */

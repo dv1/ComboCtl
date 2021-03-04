@@ -359,17 +359,16 @@ class Pump(
             return
         }
 
-        // Wrap the disconnect packet sequence in a try-finally block
-        // to make sure we always terminate the Bluetooth connection
-        // no matter what, even in case of an exception.
-        // (We only expect a CancellationException to happen here though,
-        // since pumpIO.disconnect() does not throw.)
-        try {
-            pumpIO.disconnect()
-        } finally {
+        // Perform the actual disconnect. During that process,
+        // the disconnectBTDeviceAndCatchExceptions() will be
+        // called to make sure the Bluetooth connection is
+        // terminated and any blocking send / receive calls
+        // are unblocked.
+        pumpIO.disconnect {
             disconnectBTDeviceAndCatchExceptions()
-            logger(LogLevel.INFO) { "Disconnected from Combo with address ${bluetoothDevice.address}" }
         }
+
+        logger(LogLevel.INFO) { "Disconnected from Combo with address ${bluetoothDevice.address}" }
     }
 
     /** Returns true if the pump is connected, false otherwise. */

@@ -443,11 +443,15 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
      * This also clears the "failed" mark on a failed worker.
      *
      * After this call, [isConnected] will return false.
+     *
+     * @param disconnectDeviceCallback Callback to be invoked during the
+     *        shutdown process to disconnect a device object. See the
+     *        [TransportLayerIO.stopIO] documentation for details.
      */
-    suspend fun disconnect() {
+    suspend fun disconnect(disconnectDeviceCallback: suspend () -> Unit = { }) {
         stopCMDPingBackgroundLoop()
         stopRTKeepAliveBackgroundLoop()
-        applicationLayerIO.stopIO()
+        applicationLayerIO.stopIO(disconnectDeviceCallback)
 
         backgroundIOScope = null
         currentMode = null

@@ -830,12 +830,16 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
      * Especially in command mode this means that the pump will not respond and
      * any blocking receive call will block until the pump's internal watchdog
      * times out and resets the Bluetooth connection.
+     *
+     * @param disconnectDeviceCallback Callback to be invoked during the
+     *        shutdown process to disconnect a device object. See the
+     *        [TransportLayerIO.stopIO] documentation for details.
      */
-    suspend fun stopIO() {
+    suspend fun stopIO(disconnectDeviceCallback: suspend () -> Unit = { }) {
         val disconnectPacketInfo = ApplicationLayerIO.createCTRLDisconnectPacket()
         logger(LogLevel.VERBOSE) { "Will send application layer disconnect packet:  $disconnectPacketInfo" }
 
-        transportLayerIO.stopIO(disconnectPacketInfo.toTransportLayerPacketInfo())
+        transportLayerIO.stopIO(disconnectPacketInfo.toTransportLayerPacketInfo(), disconnectDeviceCallback)
     }
 
     /** Returns true if IO is ongoing (due to a [startIO] call), false otherwise. */
