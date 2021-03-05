@@ -4,6 +4,24 @@ import kotlin.math.max
 import kotlin.math.min
 
 /**
+ * Simple data class for storing local time.
+ *
+ * This is used when retrieving history data from the pump.
+ */
+data class DateTime(
+    val years: Int,
+    val months: Int,
+    val days: Int,
+    val hours: Int,
+    val minutes: Int,
+    val seconds: Int
+) {
+    override fun toString() =
+        "$years-${months.toString().padStart(2, '0')}-${days.toString().padStart(2, '0')} " +
+        "${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}"
+}
+
+/**
  * Produces a ByteArray out of a sequence of integers.
  *
  * Producing a ByteArray with arrayOf() is only possible if the values
