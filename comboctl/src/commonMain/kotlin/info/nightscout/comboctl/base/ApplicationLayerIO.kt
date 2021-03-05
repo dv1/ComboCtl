@@ -143,6 +143,8 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
         CTRL_DISCONNECT(ServiceID.CONTROL, 0x005A, true),
         CTRL_ACTIVATE_SERVICE(ServiceID.CONTROL, 0x9066, true),
         CTRL_ACTIVATE_SERVICE_RESPONSE(ServiceID.CONTROL, 0xA066, true),
+        CTRL_DEACTIVATE_SERVICE(ServiceID.CONTROL, 0x9069, true),
+        CTRL_DEACTIVATE_SERVICE_RESPONSE(ServiceID.CONTROL, 0xA069, true),
         CTRL_DEACTIVATE_ALL_SERVICES(ServiceID.CONTROL, 0x906A, true),
         CTRL_ALL_SERVICES_DEACTIVATED(ServiceID.CONTROL, 0xA06A, true),
         CTRL_SERVICE_ERROR(ServiceID.CONTROL, 0x00AA, true),
@@ -749,6 +751,21 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
         fun createCTRLActivateServicePacket(serviceID: ServiceID) = Packet(
             command = Command.CTRL_ACTIVATE_SERVICE,
             payload = byteArrayListOfInts(serviceID.id, 1, 0)
+        )
+
+        /**
+         * Creates a CTRL_DEACTIVATE_SERVICE packet.
+         *
+         * This deactivates the active service with the given ID.
+         *
+         * See the combo-comm-spec.adoc file for details about this packet.
+         *
+         * @param serviceID ID of the service to deactivate.
+         * @return The produced packet.
+         */
+        fun createCTRLDeactivateServicePacket(serviceID: ServiceID) = Packet(
+            command = Command.CTRL_DEACTIVATE_SERVICE,
+            payload = byteArrayListOfInts(serviceID.id)
         )
 
         /**

@@ -736,13 +736,11 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
      * If the mode specified by newMode is the same as the current mode,
      * this function does nothing.
      *
-     * TODO: This is experimental. Switching modes has not been attempted yet.
-     *
      * @param newMode Mode to switch to.
      * @param runKeepAliveLoop Whether or not to run a loop in the worker
      *        that repeatedly sends out RT_KEEP_ALIVE or CMD_PING packets.
-     * @throws IllegalStateException if the pump is not in the RT mode
-     *         or the worker has failed (see [connect]).
+     * @throws IllegalStateException if the pump is not connected.
+     * @throws ComboIOException if IO with the pump fails.
      */
     suspend fun switchMode(newMode: Mode, runKeepAliveLoop: Boolean = true) {
         if (!isConnected())
@@ -753,8 +751,26 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
 
         logger(LogLevel.DEBUG) { "Switching mode from $currentMode to $newMode" }
 
+        stopCMDPingBackgroundLoop()
+        stopRTKeepAliveBackgroundLoop()
+
         // Send the command to switch the mode.
 
+        if (currentMode != null) {
+            val modeToDeactivate = currentMode!!
+            logger(LogLevel.VERBOSE) { "Deactivating current service" }
+            applicationLayerIO.sendPacketWithResponse(
+                ApplicationLayerIO.createCTRLDeactivateServicePacket(
+                    when (modeToDeactivate) {
+                        Mode.REMOTE_TERMINAL -> ApplicationLayerIO.ServiceID.RT_MODE
+                        Mode.COMMAND -> ApplicationLayerIO.ServiceID.COMMAND_MODE
+                    }
+                ),
+                ApplicationLayerIO.Command.CTRL_DEACTIVATE_SERVICE_RESPONSE
+            )
+        }
+
+        logger(LogLevel.VERBOSE) { "Activating new service" }
         applicationLayerIO.sendPacketWithResponse(
             ApplicationLayerIO.createCTRLActivateServicePacket(
                 when (newMode) {
@@ -767,28 +783,12 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
 
         currentMode = newMode
 
-        val cmdPingRunning = isCMDPingBackgroundLoopRunning()
-        val rtKeepAliveRunning = isRTKeepAliveBackgroundLoopRunning()
-
         if (runKeepAliveLoop) {
-            // If we just switched to the COMMAND mode, enable the CMD_PING
-            // background loop. Disable it if we switched to the RT mode.
-            if ((newMode == Mode.COMMAND) && !cmdPingRunning)
-                startCMDPingBackgroundLoop()
-            else if ((newMode != Mode.COMMAND) && cmdPingRunning)
-                stopCMDPingBackgroundLoop()
-
-            // If we just switched to the RT mode, enable the RT_KEEP_ALIVE
-            // background loop. Disable it if we switched to the command mode.
-            if ((newMode == Mode.REMOTE_TERMINAL) && !rtKeepAliveRunning)
-                startRTKeepAliveBackgroundLoop()
-            else if ((newMode != Mode.REMOTE_TERMINAL) && rtKeepAliveRunning)
-                stopRTKeepAliveBackgroundLoop()
-        } else {
-            if (cmdPingRunning)
-                stopCMDPingBackgroundLoop()
-            if (rtKeepAliveRunning)
-                stopRTKeepAliveBackgroundLoop()
+            logger(LogLevel.VERBOSE) { "(Re)starting keep-alive loop" }
+            when (newMode) {
+                Mode.COMMAND -> startCMDPingBackgroundLoop()
+                Mode.REMOTE_TERMINAL -> startRTKeepAliveBackgroundLoop()
+            }
         }
     }
 

@@ -408,8 +408,6 @@ class Pump(
         if (!pumpIO.isConnected())
             throw IllegalStateException("Not connected to Combo")
 
-        switchMode(PumpIO.Mode.COMMAND)
-
         return runChecked {
             pumpIO.getCMDHistoryDelta(maxRequests)
         }
@@ -443,8 +441,6 @@ class Pump(
     suspend fun sendShortRTButtonPress(buttons: List<PumpIO.Button>) {
         if (!pumpIO.isConnected())
             throw IllegalStateException("Not connected to Combo")
-
-        switchMode(PumpIO.Mode.REMOTE_TERMINAL)
 
         runChecked {
             pumpIO.sendShortRTButtonPress(buttons)
@@ -487,8 +483,6 @@ class Pump(
         if (!pumpIO.isConnected())
             throw IllegalStateException("Not connected to Combo")
 
-        switchMode(PumpIO.Mode.REMOTE_TERMINAL)
-
         runChecked {
             pumpIO.startLongRTButtonPress(buttons)
         }
@@ -523,33 +517,31 @@ class Pump(
         if (!pumpIO.isConnected())
             throw IllegalStateException("Not connected to Combo")
 
-        switchMode(PumpIO.Mode.REMOTE_TERMINAL)
-
         runChecked {
             pumpIO.stopLongRTButtonPress()
         }
     }
 
-    private suspend fun disconnectBTDeviceAndCatchExceptions() {
-        // Disconnect the Bluetooth device and catch exceptions.
-        // disconnectBTDeviceAndCatchExceptions() is a function that gets called
-        // in catch and finally blocks, so propagating exceptions
-        // here would only complicate matters, because disconnect()
-        // gets called in catch blocks.
-        try {
-            withContext(ioDispatcher()) {
-                bluetoothDevice.disconnect()
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            logger(LogLevel.ERROR) {
-                "Caught exception during Bluetooth device disconnect; not propagating; exception: $e"
-            }
-        }
-    }
-
-    private suspend fun switchMode(newMode: PumpIO.Mode) {
+    /**
+     * Switches the operating mode of the pump.
+     *
+     * The pump can run in one of two modes: The COMMAND mode and the
+     * REMOTE_TERMINAL (RT) mode. After connecting, the pump is running in
+     * one of these two modes (which one is initially used can be specified
+     * as an argument to [connect]). Switching to a different mode afterwards
+     * is accomplished by calling this function.
+     *
+     * If an attempt is made to switch to the mode that is already active,
+     * this function does nothing.
+     *
+     * If an exception occurs, either disconnect, or try to repeat the mode
+     * switch. This is important to make sure the pump is in a known mode.
+     *
+     * @param newMode Mode to switch to.
+     * @throws IllegalStateException if the pump is not connected.
+     * @throws ComboIOException if IO with the pump fails.
+     */
+    suspend fun switchMode(newMode: PumpIO.Mode) {
         try {
             pumpIO.switchMode(newMode)
         } catch (e: Exception) {
@@ -569,6 +561,25 @@ class Pump(
 
             disconnectBTDeviceAndCatchExceptions()
             throw e
+        }
+    }
+
+    private suspend fun disconnectBTDeviceAndCatchExceptions() {
+        // Disconnect the Bluetooth device and catch exceptions.
+        // disconnectBTDeviceAndCatchExceptions() is a function that gets called
+        // in catch and finally blocks, so propagating exceptions
+        // here would only complicate matters, because disconnect()
+        // gets called in catch blocks.
+        try {
+            withContext(ioDispatcher()) {
+                bluetoothDevice.disconnect()
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logger(LogLevel.ERROR) {
+                "Caught exception during Bluetooth device disconnect; not propagating; exception: $e"
+            }
         }
     }
 
