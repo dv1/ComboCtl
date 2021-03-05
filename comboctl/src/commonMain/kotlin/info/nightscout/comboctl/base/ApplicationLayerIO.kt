@@ -151,6 +151,8 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
 
         CMD_PING(ServiceID.COMMAND_MODE, 0x9AAA, true),
         CMD_PING_RESPONSE(ServiceID.COMMAND_MODE, 0xAAAA, true),
+        CMD_READ_PUMP_STATUS(ServiceID.COMMAND_MODE, 0x9A9A, true),
+        CMD_READ_PUMP_STATUS_RESPONSE(ServiceID.COMMAND_MODE, 0xAA9A, true),
         CMD_READ_HISTORY_BLOCK(ServiceID.COMMAND_MODE, 0x9996, true),
         CMD_READ_HISTORY_BLOCK_RESPONSE(ServiceID.COMMAND_MODE, 0xA996, true),
         CMD_CONFIRM_HISTORY_BLOCK(ServiceID.COMMAND_MODE, 0x9999, true),
@@ -506,6 +508,16 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
     }
 
     /**
+     * Possible status the pump can be in.
+     */
+    enum class CMDPumpStatus(val str: String) {
+        STOPPED("STOPPED"),
+        RUNNING("RUNNING");
+
+        override fun toString() = str
+    }
+
+    /**
      * Command mode history event details.
      */
     sealed class CMDHistoryEventDetail {
@@ -813,6 +825,19 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
         )
 
         /**
+         * Creates a CMD_READ_PUMP_STATUS packet.
+         *
+         * The command mode must have been activated before this can be sent to the Combo.
+         *
+         * See the combo-comm-spec.adoc file for details about this packet.
+         *
+         * @return The produced packet.
+         */
+        fun createCMDReadPumpStatusPacket() = Packet(
+            command = Command.CMD_READ_PUMP_STATUS
+        )
+
+        /**
          * Creates a CMD_READ_HISTORY_BLOCK packet.
          *
          * The command mode must have been activated before this can be sent to the Combo.
@@ -839,7 +864,42 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
         )
 
         /**
-         * Parses an CMD_READ_HISTORY_BLOCK_RESPONSE packet and extracts its payload.
+         * Parses a CMD_READ_PUMP_STATUS_RESPONSE packet and extracts its payload.
+         *
+         * @param packet Application layer CMD_READ_HISTORY_BLOCK_RESPONSE packet to parse.
+         * @return The packet's parsed payload (the pump status).
+         * @throws InvalidPayloadException if the payload size is not the expected size.
+         */
+        fun parseCMDReadPumpStatusResponsePacket(packet: Packet): CMDPumpStatus {
+            logger(LogLevel.VERBOSE) { "Parsing CMD_READ_PUMP_STATUS_RESPONSE packet" }
+
+            // Payload size sanity check.
+            if (packet.payload.size != 3) {
+                throw InvalidPayloadException(
+                    packet,
+                    "Incorrect payload size in ${packet.command} packet; expected exactly 3 bytes, got ${packet.payload.size}"
+                )
+            }
+
+            val payload = packet.payload
+
+            // TODO: Interpret the error code in the first 2 bytes.
+            val errorCodeValue = (payload[0].toPosInt() shl 0) or (payload[1].toPosInt() shl 8)
+            val status = if (payload[2].toPosInt() == 0xB7)
+                CMDPumpStatus.RUNNING
+            else
+                CMDPumpStatus.STOPPED
+
+            logger(LogLevel.VERBOSE) {
+                "Pump status information:  error code: ${errorCodeValue.toHexString(width = 4, prependPrefix = true)}  " +
+                "status: $status"
+            }
+
+            return status
+        }
+
+        /**
+         * Parses a CMD_READ_HISTORY_BLOCK_RESPONSE packet and extracts its payload.
          *
          * @param packet Application layer CMD_READ_HISTORY_BLOCK_RESPONSE packet to parse.
          * @return The packet's parsed payload (the history block).

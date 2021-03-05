@@ -480,6 +480,33 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
     fun isConnected() = applicationLayerIO.isIORunning()
 
     /**
+     * Reads the current status of the pump in COMMAND (CMD) mode.
+     *
+     * The pump can be either in the stopped or in the running status.
+     *
+     * @return The current status.
+     * @throws IllegalStateException if the pump is not in the comand
+     *         mode, the worker has failed (see [connect]), or the
+     *         pump is not connected.
+     * @throws ApplicationLayerIO.InvalidPayloadException if the size
+     *         of a packet's payload does not match the expected size.
+     * @throws ComboIOException if IO with the pump fails.
+     */
+    suspend fun readCMDPumpStatus(): ApplicationLayerIO.CMDPumpStatus {
+        if (!isConnected())
+            throw IllegalStateException("Cannot get history delta because the background worker is not running")
+
+        if (currentMode != Mode.COMMAND)
+            throw IllegalStateException("Cannot get history delta while being in $currentMode mode")
+
+        val packet = applicationLayerIO.sendPacketWithResponse(
+            ApplicationLayerIO.createCMDReadPumpStatusPacket(),
+            ApplicationLayerIO.Command.CMD_READ_PUMP_STATUS_RESPONSE
+        )
+        return ApplicationLayerIO.parseCMDReadPumpStatusResponsePacket(packet)
+    }
+
+    /**
      * Requests a CMD history delta.
      *
      * In the command mode, the Combo can provide a "history delta".
