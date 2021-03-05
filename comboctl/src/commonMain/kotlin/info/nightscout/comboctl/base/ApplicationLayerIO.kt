@@ -903,8 +903,8 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
          *
          * @param packet Application layer CMD_READ_HISTORY_BLOCK_RESPONSE packet to parse.
          * @return The packet's parsed payload (the history block).
-         * @throws InvalidPayloadException if the payload size is not the expected size,
-         *         or if the payload contains corrupted data.
+         * @throws InvalidPayloadException if the payload size is not the expected size.
+         * @throws PayloadDataCorruptionException if the payload contains corrupted data.
          */
         fun parseCMDReadHistoryBlockResponsePacket(packet: Packet): CMDHistoryBlock {
             logger(LogLevel.VERBOSE) { "Parsing CMD_READ_HISTORY_BLOCK_RESPONSE packet" }
