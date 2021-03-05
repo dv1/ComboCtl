@@ -149,6 +149,10 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
 
         CMD_PING(ServiceID.COMMAND_MODE, 0x9AAA, true),
         CMD_PING_RESPONSE(ServiceID.COMMAND_MODE, 0xAAAA, true),
+        CMD_READ_HISTORY_BLOCK(ServiceID.COMMAND_MODE, 0x9996, true),
+        CMD_READ_HISTORY_BLOCK_RESPONSE(ServiceID.COMMAND_MODE, 0xA996, true),
+        CMD_CONFIRM_HISTORY_BLOCK(ServiceID.COMMAND_MODE, 0x9999, true),
+        CMD_CONFIRM_HISTORY_BLOCK_RESPONSE(ServiceID.COMMAND_MODE, 0xA999, true),
 
         RT_BUTTON_STATUS(ServiceID.RT_MODE, 0x0565, false),
         RT_KEEP_ALIVE(ServiceID.RT_MODE, 0x0566, false),
@@ -500,6 +504,123 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
     }
 
     /**
+     * Command mode history event details.
+     */
+    sealed class CMDHistoryEventDetail {
+        data class QuickBolusRequested(val bolusAmount: Int) : CMDHistoryEventDetail()
+        data class QuickBolusInfused(val bolusAmount: Int) : CMDHistoryEventDetail()
+        data class StandardBolusRequested(val bolusAmount: Int, val manual: Boolean) : CMDHistoryEventDetail()
+        data class StandardBolusInfused(val bolusAmount: Int, val manual: Boolean) : CMDHistoryEventDetail()
+        data class ExtendedBolusStarted(val totalBolusAmount: Int, val totalDurationMinutes: Int) : CMDHistoryEventDetail()
+        data class ExtendedBolusEnded(val totalBolusAmount: Int, val totalDurationMinutes: Int) : CMDHistoryEventDetail()
+        data class MultiwaveBolusStarted(
+            val totalBolusAmount: Int,
+            val immediateBolusAmount: Int,
+            val totalDurationMinutes: Int
+        ) : CMDHistoryEventDetail()
+        data class MultiwaveBolusEnded(
+            val totalBolusAmount: Int,
+            val immediateBolusAmount: Int,
+            val totalDurationMinutes: Int
+        ) : CMDHistoryEventDetail()
+        data class NewDateTimeSet(val dateTime: DateTime) : CMDHistoryEventDetail()
+    }
+
+    /**
+     * Information about an event in a command mode history block.
+     *
+     * "Quick bolus of 3.7 IU infused at 2020-03-11 11:55:23" is one example
+     * of the information events provide. Each event contains a timestamp
+     * and event specific details.
+     *
+     * @property timestamp Timestamp of when the event occurred, in local time.
+     * @property detail Event specific details (see [CMDHistoryEventDetail]).
+     */
+    data class CMDHistoryEvent(
+        val timestamp: DateTime,
+        val detail: CMDHistoryEventDetail
+    ) {
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other == null) return false
+            if (this::class != other::class) return false
+
+            other as CMDHistoryEvent
+
+            if (timestamp != other.timestamp)
+                return false
+
+            if (detail != other.detail)
+                return false
+
+            return true
+        }
+    }
+
+    /**
+     * A block of command mode history events.
+     *
+     * In command mode, history events are communicated in blocks. Each block
+     * consists of a list of "events", for example "quick bolus of 0.5 infused".
+     * Each event has a timestamp and event specific details. In addition, the
+     * block contains extra information about the other available events.
+     *
+     * To get all available events, the user has to send multiple history block
+     * requests according to that extra information. If moreEventsAvailable is
+     * true, then there are more history blocks that can be retrieved. Otherwise,
+     * this is the last block.
+     *
+     * A block is retrieved with the CMD_READ_HISTORY_BLOCK command, and arrives
+     * as the CMD_READ_HISTORY_BLOCK_RESPONSE command. The former is generated
+     * using [createCMDReadHistoryBlockPacket], the latter is parsed using
+     * [parseCMDReadHistoryBlockResponsePacket]. The parse function throws an
+     * exception if its integrity checks discover that the block seems corrupted.
+     * In such a case, the block can be requested again simply by sending the
+     * CMD_READ_HISTORY_BLOCK again. If the block is OK, it is confirmed by
+     * sending CMD_CONFIRM_HISTORY_BLOCK. This will inform the Combo that the
+     * user is done with that block. Afterwards, a CMD_READ_HISTORY_BLOCK
+     * command sent to the Combo will result in the next block being returned.
+     *
+     * In pseudo code:
+     *
+     * ```
+     * while (true) {
+     *     sendPacketToCombo(createCMDReadHistoryBlockPacket())
+     *     packet = waitForPacketFromCombo(CMD_READ_HISTORY_BLOCK_RESPONSE)
+     *
+     *     try {
+     *         historyBlock = parseCMDReadHistoryBlockResponsePacket(packet)
+     *     } catch (exception) {
+     *         continue
+     *     }
+     *
+     *     processHistoryBlock(historyBlock)
+     *
+     *     sendPacketToCombo(createCMDConfirmHistoryBlockPacket())
+     *     waitForPacketFromCombo(CMD_CONFIRM_HISTORY_BLOCK_RESPONSE) // actual packet data is not needed here
+     *
+     *     if (!historyBlock.moreEventsAvailable)
+     *         break
+     * }
+     * ```
+     *
+     * @property numRemainingEvents How many events remain available. This
+     *           includes the number of events in this block. This means that
+     *           numRemainingEvents is <= events.size in the last block.
+     * @property moreEventsAvailable true if there are more events available
+     *           in other blocks, false if this is the last block.
+     * @property historyGap If the history FIFO buffer's capacity was exceeded
+     *           and the oldest history events were overwritten as a result.
+     * @events List of history events in this block.
+     */
+    data class CMDHistoryBlock(
+        val numRemainingEvents: Int,
+        val moreEventsAvailable: Boolean,
+        val historyGap: Boolean,
+        val events: List<CMDHistoryEvent>
+    )
+
+    /**
      * Valid button codes that an RT_BUTTON_STATUS packet can contain in its payload.
      * These can be bitwise OR combined to implement combined button presses.
      */
@@ -673,6 +794,297 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
         fun createCMDPingPacket() = Packet(
             command = Command.CMD_PING
         )
+
+        /**
+         * Creates a CMD_READ_HISTORY_BLOCK packet.
+         *
+         * The command mode must have been activated before this can be sent to the Combo.
+         *
+         * See the combo-comm-spec.adoc file for details about this packet.
+         *
+         * @return The produced packet.
+         */
+        fun createCMDReadHistoryBlockPacket() = Packet(
+            command = Command.CMD_READ_HISTORY_BLOCK
+        )
+
+        /**
+         * Creates a CMD_CONFIRM_HISTORY_BLOCK packet.
+         *
+         * The command mode must have been activated before this can be sent to the Combo.
+         *
+         * See the combo-comm-spec.adoc file for details about this packet.
+         *
+         * @return The produced packet.
+         */
+        fun createCMDConfirmHistoryBlockPacket() = Packet(
+            command = Command.CMD_CONFIRM_HISTORY_BLOCK
+        )
+
+        /**
+         * Parses an CMD_READ_HISTORY_BLOCK_RESPONSE packet and extracts its payload.
+         *
+         * @param packet Application layer CMD_READ_HISTORY_BLOCK_RESPONSE packet to parse.
+         * @return The packet's parsed payload (the history block).
+         * @throws InvalidPayloadException if the payload size is not the expected size,
+         *         or if the payload contains corrupted data.
+         */
+        fun parseCMDReadHistoryBlockResponsePacket(packet: Packet): CMDHistoryBlock {
+            logger(LogLevel.VERBOSE) { "Parsing CMD_READ_HISTORY_BLOCK_RESPONSE packet" }
+
+            // Payload size sanity check.
+            if (packet.payload.size < 7) {
+                throw InvalidPayloadException(
+                    packet,
+                    "Incorrect payload size in ${packet.command} packet; expected at least 7 bytes, got ${packet.payload.size}"
+                )
+            }
+
+            val payload = packet.payload
+
+            val numEvents = payload[6].toPosInt()
+
+            // Payload size sanity check. We expect the packet to contain
+            // an amount of bytes that matches the expected size of the
+            // events exactly. Anything else indicates that something is
+            // wrong with the packet.
+            val expectedPayloadSize = (7 + numEvents * 18)
+            if (packet.payload.size != expectedPayloadSize) {
+                throw PayloadDataCorruptionException(
+                    packet,
+                    "Incorrect payload size in ${packet.command} packet; expected $expectedPayloadSize bytes " +
+                    "for a history block with $numEvents events, got ${packet.payload.size} bytes instead; " +
+                    "event amount may have been corrupted"
+                )
+            }
+
+            logger(LogLevel.VERBOSE) { "Packet contains $numEvents history event(s)" }
+
+            // TODO: Interpret the error code in the first 2 bytes.
+            val errorCodeValue = (payload[0].toPosInt() shl 0) or (payload[1].toPosInt() shl 8)
+            val numRemainingEvents = (payload[2].toPosInt() shl 0) or (payload[3].toPosInt() shl 8)
+            val moreEventsAvailable = (payload[4].toPosInt() == 0x48)
+            val historyGap = (payload[5].toPosInt() == 0x48)
+
+            logger(LogLevel.VERBOSE) {
+                "History block information:  error code: ${errorCodeValue.toHexString(width = 4, prependPrefix = true)}  " +
+                "num remaining events: $numRemainingEvents  more events available: $moreEventsAvailable  " +
+                "historyGap: $historyGap  number of events: $numEvents"
+            }
+
+            val events = mutableListOf<CMDHistoryEvent>()
+            for (eventIndex in 0 until numEvents) {
+                val payloadOffset = 7 + eventIndex * 18
+
+                // The first four bytes contain the timestamp:
+                // byte 0: bits 0..5 : seconds                         bits 6..7 : lower 2 bits of the minutes
+                // byte 1: bits 0..3 : upper 4 bits of the minutes     bits 4..7 : lower 4 bits of the hours
+                // byte 2: bit 0 : highest bit of the hours            bits 1..5 : days                            bits 6..7 : lower 2 bits of the months
+                // byte 3: bits 0..1 : upper 2 bits of the months      bits 2..7 : years
+                val timestamp = DateTime(
+                    seconds = payload[payloadOffset + 0].toPosInt() and 0b00111111,
+                    minutes = ((payload[payloadOffset + 0].toPosInt() and 0b11000000) ushr 6) or
+                              ((payload[payloadOffset + 1].toPosInt() and 0b00001111) shl 2),
+                    hours = ((payload[payloadOffset + 1].toPosInt() and 0b11110000) ushr 4) or
+                            ((payload[payloadOffset + 2].toPosInt() and 0b00000001) shl 4),
+                    days = (payload[payloadOffset + 2].toPosInt() and 0b00111110) ushr 1,
+                    months = ((payload[payloadOffset + 2].toPosInt() and 0b11000000) ushr 6) or
+                             ((payload[payloadOffset + 3].toPosInt() and 0b00000011) shl 2),
+                    years = ((payload[payloadOffset + 3].toPosInt() and 0b11111100) ushr 2) + 2000
+                )
+
+                // TODO: It is unknown how to interpret eventCounter and crcChecksumCounter.
+                val eventId = (payload[payloadOffset + 8].toPosInt() shl 0) or
+                              (payload[payloadOffset + 9].toPosInt() shl 8)
+                val crcChecksum = (payload[payloadOffset + 10].toPosInt() shl 0) or
+                                  (payload[payloadOffset + 11].toPosInt() shl 8)
+                val eventCounter = (payload[payloadOffset + 12].toPosLong() shl 0) or
+                                   (payload[payloadOffset + 13].toPosLong() shl 8) or
+                                   (payload[payloadOffset + 14].toPosLong() shl 16) or
+                                   (payload[payloadOffset + 15].toPosLong() shl 24)
+                val crcChecksumCounter = (payload[payloadOffset + 16].toPosInt() shl 0) or
+                                         (payload[payloadOffset + 17].toPosInt() shl 8)
+                val detailBytes = payload.subList(payloadOffset + 4, payloadOffset + 8)
+
+                logger(LogLevel.VERBOSE) {
+                    "Event #$eventIndex:  timestamp $timestamp  event ID $eventId  " +
+                    "CRC16 checksum ${crcChecksum.toHexString(width = 4, prependPrefix = true)}  " +
+                    "event counter $eventCounter  CRC16 checksum counter $crcChecksumCounter  " +
+                    "raw detail data bytes ${detailBytes.toHexString()}"
+                }
+
+                // The crcChecksum is the CRC-16-MCRF4XX checksum of the
+                // first 10 bytes in the event's data. This includes:
+                // timestamp, detail bytes, and the event ID.
+                val computedCrcChecksum = calculateCRC16MCRF4XX(payload.subList(payloadOffset + 0, payloadOffset + 10))
+                val integrityOk = computedCrcChecksum == crcChecksum
+                if (!integrityOk) {
+                    throw PayloadDataCorruptionException(
+                        packet,
+                        "Integrity check failed for event #$eventIndex; computed CRC16 is " +
+                        "checksum ${computedCrcChecksum.toHexString(width = 4, prependPrefix = true)}, " +
+                        "expected checksum ${crcChecksum.toHexString(width = 4, prependPrefix = true)}"
+                    )
+                }
+
+                // All bolus amounts are recorded as an integer that got multiplied by 10.
+                // For example, an amount of 3.7 IU is recorded as the 16-bit integer 37.
+
+                val eventDetail = when (eventId) {
+                    // Quick bolus.
+                    4, 5 -> {
+                        // Bolus amount is recorded in the first 2 detail bytes as a 16-bit little endian integer.
+                        val bolusAmount = (detailBytes[1].toPosInt() shl 8) or detailBytes[0].toPosInt()
+                        // Event ID 4 = bolus requested. ID 5 = bolus infused (= it is done).
+                        val requested = (eventId == 4)
+
+                        logger(LogLevel.VERBOSE) {
+                            "Detail info: got history event \"quick bolus ${if (requested) "requested" else "infused"}\" " +
+                            "with amount of ${bolusAmount.toFloat() / 10} IU"
+                        }
+
+                        if (requested)
+                            CMDHistoryEventDetail.QuickBolusRequested(
+                                bolusAmount = bolusAmount
+                            )
+                        else
+                            CMDHistoryEventDetail.QuickBolusInfused(
+                                bolusAmount = bolusAmount
+                            )
+                    }
+
+                    // Extended bolus.
+                    8, 9 -> {
+                        // Total bolus amount is recorded in the first 2 detail bytes as a 16-bit little endian integer.
+                        val totalBolusAmount = (detailBytes[1].toPosInt() shl 8) or detailBytes[0].toPosInt()
+                        // Total duration in minutes is recorded in the next 2 detail bytes as a 16-bit little endian integer.
+                        val totalDurationMinutes = (detailBytes[3].toPosInt() shl 8) or detailBytes[2].toPosInt()
+                        // Event ID 8 = bolus started. ID 9 = bolus ended.
+                        val started = (eventId == 8)
+
+                        logger(LogLevel.VERBOSE) {
+                            "Detail info: got history event \"extended bolus ${if (started) "started" else "ended"}\" " +
+                            "with total amount of ${totalBolusAmount.toFloat() / 10} IU and " +
+                            "total duration of $totalDurationMinutes minutes"
+                        }
+
+                        if (started)
+                            CMDHistoryEventDetail.ExtendedBolusStarted(
+                                totalBolusAmount = totalBolusAmount,
+                                totalDurationMinutes = totalDurationMinutes
+                            )
+                        else
+                            CMDHistoryEventDetail.ExtendedBolusEnded(
+                                totalBolusAmount = totalBolusAmount,
+                                totalDurationMinutes = totalDurationMinutes
+                            )
+                    }
+
+                    // Multiwave bolus.
+                    10, 11 -> {
+                        // All 8 bits of first byte + 2 LSB of second byte: bolus amount.
+                        // 6 MSB of second byte + 4 LSB of third byte: immediate bolus amount.
+                        // 4 MSB of third byte + all 8 bits of fourth byte: duration in minutes.v
+                        val totalBolusAmount = ((detailBytes[1].toPosInt() and 0b00000011) shl 8) or detailBytes[0].toPosInt()
+                        val immediateBolusAmount = ((detailBytes[2].toPosInt() and 0b00001111) shl 6) or
+                                                   ((detailBytes[1].toPosInt() and 0b11111100) ushr 2)
+                        val totalDurationMinutes = (detailBytes[3].toPosInt() shl 4) or
+                                                   ((detailBytes[2].toPosInt() and 0b11110000) ushr 4)
+                        // Event ID 10 = bolus started. ID 11 = bolus ended.
+                        val started = (eventId == 10)
+
+                        logger(LogLevel.VERBOSE) {
+                            "Detail info: got history event \"multiwave bolus ${if (started) "started" else "ended"}\" " +
+                            "with total amount of ${totalBolusAmount.toFloat() / 10} IU, " +
+                            "immediate amount of ${immediateBolusAmount.toFloat() / 10} IU, " +
+                            "and total duration of $totalDurationMinutes minutes"
+                        }
+
+                        if (started)
+                            CMDHistoryEventDetail.MultiwaveBolusStarted(
+                                totalBolusAmount = totalBolusAmount,
+                                immediateBolusAmount = immediateBolusAmount,
+                                totalDurationMinutes = totalDurationMinutes
+                            )
+                        else
+                            CMDHistoryEventDetail.MultiwaveBolusEnded(
+                                totalBolusAmount = totalBolusAmount,
+                                immediateBolusAmount = immediateBolusAmount,
+                                totalDurationMinutes = totalDurationMinutes
+                            )
+                    }
+
+                    // Standard bolus.
+                    6, 14, 7, 15 -> {
+                        // Bolus amount is recorded in the first 2 detail bytes as a 16-bit little endian integer.
+                        val bolusAmount = (detailBytes[1].toPosInt() shl 8) or detailBytes[0].toPosInt()
+                        // Events with IDs 6 and 7 indicate manual infusion. (TODO: What exactly does "manual" mean here?)
+                        val manual = (eventId == 6) || (eventId == 7)
+                        // Events with IDs 6 and 14 indicate that a bolus was requested, while
+                        // events with IDs 7 and 15 indicate that a bolus was infused (= finished).
+                        val requested = (eventId == 6) || (eventId == 14)
+
+                        logger(LogLevel.VERBOSE) {
+                            "Detail info: got history event \"${if (manual) "manual" else "automatic"} " +
+                            "standard bolus ${if (requested) "requested" else "infused"}\" " +
+                            "with amount of ${bolusAmount.toFloat() / 10} IU"
+                        }
+
+                        if (requested)
+                            CMDHistoryEventDetail.StandardBolusRequested(
+                                bolusAmount = bolusAmount,
+                                manual = manual
+                            )
+                        else
+                            CMDHistoryEventDetail.StandardBolusInfused(
+                                bolusAmount = bolusAmount,
+                                manual = manual
+                            )
+                    }
+
+                    // New datetime set.
+                    24 -> {
+                        // byte 0: bits 0..5 : seconds                         bits 6..7 : lower 2 bits of the minutes
+                        // byte 1: bits 0..3 : upper 4 bits of the minutes     bits 4..7 : lower 4 bits of the hours
+                        // byte 2: bit 0 : highest bit of the hours            bits 1..5 : days                            bits 6..7 : lower 2 bits of the months
+                        // byte 3: bits 0..1 : upper 2 bits of the months      bits 2..7 : years
+
+                        val newDateTime = DateTime(
+                            seconds = detailBytes[0].toPosInt() and 0b00111111,
+                            minutes = ((detailBytes[0].toPosInt() and 0b11000000) ushr 6) or
+                                      ((detailBytes[1].toPosInt() and 0b00001111) shl 2),
+                            hours = ((detailBytes[1].toPosInt() and 0b11110000) ushr 4) or
+                                    ((detailBytes[2].toPosInt() and 0b00000001) shl 4),
+                            days = (detailBytes[2].toPosInt() and 0b00111110) ushr 1,
+                            months = ((detailBytes[2].toPosInt() and 0b11000000) ushr 6) or
+                                     ((detailBytes[3].toPosInt() and 0b00000011) shl 2),
+                            years = ((detailBytes[3].toPosInt() and 0b11111100) ushr 2) + 2000
+                        )
+
+                        logger(LogLevel.VERBOSE) {
+                            "Detail info: got history event \"new datetime set\" with new datetime $newDateTime"
+                        }
+
+                        CMDHistoryEventDetail.NewDateTimeSet(newDateTime)
+                    }
+                    else -> {
+                        logger(LogLevel.VERBOSE) {
+                            "No detail info available: event ID unrecognized; skipping this event"
+                        }
+                        continue
+                    }
+                }
+
+                events.add(CMDHistoryEvent(timestamp = timestamp, detail = eventDetail))
+            }
+
+            return CMDHistoryBlock(
+                numRemainingEvents = numRemainingEvents,
+                moreEventsAvailable = moreEventsAvailable,
+                historyGap = historyGap,
+                events = events
+            )
+        }
 
         /**
          * Creates an RT_BUTTON_STATUS packet.

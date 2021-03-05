@@ -480,6 +480,101 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
     fun isConnected() = applicationLayerIO.isIORunning()
 
     /**
+     * Requests a CMD history delta.
+     *
+     * In the command mode, the Combo can provide a "history delta".
+     * This means that the user can get what events occurred since the
+     * last time a request was sent. Because this is essentially the
+     * difference between the current history state and the history
+     * state when the last request was sent, it is called a "delta".
+     * This also means that if a request is sent again, and no new
+     * event occurred in the meantime, the history delta will be empty
+     * (= it will have zero events recorded). It is _not_ possible
+     * to get the entire history with this function.
+     *
+     * The maximum amount of history block request is limited by the
+     * maxRequests argument. This is a safeguard in case the data
+     * keeps getting corrupted for some reason. Having a maximum
+     * guarantees that we can't get stuck in an infinite loop.
+     *
+     * @param maxRequests How many history block request we can
+     *        maximally send. This must be at least 10.
+     * @return The history delta.
+     * @throws IllegalArgumentException if maxRequests is less than 10.
+     * @throws IllegalStateException if the pump is not in the comand
+     *         mode, the worker has failed (see [connect]), or the
+     *         pump is not connected.
+     * @throws ApplicationLayerIO.InvalidPayloadException if the size
+     *         of a packet's payload does not match the expected size.
+     * @throws ApplicationLayerIO.PayloadDataCorruptionException if
+     *         packet data integrity is compromised.
+     * @throws ApplicationLayerIO.InfiniteHistoryDataException if the
+     *         call did not ever get a history block that marked an end
+     *         to the history.
+     * @throws ComboIOException if IO with the pump fails.
+     */
+    suspend fun getCMDHistoryDelta(maxRequests: Int): List<ApplicationLayerIO.CMDHistoryEvent> {
+        if (maxRequests < 10)
+            throw IllegalArgumentException("Maximum amount of requests must be at least 10; caller specified $maxRequests")
+
+        if (!isConnected())
+            throw IllegalStateException("Cannot get history delta because the background worker is not running")
+
+        if (currentMode != Mode.COMMAND)
+            throw IllegalStateException("Cannot get history delta while being in $currentMode mode")
+
+        val historyDelta = mutableListOf<ApplicationLayerIO.CMDHistoryEvent>()
+        var reachedEnd = false
+
+        // Keep requesting history blocks until we reach the end,
+        // and fill historyDelta with the events from each block,
+        // skipping those events whose IDs are unknown (this is
+        // taken care of by parseCMDReadHistoryBlockResponsePacket()).
+        for (requestNr in 1 until maxRequests) {
+            // Request the current history block from the Combo.
+            val packet = applicationLayerIO.sendPacketWithResponse(
+                ApplicationLayerIO.createCMDReadHistoryBlockPacket(),
+                ApplicationLayerIO.Command.CMD_READ_HISTORY_BLOCK_RESPONSE
+            )
+
+            // Try to parse and validate the packet data.
+            val historyBlock = try {
+                ApplicationLayerIO.parseCMDReadHistoryBlockResponsePacket(packet)
+            } catch (e: Exception) {
+                logger(LogLevel.ERROR) {
+                    "Could not parse history block; data may have been corrupted; requesting the block again"
+                }
+                continue
+            }
+
+            // Confirm this history block to let the Combo consider
+            // it processed. The Combo can then move on to the next
+            // history block.
+            applicationLayerIO.sendPacketWithResponse(
+                ApplicationLayerIO.createCMDConfirmHistoryBlockPacket(),
+                ApplicationLayerIO.Command.CMD_CONFIRM_HISTORY_BLOCK_RESPONSE
+            )
+
+            historyDelta.addAll(historyBlock.events)
+
+            // Check if there is a next history block to get.
+            // If not, we are done, and need to exit this loop.
+            if (!historyBlock.moreEventsAvailable ||
+                (historyBlock.numRemainingEvents <= historyBlock.events.size)) {
+                reachedEnd = true
+                break
+            }
+        }
+
+        if (!reachedEnd)
+            throw ApplicationLayerIO.InfiniteHistoryDataException(
+                "Did not reach an end of the history event list even after $maxRequests request(s)"
+            )
+
+        return historyDelta
+    }
+
+    /**
      * Performs a short button press.
      *
      * This mimics the physical pressing of buttons for a short

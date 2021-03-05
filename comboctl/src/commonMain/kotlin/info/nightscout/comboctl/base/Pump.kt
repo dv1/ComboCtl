@@ -375,6 +375,47 @@ class Pump(
     fun isConnected() = pumpIO.isConnected()
 
     /**
+     * Requests a CMD history delta.
+     *
+     * In the command mode, the Combo can provide a "history delta".
+     * This means that the user can get what events occurred since the
+     * last time a request was sent. Because this is essentially the
+     * difference between the current history state and the history
+     * state when the last request was sent, it is called a "delta".
+     * This also means that if a request is sent again, and no new
+     * event occurred in the meantime, the history delta will be empty
+     * (= it will have zero events recorded). It is _not_ possible
+     * to get the entire history with this function.
+     *
+     * The maximum amount of history block request is limited by the
+     * maxRequests argument. This is a safeguard in case the data
+     * keeps getting corrupted for some reason. Having a maximum
+     * guarantees that we can't get stuck in an infinite loop.
+     *
+     * @param maxRequests How many history block request we can
+     *        maximally send. This must be at least 10.
+     * @return The history delta.
+     * @throws IllegalArgumentException if maxRequests is less than 10.
+     * @throws IllegalStateException if the pump is not in the comand
+     *         mode, the worker has failed (see [connect]), or the
+     *         pump is not connected.
+     * @throws ApplicationLayerIO.DataCorruptionException if packet data
+     *         integrity is compromised or if the call did not ever get
+     *         a history block that marked an end to the history.
+     * @throws ComboIOException if IO with the pump fails.
+     */
+    suspend fun getCMDHistoryDelta(maxRequests: Int = 1000): List<ApplicationLayerIO.CMDHistoryEvent> {
+        if (!pumpIO.isConnected())
+            throw IllegalStateException("Not connected to Combo")
+
+        switchMode(PumpIO.Mode.COMMAND)
+
+        return runChecked {
+            pumpIO.getCMDHistoryDelta(maxRequests)
+        }
+    }
+
+    /**
      * Performs a short button press.
      *
      * This mimics the physical pressing of buttons for a short
@@ -531,12 +572,12 @@ class Pump(
         }
     }
 
-    private suspend fun runChecked(block: suspend () -> Unit) {
+    private suspend fun <T> runChecked(block: suspend () -> T): T {
         // Runs a block in a try-catch block to disconnect from
         // the pump in case of an exception being thrown.
 
         try {
-            block()
+            return block()
         } catch (e: Exception) {
             disconnect()
             throw e
