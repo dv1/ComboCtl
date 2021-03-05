@@ -276,6 +276,34 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
     ) : ExceptionBase(message)
 
     /**
+     * Exception thrown when something a packet's payload data is considered corrupted.
+     *
+     * This is distinct from [InvalidPayloadException] in that the former is more concerned
+     * about parameters like the payload size (example: "expected 15 bytes payload, got 7 bytes"),
+     * while this exception is thrown when for example a CRC integrity check indicates that
+     * the payload bytes themselves are incorrect.
+     *
+     * @property appLayerPacket Application layer packet with the corrupted payload.
+     * @property message Detail message.
+     */
+    class PayloadDataCorruptionException(
+        val appLayerPacket: Packet,
+        message: String
+    ) : ExceptionBase(message)
+
+    /**
+     * Exception thrown when during an attempt to retrieve history data said data never seems to end.
+     *
+     * Normally, there will eventually be a packet that indicates that the history
+     * has been fully received. If no such packet arrives, then something is wrong.
+     *
+     * @property message Detail message.
+     */
+    class InfiniteHistoryDataException(
+        message: String
+    ) : ExceptionBase(message)
+
+    /**
      * Class containing data of a Combo application layer packet.
      *
      * Just like the transport layer, the application layer also uses packets as the
