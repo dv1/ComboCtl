@@ -312,6 +312,23 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
     ) : ExceptionBase(message)
 
     /**
+     * Exception thrown when an application layer packet is received with an error code that indicates an error.
+     *
+     * All application layer packets that are transmitted to the client via reliable
+     * transport layer packet have a 16-bit error code in the first 2 bytes of their
+     * payloads. If this error code's value is 0, there's no error. Otherwise, an
+     * error occurred. These are not recoverable, so this exception is thrown which
+     * causes the worker to fail.
+     *
+     * @property appLayerPacket Application layer packet with the nonzero error code.
+     * @property errorCode Parsed error code.
+     */
+    class ErrorCodeException(
+        val appLayerPacket: Packet,
+        val errorCode: ErrorCode
+    ) : ExceptionBase("received error code $errorCode in packet $appLayerPacket")
+
+    /**
      * Class containing data of a Combo application layer packet.
      *
      * Just like the transport layer, the application layer also uses packets as the
@@ -410,87 +427,100 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
     }
 
     /**
-     * Categories for [CTRLServiceErrorCode].
+     * Class for error codes contained in reliable application layer packets coming from the pump.
+     *
+     * All application layer packets that are transmitted to the client via reliable
+     * transport layer packet have a 16-bit error code in the first 2 bytes of their
+     * payloads. This class contains that error code. The [ErrorCode.Known.Code] enum
+     * contains all currently known error codes. [ErrorCode.Unknown] is used in case
+     * the error code value is not one of the known ones. The toString functions of
+     * both [ErrorCode.Known] and [ErrorCode.Unknown] are overridden to provide better
+     * descriptions of their contents.
+     *
+     * The [ErrorCode.fromValue] function is used for converting an integer value to
+     * an ErrorCode instance. Said integer comes from the reliable packets.
      */
-    enum class CTRLServiceErrorCategory {
-        MISC_APPLICATION_LAYER,
-        REMOTE_TERMINAL_MODE,
-        COMMAND_MODE
-    }
+    sealed class ErrorCode {
+        data class Known(val code: Code) : ErrorCode() {
+            override fun toString(): String = "error code \"${code.description}\""
 
-    /**
-     * Known error codes from CTRL_SERVICE_ERROR packets.
-     */
-    enum class CTRLServiceErrorCode(val value: Int, val category: CTRLServiceErrorCategory, val description: String) {
-        UNKNOWN_SERVICE_ID(0xF003, CTRLServiceErrorCategory.MISC_APPLICATION_LAYER, "Unknown service ID"),
-        INCOMPATIBLE_AL_PACKET_VERSION(0xF005, CTRLServiceErrorCategory.MISC_APPLICATION_LAYER, "Incompatible application layer packet version"),
-        INVALID_PAYLOAD_LENGTH(0xF006, CTRLServiceErrorCategory.MISC_APPLICATION_LAYER, "Invalid payload length"),
-        NOT_CONNECTED(0xF056, CTRLServiceErrorCategory.MISC_APPLICATION_LAYER, "Application layer not connected"),
-        INCOMPATIBLE_SERVICE_VERSION(0xF059, CTRLServiceErrorCategory.MISC_APPLICATION_LAYER, "Incompatible service version"),
-        REQUEST_WITH_UNKNOWN_SERVICE_ID(0xF05A, CTRLServiceErrorCategory.MISC_APPLICATION_LAYER,
-            "Version, activate, deactivate request with unknown service ID"),
-        SERVICE_ACTIVATION_NOT_ALLOWED(0xF05C, CTRLServiceErrorCategory.MISC_APPLICATION_LAYER, "Service activation not allowed"),
-        COMMAND_NOT_ALLOWED(0xF05F, CTRLServiceErrorCategory.MISC_APPLICATION_LAYER, "Command not allowed (wrong mode)"),
+            enum class Category {
+                GENERAL,
+                REMOTE_TERMINAL_MODE,
+                COMMAND_MODE
+            }
 
-        RT_PAYLOAD_WRONG_LENGTH(0xF503, CTRLServiceErrorCategory.REMOTE_TERMINAL_MODE, "RT payload wrong length"),
-        RT_DISPLAY_INCORRECT_INDEX(0xF505, CTRLServiceErrorCategory.REMOTE_TERMINAL_MODE,
-            "RT display with incorrect row index, update, or display index"),
-        RT_DISPLAY_TIMEOUT(0xF506, CTRLServiceErrorCategory.REMOTE_TERMINAL_MODE, "RT display timeout"),
-        RT_UNKNOWN_AUDIO_SEQUENCE(0xF509, CTRLServiceErrorCategory.REMOTE_TERMINAL_MODE, "RT unknown audio sequence"),
-        RT_UNKNOWN_VIBRATION_SEQUENCE(0xF50A, CTRLServiceErrorCategory.REMOTE_TERMINAL_MODE, "RT unknown vibration sequence"),
-        RT_INCORRECT_SEQUENCE_NUMBER(0xF50C, CTRLServiceErrorCategory.REMOTE_TERMINAL_MODE, "RT command has incorrect sequence number"),
-        RT_ALIVE_TIMEOUT_EXPIRED(0xF533, CTRLServiceErrorCategory.REMOTE_TERMINAL_MODE, "RT alive timeout expired"),
+            enum class Code(val value: Int, val category: Category, val description: String) {
+                NO_ERROR(0x0000, Category.GENERAL, "No error"),
 
-        CMD_VALUES_NOT_WITHIN_THRESHOLD(0xF605, CTRLServiceErrorCategory.COMMAND_MODE, "CMD values not within threshold"),
-        CMD_WRONG_BOLUS_TYPE(0xF606, CTRLServiceErrorCategory.COMMAND_MODE, "CMD wrong bolus type"),
-        CMD_BOLUS_NOT_DELIVERING(0xF60A, CTRLServiceErrorCategory.COMMAND_MODE, "CMD bolus not delivering"),
-        CMD_HISTORY_READ_EEPROM_ERROR(0xF60C, CTRLServiceErrorCategory.COMMAND_MODE, "CMD history read EEPROM error"),
-        CMD_HISTORY_FRAM_NOT_ACCESSIBLE(0xF633, CTRLServiceErrorCategory.COMMAND_MODE, "CMD history confirm FRAM not readable or writeable"),
-        CMD_UNKNOWN_BOLUS_TYPE(0xF635, CTRLServiceErrorCategory.COMMAND_MODE, "CMD unknown bolus type"),
-        CMD_BOLUS_CURRENTLY_UNAVAILABLE(0xF636, CTRLServiceErrorCategory.COMMAND_MODE, "CMD bolus is not available at the moment"),
-        CMD_INCORRECT_CRC_VALUE(0xF639, CTRLServiceErrorCategory.COMMAND_MODE, "CMD incorrect CRC value"),
-        CMD_CH1_CH2_VALUES_INCONSISTENT(0xF63A, CTRLServiceErrorCategory.COMMAND_MODE, "CMD ch1 and ch2 values inconsistent"),
-        CMD_INTERNAL_PUMP_ERROR(0xF63C, CTRLServiceErrorCategory.COMMAND_MODE, "CMD pump has internal error (RAM values changed)");
+                UNKNOWN_SERVICE_ID(0xF003, Category.GENERAL, "Unknown service ID"),
+                INCOMPATIBLE_AL_PACKET_VERSION(0xF005, Category.GENERAL, "Incompatible application layer packet version"),
+                INVALID_PAYLOAD_LENGTH(0xF006, Category.GENERAL, "Invalid payload length"),
+                NOT_CONNECTED(0xF056, Category.GENERAL, "Application layer not connected"),
+                INCOMPATIBLE_SERVICE_VERSION(0xF059, Category.GENERAL, "Incompatible service version"),
+                REQUEST_WITH_UNKNOWN_SERVICE_ID(0xF05A, Category.GENERAL,
+                    "Version, activate, deactivate request with unknown service ID"),
+                SERVICE_ACTIVATION_NOT_ALLOWED(0xF05C, Category.GENERAL, "Service activation not allowed"),
+                COMMAND_NOT_ALLOWED(0xF05F, Category.GENERAL, "Command not allowed (wrong mode)"),
+
+                RT_PAYLOAD_WRONG_LENGTH(0xF503, Category.REMOTE_TERMINAL_MODE, "RT payload wrong length"),
+                RT_DISPLAY_INCORRECT_INDEX(0xF505, Category.REMOTE_TERMINAL_MODE,
+                    "RT display with incorrect row index, update, or display index"),
+                RT_DISPLAY_TIMEOUT(0xF506, Category.REMOTE_TERMINAL_MODE, "RT display timeout"),
+                RT_UNKNOWN_AUDIO_SEQUENCE(0xF509, Category.REMOTE_TERMINAL_MODE, "RT unknown audio sequence"),
+                RT_UNKNOWN_VIBRATION_SEQUENCE(0xF50A, Category.REMOTE_TERMINAL_MODE, "RT unknown vibration sequence"),
+                RT_INCORRECT_SEQUENCE_NUMBER(0xF50C, Category.REMOTE_TERMINAL_MODE, "RT command has incorrect sequence number"),
+                RT_ALIVE_TIMEOUT_EXPIRED(0xF533, Category.REMOTE_TERMINAL_MODE, "RT alive timeout expired"),
+
+                CMD_VALUES_NOT_WITHIN_THRESHOLD(0xF605, Category.COMMAND_MODE, "CMD values not within threshold"),
+                CMD_WRONG_BOLUS_TYPE(0xF606, Category.COMMAND_MODE, "CMD wrong bolus type"),
+                CMD_BOLUS_NOT_DELIVERING(0xF60A, Category.COMMAND_MODE, "CMD bolus not delivering"),
+                CMD_HISTORY_READ_EEPROM_ERROR(0xF60C, Category.COMMAND_MODE, "CMD history read EEPROM error"),
+                CMD_HISTORY_FRAM_NOT_ACCESSIBLE(0xF633, Category.COMMAND_MODE, "CMD history confirm FRAM not readable or writeable"),
+                CMD_UNKNOWN_BOLUS_TYPE(0xF635, Category.COMMAND_MODE, "CMD unknown bolus type"),
+                CMD_BOLUS_CURRENTLY_UNAVAILABLE(0xF636, Category.COMMAND_MODE, "CMD bolus is not available at the moment"),
+                CMD_INCORRECT_CRC_VALUE(0xF639, Category.COMMAND_MODE, "CMD incorrect CRC value"),
+                CMD_CH1_CH2_VALUES_INCONSISTENT(0xF63A, Category.COMMAND_MODE, "CMD ch1 and ch2 values inconsistent"),
+                CMD_INTERNAL_PUMP_ERROR(0xF63C, Category.COMMAND_MODE, "CMD pump has internal error (RAM values changed)");
+            }
+        }
+        data class Unknown(val code: Int) : ErrorCode() {
+            override fun toString(): String = "unknown error code ${code.toHexString(4, true)}"
+        }
 
         companion object {
-            private val values = CTRLServiceErrorCode.values()
+            private val knownCodes = Known.Code.values()
 
-            /**
-             * Returns the error code that has a matching value.
-             *
-             * @return CTRLServiceErrorCode, or null if no matching error code exists.
-             */
-            fun fromValue(value: Int) = values.firstOrNull { (it.value == value) }
+            fun fromValue(value: Int): ErrorCode {
+                val foundCode = knownCodes.firstOrNull { (it.value == value) }
+                if (foundCode != null)
+                    return Known(foundCode)
+                else
+                    return Unknown(value)
+            }
         }
     }
 
     /**
      * Error information from CTRL_SERVICE_ERROR packets.
      *
-     * The values are kept as integer on purpose, since it is not known
-     * if all possible values are known, so directly having enum types
-     * here would not allow for representing unknown values properly.
+     * The service and command ID are kept as integer on purpose, since
+     * it is not known if all possible values are known, so directly
+     * having enum types here would not allow for representing unknown
+     * values properly.
      *
-     * @property errorCodeValue Integer value of the error code.
-     *           Known error codes exist in [CTRLServiceErrorCode].
+     * @property errorCode Error code specifying the error.
      * @property serviceIDValue Integer with the value of the
      *           service ID of the command that caused the error.
      * @property commandIDValue Integer with the value of the
      *           command ID of the command that caused the error.
      */
     data class CTRLServiceError(
-        val errorCodeValue: Int,
+        val errorCode: ErrorCode,
         val serviceIDValue: Int,
         val commandIDValue: Int
     ) {
         override fun toString(): String {
-            val errorCode = CTRLServiceErrorCode.fromValue(errorCodeValue)
-            val errorCodeStr =
-                if (errorCode != null)
-                    "error code \"${errorCode.description}\""
-                else
-                    "error code 0x${errorCodeValue.toString(16)}"
-
             var command: Command? = null
 
             val serviceID = ServiceID.fromInt(serviceIDValue)
@@ -503,7 +533,7 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
                 else
                     "service ID 0x${serviceIDValue.toString(16)} command ID 0x${commandIDValue.toString(16)}"
 
-            return "$errorCodeStr $commandStr"
+            return "$errorCode $commandStr"
         }
     }
 
@@ -677,6 +707,25 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
 
     companion object PacketFunctions {
         /**
+         * Parses the first 2 bytes of a packet's payload.
+         *
+         * This only works if the packet was sent by the Combo as a reliable
+         * transport layer packet that contains an application layer packet.
+         * Only then will that encapsulated application layer's payload have
+         * a 16-bit error code in its first 2 bytes.
+         *
+         * @param payload Payload to parse.
+         */
+        fun parseErrorCode(payload: List<Byte>) =
+            ErrorCode.fromValue((payload[0].toPosInt() shl 0) or (payload[1].toPosInt() shl 8))
+
+        // NOTE: Some of the CTRL and CMD packet parse functions below do
+        // not touch the first 2 bytes of the payload. This is because these
+        // first 2 bytes contain a 16-bit error code, and that error code is
+        // already dealt with in the checkAndParseTransportLayerDataPacket()
+        // function.
+
+        /**
          * Creates a CTRL_CONNECT packet.
          *
          * This initiates a connection at the application layer. The transport
@@ -805,7 +854,7 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
             checkPayloadSize(packet, 5)
 
             return CTRLServiceError(
-                errorCodeValue = (payload[0].toPosInt() shl 0) or (payload[1].toPosInt() shl 8),
+                errorCode = parseErrorCode(payload),
                 serviceIDValue = payload[2].toPosInt(),
                 commandIDValue = (payload[3].toPosInt() shl 0) or (payload[4].toPosInt() shl 8)
             )
@@ -883,17 +932,12 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
 
             val payload = packet.payload
 
-            // TODO: Interpret the error code in the first 2 bytes.
-            val errorCodeValue = (payload[0].toPosInt() shl 0) or (payload[1].toPosInt() shl 8)
             val status = if (payload[2].toPosInt() == 0xB7)
                 CMDPumpStatus.RUNNING
             else
                 CMDPumpStatus.STOPPED
 
-            logger(LogLevel.VERBOSE) {
-                "Pump status information:  error code: ${errorCodeValue.toHexString(width = 4, prependPrefix = true)}  " +
-                "status: $status"
-            }
+            logger(LogLevel.VERBOSE) { "Pump status information: $status" }
 
             return status
         }
@@ -937,16 +981,16 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
 
             logger(LogLevel.VERBOSE) { "Packet contains $numEvents history event(s)" }
 
-            // TODO: Interpret the error code in the first 2 bytes.
-            val errorCodeValue = (payload[0].toPosInt() shl 0) or (payload[1].toPosInt() shl 8)
             val numRemainingEvents = (payload[2].toPosInt() shl 0) or (payload[3].toPosInt() shl 8)
             val moreEventsAvailable = (payload[4].toPosInt() == 0x48)
             val historyGap = (payload[5].toPosInt() == 0x48)
 
             logger(LogLevel.VERBOSE) {
-                "History block information:  error code: ${errorCodeValue.toHexString(width = 4, prependPrefix = true)}  " +
-                "num remaining events: $numRemainingEvents  more events available: $moreEventsAvailable  " +
-                "historyGap: $historyGap  number of events: $numEvents"
+                "History block information:  " +
+                "num remaining events: $numRemainingEvents  " +
+                "more events available: $moreEventsAvailable  " +
+                "historyGap: $historyGap  " +
+                "number of events: $numEvents"
             }
 
             val events = mutableListOf<CMDHistoryEvent>()
@@ -1618,6 +1662,25 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
             logger(LogLevel.VERBOSE) { "Parsing DATA packet as application layer packet" }
             val appLayerPacket = ApplicationLayerIO.Packet(tpLayerPacket)
             logger(LogLevel.VERBOSE) { "This is an application layer packet with command ${appLayerPacket.command}" }
+
+            // Application layer packets which were transmitted inside  a transport
+            // layer packet with the reliability bit set always have a 16-bit error
+            // code in their first 2 bytes. Parse that error code, and if it is not
+            // set to NO_ERROR, throw an exception, since it is not known how to
+            // recover from those errors.
+            // An exception is made for CTRL_SERVICE_ERROR packets. Thesea are passed
+            // through, since they are supposed to inform the caller about an error.
+            if ((tpLayerPacket.reliabilityBit) && (appLayerPacket.command != ApplicationLayerIO.Command.CTRL_SERVICE_ERROR)) {
+                logger(LogLevel.VERBOSE) {
+                    "This packet was delivered inside a reliable transport layer packet; checking the error code"
+                }
+
+                val errorCode = PacketFunctions.parseErrorCode(appLayerPacket.payload)
+
+                if (errorCode != ErrorCode.Known(ErrorCode.Known.Code.NO_ERROR))
+                    throw ErrorCodeException(appLayerPacket, errorCode)
+            }
+
             return appLayerPacket
         } catch (e: ApplicationLayerIO.InvalidCommandIDException) {
             logger(LogLevel.WARN) {
