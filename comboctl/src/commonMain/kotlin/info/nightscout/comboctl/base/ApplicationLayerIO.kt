@@ -151,6 +151,8 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
 
         CMD_PING(ServiceID.COMMAND_MODE, 0x9AAA, true),
         CMD_PING_RESPONSE(ServiceID.COMMAND_MODE, 0xAAAA, true),
+        CMD_READ_DATE_TIME(ServiceID.COMMAND_MODE, 0x9AA6, true),
+        CMD_READ_DATE_TIME_RESPONSE(ServiceID.COMMAND_MODE, 0xAAA6, true),
         CMD_READ_PUMP_STATUS(ServiceID.COMMAND_MODE, 0x9A9A, true),
         CMD_READ_PUMP_STATUS_RESPONSE(ServiceID.COMMAND_MODE, 0xAA9A, true),
         CMD_READ_HISTORY_BLOCK(ServiceID.COMMAND_MODE, 0x9996, true),
@@ -874,6 +876,19 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
         )
 
         /**
+         * Creates a CMD_READ_DATE_TIME packet.
+         *
+         * The command mode must have been activated before this can be sent to the Combo.
+         *
+         * See the combo-comm-spec.adoc file for details about this packet.
+         *
+         * @return The produced packet.
+         */
+        fun createCMDReadDateTimePacket() = Packet(
+            command = Command.CMD_READ_DATE_TIME
+        )
+
+        /**
          * Creates a CMD_READ_PUMP_STATUS packet.
          *
          * The command mode must have been activated before this can be sent to the Combo.
@@ -911,6 +926,40 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
         fun createCMDConfirmHistoryBlockPacket() = Packet(
             command = Command.CMD_CONFIRM_HISTORY_BLOCK
         )
+
+        /**
+         * Parses a CMD_READ_DATE_TIME_RESPONSE packet and extracts its payload.
+         *
+         * @param packet Application layer CMD_READ_DATE_TIME_RESPONSE packet to parse.
+         * @return The packet's parsed payload (the pump's current datetime).
+         * @throws InvalidPayloadException if the payload size is not the expected size.
+         */
+        fun parseCMDReadDateTimeResponsePacket(packet: Packet): DateTime {
+            logger(LogLevel.VERBOSE) { "Parsing CMD_READ_DATE_TIME_RESPONSE packet" }
+
+            // Payload size sanity check.
+            if (packet.payload.size != 12) {
+                throw InvalidPayloadException(
+                    packet,
+                    "Incorrect payload size in ${packet.command} packet; expected exactly 12 bytes, got ${packet.payload.size}"
+                )
+            }
+
+            val payload = packet.payload
+
+            val dateTime = DateTime(
+                seconds = payload[8].toPosInt(),
+                minutes = payload[7].toPosInt(),
+                hours = payload[6].toPosInt(),
+                days = payload[5].toPosInt(),
+                months = payload[4].toPosInt(),
+                years = (payload[2].toPosInt() shl 0) or (payload[3].toPosInt() shl 8)
+            )
+
+            logger(LogLevel.VERBOSE) { "Current pump datetime: $dateTime" }
+
+            return dateTime
+        }
 
         /**
          * Parses a CMD_READ_PUMP_STATUS_RESPONSE packet and extracts its payload.
