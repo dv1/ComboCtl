@@ -120,7 +120,24 @@ class PumpViewController {
         require(pump != null)
         require(mainScope != null)
 
-        pump!!.connect(mainScope!!)
+        mainScope!!.launch {
+            // Connect to the pump and let it initially run in the COMMAND mode.
+            pump!!.connect(mainScope!!, initialMode = PumpIO.Mode.COMMAND).join()
+
+            // Get some information from the pump in the COMMAND mode.
+
+            val historyDelta = pump!!.getCMDHistoryDelta()
+            println("Got CMD history delta: $historyDelta")
+
+            val pumpStatus = pump!!.readCMDPumpStatus()
+            println("Got CMD pump status: $pumpStatus")
+
+            val dateTime = pump!!.readCMDDateTime()
+            println("Got CMD datetime: $dateTime")
+
+            // We are done with the COMMAND mode, now switch to REMOTE_TERMINAL.
+            pump!!.switchMode(PumpIO.Mode.REMOTE_TERMINAL)
+        }
     }
 
     fun disconnectPump() {
