@@ -159,6 +159,12 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
         CMD_READ_HISTORY_BLOCK_RESPONSE(ServiceID.COMMAND_MODE, 0xA996, true),
         CMD_CONFIRM_HISTORY_BLOCK(ServiceID.COMMAND_MODE, 0x9999, true),
         CMD_CONFIRM_HISTORY_BLOCK_RESPONSE(ServiceID.COMMAND_MODE, 0xA999, true),
+        CMD_GET_BOLUS_STATUS(ServiceID.COMMAND_MODE, 0x966A, true),
+        CMD_GET_BOLUS_STATUS_RESPONSE(ServiceID.COMMAND_MODE, 0xA66A, true),
+        CMD_DELIVER_BOLUS(ServiceID.COMMAND_MODE, 0x9669, true),
+        CMD_DELIVER_BOLUS_RESPONSE(ServiceID.COMMAND_MODE, 0xA669, true),
+        CMD_CANCEL_BOLUS(ServiceID.COMMAND_MODE, 0x9669, true),
+        CMD_CANCEL_BOLUS_RESPONSE(ServiceID.COMMAND_MODE, 0xA669, true),
 
         RT_BUTTON_STATUS(ServiceID.RT_MODE, 0x0565, false),
         RT_KEEP_ALIVE(ServiceID.RT_MODE, 0x0566, false),
@@ -670,6 +676,53 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
     )
 
     /**
+     * Possible bolus types used in COMMAND mode commands.
+     */
+    enum class CMDBolusType(val id: Int) {
+        STANDARD(0x47),
+        MULTI_WAVE(0xB7);
+
+        companion object {
+            private val values = CMDBolusType.values()
+            fun fromInt(value: Int) = values.firstOrNull { it.id == value }
+        }
+    }
+
+    /**
+     * Possible states of an ongoing bolus (or NOT_DELIVERING if there's no bolus ongoing).
+     */
+    enum class CMDBolusDeliveryState(val id: Int) {
+        NOT_DELIVERING(0x55),
+        DELIVERING(0x66),
+        DELIVERED(0x99),
+        CANCELLED_BY_USER(0xA9),
+        ABORTED_DUE_TO_ERROR(0xAA);
+
+        companion object {
+            private val values = CMDBolusDeliveryState.values()
+            fun fromInt(value: Int) = values.firstOrNull { it.id == value }
+        }
+    }
+
+    /**
+     * Information about an ongoing bolus.
+     *
+     * If bolusType is set to [CMDBolusDeliveryState.NOT_DELIVERING],
+     * then the other fields are meaningless.
+     *
+     * @property bolusType Type of the bolus (standard / multi-wave).
+     * @property deliveryState Type of the current bolus delivery.
+     * @proeperty remainingAmount Remaining bolus amount to administer.
+     *            Note that this is given in 0.1 IU units, so for example,
+     *            "57" means 5.7 IU.
+     */
+    data class CMDBolusDeliveryStatus(
+        val bolusType: CMDBolusType,
+        val deliveryState: CMDBolusDeliveryState,
+        val remainingAmount: Int
+    )
+
+    /**
      * Valid button codes that an RT_BUTTON_STATUS packet can contain in its payload.
      * These can be bitwise OR combined to implement combined button presses.
      */
@@ -928,6 +981,96 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
          */
         fun createCMDConfirmHistoryBlockPacket() = Packet(
             command = Command.CMD_CONFIRM_HISTORY_BLOCK
+        )
+
+        /**
+         * Creates a CMD_GET_BOLUS_STATUS packet.
+         *
+         * The command mode must have been activated before this can be sent to the Combo.
+         *
+         * See the combo-comm-spec.adoc file for details about this packet.
+         *
+         * @return The produced packet.
+         */
+        fun createCMDGetBolusStatusPacket() = Packet(
+            command = Command.CMD_GET_BOLUS_STATUS
+        )
+
+        /**
+         * Creates a CMD_DELIVER_BOLUS packet.
+         *
+         * The command mode must have been activated before this can be sent to the Combo.
+         *
+         * See the combo-comm-spec.adoc file for details about this packet.
+         *
+         * @param bolusAmount Amount of insulin to use for the bolus.
+         *        Note that this is given in 0.1 IU units, so for example,
+         *        "57" means 5.7 IU.
+         * @return The produced packet.
+         */
+        fun createCMDDeliverBolusPacket(bolusAmount: Int): Packet {
+            // Need to convert the bolus amount to a 32-bit floating point, and
+            // then conver that into a form that can be stored below as 4 bytes
+            // in little-endian order.
+            val bolusAmountAsFloatBits = bolusAmount.toFloat().toBits().toPosLong()
+
+            // TODO: It is currently unknown why the 0x55 and 0x59 bytes encode
+            // a standard bolus, why the same bolus parameters have to be added
+            // twice (once as 16-bit integers and once as 32-bit floats), or
+            // how to program in multi-wave and extended bolus types.
+
+            val payload = byteArrayListOfInts(
+                // This specifies a standard bolus.
+                0x55, 0x59,
+
+                // Total bolus amount, encoded as a 16-bit little endian integer.
+                (bolusAmount and 0x00FF) ushr 0,
+                (bolusAmount and 0xFF00) ushr 8,
+                // Duration in minutes, encoded as a 16-bit little endian integer.
+                // (Only relevant for multi-wave and extended bolus.)
+                0x00, 0x00,
+                // Immediate bolus amount encoded as a 16-bit little endian integer.
+                // (Only relevant for multi-wave bolus.)
+                0x00, 0x00,
+
+                // Total bolus amount, encoded as a 32-bit little endian float point.
+                ((bolusAmountAsFloatBits and 0x000000FFL) ushr 0).toInt(),
+                ((bolusAmountAsFloatBits and 0x0000FF00L) ushr 8).toInt(),
+                ((bolusAmountAsFloatBits and 0x00FF0000L) ushr 16).toInt(),
+                ((bolusAmountAsFloatBits and 0xFF000000L) ushr 24).toInt(),
+                // Duration in minutes, encoded as a 32-bit little endian float point.
+                // (Only relevant for multi-wave and extended bolus.)
+                0x00, 0x00, 0x00, 0x00,
+                // Immediate bolus amount encoded as a 32-bit little endian float point.
+                // (Only relevant for multi-wave bolus.)
+                0x00, 0x00, 0x00, 0x00
+            )
+
+            // Add a CRC16 checksum for all of the parameters
+            // stored in the payload above.
+            val crcChecksum = calculateCRC16MCRF4XX(payload)
+            payload.add(((crcChecksum and 0x00FF) ushr 0).toByte())
+            payload.add(((crcChecksum and 0xFF00) ushr 8).toByte())
+
+            return Packet(
+                command = Command.CMD_DELIVER_BOLUS,
+                payload = payload
+            )
+        }
+
+        /**
+         * Creates a CMD_CANCEL_BOLUS packet.
+         *
+         * The command mode must have been activated before this can be sent to the Combo.
+         *
+         * See the combo-comm-spec.adoc file for details about this packet.
+         *
+         * @param bolusType The type of the bolus to cancel.
+         * @return The produced packet.
+         */
+        fun createCMDCancelBolusPacket(bolusType: CMDBolusType) = Packet(
+            command = Command.CMD_CANCEL_BOLUS,
+            payload = byteArrayListOfInts(bolusType.id)
         )
 
         /**
@@ -1257,6 +1400,108 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
                 historyGap = historyGap,
                 events = events
             )
+        }
+
+        /**
+         * Parses a CMD_GET_BOLUS_STATUS_RESPONSE packet and extracts its payload.
+         *
+         * @param packet Application layer CMD_GET_BOLUS_STATUS_RESPONSE packet to parse.
+         * @return The packet's parsed payload (the current bolus delivery status).
+         * @throws InvalidPayloadException if the payload size is not the expected size,
+         * @throws PayloadDataCorruptionException if the payload contains corrupted data.
+         */
+        fun parseCMDGetBolusStatusResponsePacket(packet: Packet): CMDBolusDeliveryStatus {
+            logger(LogLevel.VERBOSE) { "Parsing CMD_GET_BOLUS_STATUS_RESPONSE packet" }
+
+            // Payload size sanity check.
+            if (packet.payload.size != 8) {
+                throw InvalidPayloadException(
+                    packet,
+                    "Incorrect payload size in ${packet.command} packet; expected exactly 8 bytes, got ${packet.payload.size}"
+                )
+            }
+
+            val payload = packet.payload
+
+            val bolusTypeInt = payload[2].toPosInt()
+            val bolusType = CMDBolusType.fromInt(bolusTypeInt)
+            if (bolusType == null)
+                throw PayloadDataCorruptionException(
+                    packet,
+                    "Invalid bolus type ${bolusTypeInt.toHexString(2, true)}"
+                )
+
+            val deliveryStateInt = payload[3].toPosInt()
+            val deliveryState = CMDBolusDeliveryState.fromInt(deliveryStateInt)
+            if (deliveryState == null)
+                throw PayloadDataCorruptionException(
+                    packet,
+                    "Invalid delivery state ${deliveryStateInt.toHexString(2, true)}"
+                )
+
+            val bolusStatus = CMDBolusDeliveryStatus(
+                bolusType = bolusType,
+                deliveryState = deliveryState,
+                remainingAmount = (payload[4].toPosInt() shl 0) or (payload[5].toPosInt() shl 8)
+            )
+
+            logger(LogLevel.VERBOSE) { "Bolus status: $bolusStatus" }
+
+            return bolusStatus
+        }
+
+        /**
+         * Parses a CMD_DELIVER_BOLUS_RESPONSE packet and extracts its payload.
+         *
+         * @param packet Application layer CMD_DELIVER_BOLUS_RESPONSE packet to parse.
+         * @return true if the bolus was delivered correctly, false otherwise.
+         * @throws InvalidPayloadException if the payload size is not the expected size,
+         */
+        fun parseCMDDeliverBolusResponsePacket(packet: Packet): Boolean {
+            logger(LogLevel.VERBOSE) { "Parsing CMD_DELIVER_BOLUS_RESPONSE packet" }
+
+            // Payload size sanity check.
+            if (packet.payload.size != 3) {
+                throw InvalidPayloadException(
+                    packet,
+                    "Incorrect payload size in ${packet.command} packet; expected exactly 3 bytes, got ${packet.payload.size}"
+                )
+            }
+
+            val payload = packet.payload
+
+            val bolusStarted = (payload[2].toPosInt() == 0x48)
+
+            logger(LogLevel.VERBOSE) { "Bolus started: $bolusStarted" }
+
+            return bolusStarted
+        }
+
+        /**
+         * Parses a CMD_CANCEL_BOLUS_RESPONSE packet and extracts its payload.
+         *
+         * @param packet Application layer CMD_CANCEL_BOLUS_RESPONSE packet to parse.
+         * @return true if the bolus was cancelled, false otherwise.
+         * @throws InvalidPayloadException if the payload size is not the expected size,
+         */
+        fun parseCMDCancelBolusResponsePacket(packet: Packet): Boolean {
+            logger(LogLevel.VERBOSE) { "Parsing CMD_CANCEL_BOLUS_RESPONSE packet" }
+
+            // Payload size sanity check.
+            if (packet.payload.size != 3) {
+                throw InvalidPayloadException(
+                    packet,
+                    "Incorrect payload size in ${packet.command} packet; expected exactly 3 bytes, got ${packet.payload.size}"
+                )
+            }
+
+            val payload = packet.payload
+
+            val bolusCancelled = (payload[2].toPosInt() == 0x48)
+
+            logger(LogLevel.VERBOSE) { "Bolus cancelled: $bolusCancelled" }
+
+            return bolusCancelled
         }
 
         /**

@@ -458,6 +458,62 @@ class Pump(
     }
 
     /**
+     * Requests the current status of an ongoing bolus delivery.
+     *
+     * This is used for keeping track of the status of an ongoing bolus.
+     * If no bolus is ongoing, the return value's bolusType field is
+     * set to [ApplicationLayerIO.CMDBolusDeliveryState.NOT_DELIVERING].
+     *
+     * @return The current status.
+     * @throws IllegalStateException if the pump is not in the comand
+     *         mode, the worker has failed (see [connect]), or the
+     *         pump is not connected.
+     * @throws ApplicationLayerIO.InvalidPayloadException if the size
+     *         of a packet's payload does not match the expected size.
+     * @throws ApplicationLayerIO.DataCorruptionException if some of
+     *         the fields in the status data received from the pump
+     *         contain invalid values.
+     * @throws ComboIOException if IO with the pump fails.
+     */
+    suspend fun getCMDCurrentBolusDeliveryStatus(): ApplicationLayerIO.CMDBolusDeliveryStatus {
+        if (!pumpIO.isConnected())
+            throw IllegalStateException("Not connected to Combo")
+
+        return runChecked {
+            pumpIO.getCMDBolusStatus()
+        }
+    }
+
+    /**
+     * Instructs the pump to deliver the specified standard bolus amount.
+     *
+     * As the name suggests, this function can only deliver a standard bolus,
+     * and no multi-wave or extended ones. In the future, additional functions
+     * may be written that can deliver those.
+     *
+     * The return value indicates whether or not the delivery was actually
+     * done. The delivery may not happen if for example the pump is currently
+     * stopped, or if it is already administering another bolus. It is
+     * recommended to keep track of the current bolus status by periodically
+     * calling [getCMDBolusStatus].
+     *
+     * @param bolusAmount Bolus amount to deliver. Note that this is given
+     *        in 0.1 IU units, so for example, "57" means 5.7 IU.
+     * @return true if the bolus could be delivered, false otherwise.
+     * @throws ApplicationLayerIO.InvalidPayloadException if the size
+     *         of a packet's payload does not match the expected size.
+     * @throws ComboIOException if IO with the pump fails.
+     */
+    suspend fun deliverCMDStandardBolus(bolusAmount: Int): Boolean {
+        if (!pumpIO.isConnected())
+            throw IllegalStateException("Not connected to Combo")
+
+        return runChecked {
+            pumpIO.deliverCMDStandardBolus(bolusAmount)
+        }
+    }
+
+    /**
      * Performs a short button press.
      *
      * This mimics the physical pressing of buttons for a short
