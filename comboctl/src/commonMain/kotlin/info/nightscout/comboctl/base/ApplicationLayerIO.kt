@@ -439,7 +439,7 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
      * both [ErrorCode.Known] and [ErrorCode.Unknown] are overridden to provide better
      * descriptions of their contents.
      *
-     * The [ErrorCode.fromValue] function is used for converting an integer value to
+     * The [ErrorCode.fromInt] function is used for converting an integer value to
      * an ErrorCode instance. Said integer comes from the reliable packets.
      */
     sealed class ErrorCode {
@@ -493,7 +493,7 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
         companion object {
             private val knownCodes = Known.Code.values()
 
-            fun fromValue(value: Int): ErrorCode {
+            fun fromInt(value: Int): ErrorCode {
                 val foundCode = knownCodes.firstOrNull { (it.value == value) }
                 if (foundCode != null)
                     return Known(foundCode)
@@ -719,7 +719,7 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
          * @param payload Payload to parse.
          */
         fun parseErrorCode(payload: List<Byte>) =
-            ErrorCode.fromValue((payload[0].toPosInt() shl 0) or (payload[1].toPosInt() shl 8))
+            ErrorCode.fromInt((payload[0].toPosInt() shl 0) or (payload[1].toPosInt() shl 8))
 
         // NOTE: Some of the CTRL and CMD packet parse functions below do
         // not touch the first 2 bytes of the payload. This is because these
