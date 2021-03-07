@@ -124,7 +124,7 @@ fun List<Byte>.toHexStringWithContext(offset: Int, contextSize: Int = 10): Strin
  * bit. This in turn leads to 0xA2 being interpreted as the negative
  * value -94. When cast to Int, a negative -94 Int value is produced.
  * Due to the 2-complement logic, all upper bits are set, leading to
- * the hex value 0xffffffa5. By masking out all except the lower
+ * the hex value 0xffffffa2. By masking out all except the lower
  * 8 bits, the correct positive value is retained:
  *
  *     println("%08x".format(b.toPosInt() xor 7))
@@ -154,9 +154,18 @@ fun Byte.toPosInt() = toInt() and 0xFF
 /**
  * Byte to Long conversion that treats all 8 bits of the byte as a positive value.
  *
- * This behaves identically to toPosInt(), except it produces a Long instead of an Int value.
+ * This behaves identically to [Byte.toPosInt], except it produces a Long instead
+ * of an Int value.
  */
 fun Byte.toPosLong() = toLong() and 0xFF
+
+/**
+ * Int to Long conversion that treats all 32 bits of the Int as a positive value.
+ *
+ * This behaves just like [Byte.toPosLong], except it is applied on Int values,
+ * and extracts 32 bits instead of 8.
+ */
+fun Int.toPosLong() = toLong() and 0xFFFFFFFFL
 
 /**
  * Produces a hex string out of an Int.
