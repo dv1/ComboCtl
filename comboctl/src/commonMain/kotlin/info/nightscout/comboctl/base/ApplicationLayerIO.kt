@@ -769,7 +769,7 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
         val reason: RTDisplayUpdateReason,
         val index: Int,
         val row: Int,
-        val pixels: List<Byte>
+        val rowBytes: List<Byte>
     )
 
     companion object PacketFunctions {
@@ -1599,7 +1599,7 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
                 reason = reason,
                 index = payload[3].toPosInt(),
                 row = row,
-                pixels = payload.subList(5, 101)
+                rowBytes = payload.subList(5, 101)
             )
         }
 

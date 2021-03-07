@@ -1,5 +1,7 @@
 package info.nightscout.comboctl.base
 
+private const val NUM_DISPLAY_FRAME_BYTES = NUM_DISPLAY_FRAME_PIXELS / 8
+
 /**
  * Class for assembling RT_DISPLAY application layer packet rows to a complete display frame.
  *
@@ -57,18 +59,22 @@ class DisplayFrameAssembler {
      *
      * This feeds RT_DISPLAY data into the assembler. The index is the RT_DISPLAY
      * index value. The row is a value in the 0-3 range, specifying what row this
-     * is about. pixels is the byte list containing the pixel bytes from the packet.
+     * is about. rowBytes is the byte list containing the pixel bytes from the packet.
      * This list must contain exactly 96 bytes, since the whole frame is made of
      * 384 bytes, and there are 4 rows, so each row contains 384 / 4 = 96 bytes.
      *
+     * (The incoming frame rows store pixels as bits, not as booleans, which is
+     * why one frame consists of 384 bytes. 96 * 32 pixels, 8 bits per byte,
+     * one bits per pixel -> 96 * 32 / 8 = 384 bytes.)
+     *
      * @param index RT_DISPLAY index value.
      * @param row Row number, in the 0-3 range (inclusive).
-     * @param pixels RT_DIPLAY pixel bytes.
+     * @param rowBytes RT_DISPLAY pixel bytes.
      * @return null if no frame could be completed yet. A DisplayFrame instance
      *         if the assembler had enough data to complete a frame.
      */
-    fun processRTDisplayPayload(index: Int, row: Int, pixels: List<Byte>): DisplayFrame? {
-        require(pixels.size == NUM_DISPLAY_FRAME_BYTES / 4)
+    fun processRTDisplayPayload(index: Int, row: Int, rowBytes: List<Byte>): DisplayFrame? {
+        require(rowBytes.size == NUM_DISPLAY_FRAME_BYTES / 4)
 
         // Check if we got data from a different frame. If so, we have to throw
         // away any previously collected data, since it belongs to a previous frame.
@@ -84,7 +90,7 @@ class DisplayFrameAssembler {
         if (rtDisplayFrameRows[row] == null)
             numRowsLeftUnset -= 1
 
-        rtDisplayFrameRows[row] = pixels
+        rtDisplayFrameRows[row] = rowBytes
 
         return if (numRowsLeftUnset == 0) {
             val displayFrame = assembleDisplayFrame()
@@ -102,7 +108,7 @@ class DisplayFrameAssembler {
      * index, row, pixels arguments.
      */
     fun processRTDisplayPayload(rtDisplayPayload: ApplicationLayerIO.RTDisplayPayload): DisplayFrame? =
-        processRTDisplayPayload(rtDisplayPayload.index, rtDisplayPayload.row, rtDisplayPayload.pixels)
+        processRTDisplayPayload(rtDisplayPayload.index, rtDisplayPayload.row, rtDisplayPayload.rowBytes)
 
     /**
      * Resets the state of the assembler.
@@ -120,7 +126,7 @@ class DisplayFrameAssembler {
     }
 
     private fun assembleDisplayFrame(): DisplayFrame {
-        val displayFrameBytes = MutableList<Byte>(NUM_DISPLAY_FRAME_BYTES) { 0x00 }
+        val displayFramePixels = BooleanArray(NUM_DISPLAY_FRAME_PIXELS) { false }
 
         // (Note: Display frame rows are not to be confused with pixel rows. See the
         // class description for details about the display frame rows.)
@@ -145,22 +151,13 @@ class DisplayFrameAssembler {
                     val pixel = ((byteWithColumnPixels and (1 shl y)) != 0)
 
                     if (pixel) {
-                        // Get the index of the location on our output video frame bytes
-                        // (that's the destination, hence the "dest" naming).
-                        val destBitIndex = column + (y + row * 8) * DISPLAY_FRAME_WIDTH
-                        val destByteIndex = destBitIndex / 8
-                        // Get the index of the bit within the destination byte.
-                        val bitIndexWithinDestByte = 7 - (destBitIndex % 8)
-
-                        // Now set the pixel in the display frame by using bitwise OR.
-                        var destByteValue = displayFrameBytes[destByteIndex].toPosInt()
-                        destByteValue = destByteValue or (1 shl bitIndexWithinDestByte)
-                        displayFrameBytes[destByteIndex] = destByteValue.toByte()
+                        val destPixelIndex = column + (y + row * 8) * DISPLAY_FRAME_WIDTH
+                        displayFramePixels[destPixelIndex] = true
                     }
                 }
             }
         }
 
-        return DisplayFrame(displayFrameBytes)
+        return DisplayFrame(displayFramePixels)
     }
 }

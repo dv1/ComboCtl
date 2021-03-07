@@ -91,20 +91,18 @@ class DisplayFrameTest {
         // Construct a simple display frame with 2 pixels set and the rest
         // being empty. Pixel 1 is at coordinates (x 1 y 0), pixel 2 is at
         // coordinates (x 0 y 1).
-        val frameBytes = MutableList<Byte>(NUM_DISPLAY_FRAME_BYTES) { 0x00 }
-        // See the DisplayFrame documentation for details about how pixels
-        // are stored to make sense of this addressing.
-        frameBytes[0] = 0x20.toByte()
-        frameBytes[12 + 1] = 0x80.toByte()
+        val framePixels = BooleanArray(NUM_DISPLAY_FRAME_PIXELS) { false }
+        framePixels[1 + 0 * DISPLAY_FRAME_WIDTH] = true
+        framePixels[0 + 1 * DISPLAY_FRAME_WIDTH] = true
 
-        val displayFrame = DisplayFrame(frameBytes)
+        val displayFrame = DisplayFrame(framePixels)
 
         // Verify that all pixels except the two specific ones are empty.
         for (y in 0 until DISPLAY_FRAME_HEIGHT) {
             for (x in 0 until DISPLAY_FRAME_WIDTH) {
                 when (Pair(x, y)) {
-                    Pair(2, 0) -> assertEquals(true, displayFrame.getPixelAt(x, y))
-                    Pair(8, 1) -> assertEquals(true, displayFrame.getPixelAt(x, y))
+                    Pair(1, 0) -> assertEquals(true, displayFrame.getPixelAt(x, y))
+                    Pair(0, 1) -> assertEquals(true, displayFrame.getPixelAt(x, y))
                     else -> assertEquals(false, displayFrame.getPixelAt(x, y))
                 }
             }

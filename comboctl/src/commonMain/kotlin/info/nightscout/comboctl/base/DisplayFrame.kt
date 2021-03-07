@@ -3,10 +3,8 @@ package info.nightscout.comboctl.base
 const val DISPLAY_FRAME_WIDTH = 96
 const val DISPLAY_FRAME_HEIGHT = 32
 
-// One frame consists of 96x32 pixels, one bit
-// per pixel (hence the division by 8 to get the
-// number of bytes per frame.)
-const val NUM_DISPLAY_FRAME_BYTES = DISPLAY_FRAME_WIDTH * DISPLAY_FRAME_HEIGHT / 8
+// One frame consists of 96x32 pixels.
+const val NUM_DISPLAY_FRAME_PIXELS = DISPLAY_FRAME_WIDTH * DISPLAY_FRAME_HEIGHT
 
 /**
  * Class containing a 96x32 pixel black&white Combo display frame.
@@ -14,33 +12,28 @@ const val NUM_DISPLAY_FRAME_BYTES = DISPLAY_FRAME_WIDTH * DISPLAY_FRAME_HEIGHT /
  * These frames are sent by the Combo when it is operating
  * in the remote terminal (RT) mode.
  *
- * The pixels are stored in row-major order. One bit equals one
- * pixel. This means that one row consists of 96 / 8 = 12 bytes.
- *
- * The most significant bit (MSB) of the first byte is the pixel
- * at coordinates (x 0, y 0). The least significant bit (LSB) of
- * the first byte is the pixel at coordinates (x 7, y 0). The MSB
- * of the second byte is the pixel at (x 8, y 0). The MSB of the
- * first byte of the second row is the pixel at (x 96, y 1) etc.
+ * The pixels are stored in row-major order. One boolean equals
+ * one pixel.
  *
  * Note that this is not the layout of the pixels as transmitted
  * by the Combo. Rather, the pixels are rearranged in a layout
  * that is more commonly used and easier to work with.
  *
- * @param displayFrameBytes Bytes of the display frame to use.
- *        The list has to have exactly NUM_DISPLAY_FRAME_BYTES bytes.
+ * @param displayFramePixels Pixels of the display frame to use.
+ *        The array has to have exactly NUM_DISPLAY_FRAME_PIXELS
+ *        booleans.
  */
-data class DisplayFrame(private val displayFrameBytes: List<Byte>) : Iterable<Byte> {
+data class DisplayFrame(private val displayFramePixels: BooleanArray) : Iterable<Boolean> {
     /**
-     * Number of display frame bytes.
+     * Number of display frame pixels.
      *
      * This mainly exists to make this class compatible with
      * code that operates on collections.
      */
-    val size = NUM_DISPLAY_FRAME_BYTES
+    val size = NUM_DISPLAY_FRAME_PIXELS
 
     init {
-        require(displayFrameBytes.size == size)
+        require(displayFramePixels.size == size)
     }
 
     /**
@@ -51,17 +44,14 @@ data class DisplayFrame(private val displayFrameBytes: List<Byte>) : Iterable<By
      * @return true if the pixel at these coordinates is set,
      *         false if it is cleared.
      */
-    fun getPixelAt(x: Int, y: Int) =
-        ((displayFrameBytes[(x + y * DISPLAY_FRAME_WIDTH) / 8].toPosInt() and (1 shl (7 - (x % 8)))) != 0)
+    fun getPixelAt(x: Int, y: Int) = displayFramePixels[x + y * DISPLAY_FRAME_WIDTH]
 
-    operator fun get(index: Int) = displayFrameBytes[index]
+    operator fun get(index: Int) = displayFramePixels[index]
 
-    override operator fun iterator() = displayFrameBytes.iterator()
-
-    override fun toString() = displayFrameBytes.toHexString()
+    override operator fun iterator() = displayFramePixels.iterator()
 }
 
 /**
  * Display frame filled with empty pixels. Useful for initializations.
  */
-val NullDisplayFrame = DisplayFrame(List(NUM_DISPLAY_FRAME_BYTES) { 0x00 })
+val NullDisplayFrame = DisplayFrame(BooleanArray(NUM_DISPLAY_FRAME_PIXELS) { false })
