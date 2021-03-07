@@ -551,6 +551,9 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
 
     /**
      * Command mode history event details.
+     *
+     * IMPORTANT: Bolus amounts are given in 0.1 IU units,
+     * so for example, "57" means 5.7 IU.
      */
     sealed class CMDHistoryEventDetail {
         data class QuickBolusRequested(val bolusAmount: Int) : CMDHistoryEventDetail()
