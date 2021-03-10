@@ -401,69 +401,84 @@ class PumpIOTest {
             val expectedHistoryDeltaEvents = listOf(
                 ApplicationLayerIO.CMDHistoryEvent(
                     DateTime(2021, 2, 9, 16, 54, 42),
+                    80649,
                     ApplicationLayerIO.CMDHistoryEventDetail.QuickBolusRequested(15)
                 ),
                 ApplicationLayerIO.CMDHistoryEvent(
                     DateTime(2021, 2, 9, 16, 54, 49),
+                    80651,
                     ApplicationLayerIO.CMDHistoryEventDetail.QuickBolusInfused(15)
                 ),
 
                 ApplicationLayerIO.CMDHistoryEvent(
                     DateTime(2021, 2, 9, 16, 57, 6),
+                    80653,
                     ApplicationLayerIO.CMDHistoryEventDetail.StandardBolusRequested(29, true)
                 ),
                 ApplicationLayerIO.CMDHistoryEvent(
                     DateTime(2021, 2, 9, 16, 57, 20),
+                    80655,
                     ApplicationLayerIO.CMDHistoryEventDetail.StandardBolusInfused(29, true)
                 ),
 
                 ApplicationLayerIO.CMDHistoryEvent(
                     DateTime(2021, 2, 9, 16, 57, 55),
+                    80657,
                     ApplicationLayerIO.CMDHistoryEventDetail.QuickBolusRequested(5)
                 ),
                 ApplicationLayerIO.CMDHistoryEvent(
                     DateTime(2021, 2, 9, 16, 57, 57),
+                    80659,
                     ApplicationLayerIO.CMDHistoryEventDetail.QuickBolusInfused(5)
                 ),
 
                 ApplicationLayerIO.CMDHistoryEvent(
                     DateTime(2021, 2, 9, 16, 58, 45),
+                    80661,
                     ApplicationLayerIO.CMDHistoryEventDetail.StandardBolusRequested(18, true)
                 ),
                 ApplicationLayerIO.CMDHistoryEvent(
                     DateTime(2021, 2, 9, 16, 58, 54),
+                    80663,
                     ApplicationLayerIO.CMDHistoryEventDetail.StandardBolusInfused(18, true)
                 ),
 
                 ApplicationLayerIO.CMDHistoryEvent(
                     DateTime(2021, 2, 9, 17, 0, 19),
+                    80666,
                     ApplicationLayerIO.CMDHistoryEventDetail.ExtendedBolusStarted(177, 15)
                 ),
                 ApplicationLayerIO.CMDHistoryEvent(
                     DateTime(2021, 2, 9, 17, 15, 18),
+                    80668,
                     ApplicationLayerIO.CMDHistoryEventDetail.ExtendedBolusEnded(177, 15)
                 ),
 
                 ApplicationLayerIO.CMDHistoryEvent(
                     DateTime(2021, 2, 9, 17, 21, 31),
+                    80670,
                     ApplicationLayerIO.CMDHistoryEventDetail.MultiwaveBolusStarted(193, 37, 30)
                 ),
                 ApplicationLayerIO.CMDHistoryEvent(
                     DateTime(2021, 2, 9, 17, 51, 8),
+                    80672,
                     ApplicationLayerIO.CMDHistoryEventDetail.MultiwaveBolusEnded(193, 37, 30)
                 ),
 
                 ApplicationLayerIO.CMDHistoryEvent(
                     DateTime(2021, 2, 9, 18, 1, 25),
+                    80675,
                     ApplicationLayerIO.CMDHistoryEventDetail.NewDateTimeSet(DateTime(2021, 2, 9, 19, 1, 0))
                 ),
 
                 ApplicationLayerIO.CMDHistoryEvent(
                     DateTime(2021, 2, 9, 19, 2, 5),
+                    80683,
                     ApplicationLayerIO.CMDHistoryEventDetail.QuickBolusRequested(20)
                 ),
                 ApplicationLayerIO.CMDHistoryEvent(
                     DateTime(2021, 2, 9, 19, 2, 15),
+                    80685,
                     ApplicationLayerIO.CMDHistoryEventDetail.QuickBolusInfused(20)
                 )
             )

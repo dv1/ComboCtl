@@ -588,11 +588,17 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
      * of the information events provide. Each event contains a timestamp
      * and event specific details.
      *
+     * Each event has an associated counter value. The way it is currently
+     * understood is that these are the values of a unique internal event
+     * counter at the time the event occurred, making this a de-facto ID.
+     *
      * @property timestamp Timestamp of when the event occurred, in local time.
+     * @property eventCounter Counter value for this event.
      * @property detail Event specific details (see [CMDHistoryEventDetail]).
      */
     data class CMDHistoryEvent(
         val timestamp: DateTime,
+        val eventCounter: Long,
         val detail: CMDHistoryEventDetail
     ) {
         override fun equals(other: Any?): Boolean {
@@ -603,6 +609,9 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
             other as CMDHistoryEvent
 
             if (timestamp != other.timestamp)
+                return false
+
+            if (eventCounter != other.eventCounter)
                 return false
 
             if (detail != other.detail)
@@ -1209,37 +1218,50 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
                     years = ((payload[payloadOffset + 3].toPosInt() and 0b11111100) ushr 2) + 2000
                 )
 
-                // TODO: It is unknown how to interpret eventCounter and crcChecksumCounter.
                 val eventId = (payload[payloadOffset + 8].toPosInt() shl 0) or
                               (payload[payloadOffset + 9].toPosInt() shl 8)
-                val crcChecksum = (payload[payloadOffset + 10].toPosInt() shl 0) or
-                                  (payload[payloadOffset + 11].toPosInt() shl 8)
+                val detailBytesCrcChecksum = (payload[payloadOffset + 10].toPosInt() shl 0) or
+                                             (payload[payloadOffset + 11].toPosInt() shl 8)
                 val eventCounter = (payload[payloadOffset + 12].toPosLong() shl 0) or
                                    (payload[payloadOffset + 13].toPosLong() shl 8) or
                                    (payload[payloadOffset + 14].toPosLong() shl 16) or
                                    (payload[payloadOffset + 15].toPosLong() shl 24)
-                val crcChecksumCounter = (payload[payloadOffset + 16].toPosInt() shl 0) or
-                                         (payload[payloadOffset + 17].toPosInt() shl 8)
+                val eventCounterCrcChecksum = (payload[payloadOffset + 16].toPosInt() shl 0) or
+                                              (payload[payloadOffset + 17].toPosInt() shl 8)
                 val detailBytes = payload.subList(payloadOffset + 4, payloadOffset + 8)
 
                 logger(LogLevel.VERBOSE) {
                     "Event #$eventIndex:  timestamp $timestamp  event ID $eventId  " +
-                    "CRC16 checksum ${crcChecksum.toHexString(width = 4, prependPrefix = true)}  " +
-                    "event counter $eventCounter  CRC16 checksum counter $crcChecksumCounter  " +
+                    "detail bytes CRC16 checksum ${detailBytesCrcChecksum.toHexString(width = 4, prependPrefix = true)}  " +
+                    "event counter $eventCounter  " +
+                    "counter CRC16 checksum ${eventCounterCrcChecksum.toHexString(width = 4, prependPrefix = true)}  " +
                     "raw detail data bytes ${detailBytes.toHexString()}"
                 }
 
-                // The crcChecksum is the CRC-16-MCRF4XX checksum of the
-                // first 10 bytes in the event's data. This includes:
-                // timestamp, detail bytes, and the event ID.
-                val computedCrcChecksum = calculateCRC16MCRF4XX(payload.subList(payloadOffset + 0, payloadOffset + 10))
-                val integrityOk = computedCrcChecksum == crcChecksum
-                if (!integrityOk) {
+                // The eventCounterCrcChecksum is the CRC-16-MCRF4XX checksum
+                // of the 4 bytes that make up the event counter value.
+                val computedEventCounterCrcChecksum = calculateCRC16MCRF4XX(payload.subList(payloadOffset + 12, payloadOffset + 16))
+                val counterIntegrityOk = computedEventCounterCrcChecksum == eventCounterCrcChecksum
+                if (!counterIntegrityOk) {
                     throw PayloadDataCorruptionException(
                         packet,
-                        "Integrity check failed for event #$eventIndex; computed CRC16 is " +
-                        "checksum ${computedCrcChecksum.toHexString(width = 4, prependPrefix = true)}, " +
-                        "expected checksum ${crcChecksum.toHexString(width = 4, prependPrefix = true)}"
+                        "Integrity check failed for counter value of event #$eventIndex; computed CRC16 is " +
+                        "checksum ${computedEventCounterCrcChecksum.toHexString(width = 4, prependPrefix = true)}, " +
+                        "expected checksum is ${eventCounterCrcChecksum.toHexString(width = 4, prependPrefix = true)}"
+                    )
+                }
+
+                // The detailBytesCrcChecksum is the CRC-16-MCRF4XX checksum
+                // of the first 10 bytes in the event's data (the "detail bytes").
+                // This includes: timestamp, detail bytes, and the event ID.
+                val computedDetailCrcChecksum = calculateCRC16MCRF4XX(payload.subList(payloadOffset + 0, payloadOffset + 10))
+                val detailIntegrityOk = computedDetailCrcChecksum == detailBytesCrcChecksum
+                if (!detailIntegrityOk) {
+                    throw PayloadDataCorruptionException(
+                        packet,
+                        "Integrity check failed for detail bytes of event #$eventIndex; computed CRC16 is " +
+                        "checksum ${computedDetailCrcChecksum.toHexString(width = 4, prependPrefix = true)}, " +
+                        "expected checksum is ${detailBytesCrcChecksum.toHexString(width = 4, prependPrefix = true)}"
                     )
                 }
 
@@ -1391,7 +1413,13 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
                     }
                 }
 
-                events.add(CMDHistoryEvent(timestamp = timestamp, detail = eventDetail))
+                events.add(
+                    CMDHistoryEvent(
+                        timestamp = timestamp,
+                        eventCounter = eventCounter,
+                        detail = eventDetail
+                    )
+                )
             }
 
             return CMDHistoryBlock(
