@@ -596,7 +596,7 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
                 ApplicationLayerIO.parseCMDReadHistoryBlockResponsePacket(packet)
             } catch (e: Exception) {
                 logger(LogLevel.ERROR) {
-                    "Could not parse history block; data may have been corrupted; requesting the block again"
+                    "Could not parse history block; data may have been corrupted; requesting the block again (exception: $e)"
                 }
                 continue
             }

@@ -448,7 +448,7 @@ class Pump(
      *         a history block that marked an end to the history.
      * @throws ComboIOException if IO with the pump fails.
      */
-    suspend fun getCMDHistoryDelta(maxRequests: Int = 1000): List<ApplicationLayerIO.CMDHistoryEvent> {
+    suspend fun getCMDHistoryDelta(maxRequests: Int = 40): List<ApplicationLayerIO.CMDHistoryEvent> {
         if (!pumpIO.isConnected())
             throw IllegalStateException("Not connected to Combo")
 
