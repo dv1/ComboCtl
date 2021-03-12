@@ -19,11 +19,11 @@ const val NUM_DISPLAY_FRAME_PIXELS = DISPLAY_FRAME_WIDTH * DISPLAY_FRAME_HEIGHT
  * by the Combo. Rather, the pixels are rearranged in a layout
  * that is more commonly used and easier to work with.
  *
- * @param displayFramePixels Pixels of the display frame to use.
- *        The array has to have exactly NUM_DISPLAY_FRAME_PIXELS
- *        booleans.
+ * @property displayFramePixels Pixels of the display frame to use.
+ *           The array has to have exactly NUM_DISPLAY_FRAME_PIXELS
+ *           booleans.
  */
-data class DisplayFrame(private val displayFramePixels: BooleanArray) : Iterable<Boolean> {
+data class DisplayFrame(val displayFramePixels: BooleanArray) : Iterable<Boolean> {
     /**
      * Number of display frame pixels.
      *
