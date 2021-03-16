@@ -8,7 +8,7 @@ import kotlin.test.assertTrue
 class PatternMatchingTest {
     @Test
     fun checkBasicPatternMatch() {
-        // Try to match the LARGE_BASAL symbol pattern in the mainMenuDisplayFrame.
+        // Try to match the LARGE_BASAL symbol pattern in the testFrameMainScreenWithTimeSeparator.
         // That symbol is present at position (0,9).
         // Trying to match it at those coordinates is expected to succeed,
         // while trying to match it slightly to the right should fail.
@@ -16,14 +16,14 @@ class PatternMatchingTest {
         val largeBasalGlyphPattern = glyphPatterns[Glyph.LargeSymbol(Symbol.LARGE_BASAL)]!!
 
         val result1 = checkIfPatternMatchesAt(
-            mainMenuDisplayFrame,
+            testFrameMainScreenWithTimeSeparator,
             largeBasalGlyphPattern,
             0, 9
         )
         assertTrue(result1)
 
         val result2 = checkIfPatternMatchesAt(
-            mainMenuDisplayFrame,
+            testFrameMainScreenWithTimeSeparator,
             largeBasalGlyphPattern,
             1, 9
         )
@@ -42,22 +42,23 @@ class PatternMatchingTest {
         // that match the cyrillic letter "п". These must
         // be filtered out by findPatternMatches().
 
-        val matches = findPatternMatches(mainMenuDisplayFrame)
+        val matches = findPatternMatches(testFrameMainScreenWithTimeSeparator)
 
-        assertEquals(12, matches.size)
+        assertEquals(13, matches.size)
 
         val iterator = matches.iterator()
 
         assertEquals(Glyph.SmallSymbol(Symbol.SMALL_CLOCK), iterator.next().glyph)
 
+        assertEquals(Glyph.SmallDigit(1), iterator.next().glyph)
+        assertEquals(Glyph.SmallDigit(0), iterator.next().glyph)
+        assertEquals(Glyph.SmallSymbol(Symbol.SMALL_SEPARATOR), iterator.next().glyph)
         assertEquals(Glyph.SmallDigit(2), iterator.next().glyph)
-        assertEquals(Glyph.SmallDigit(2), iterator.next().glyph)
-        assertEquals(Glyph.SmallDigit(5), iterator.next().glyph)
-        assertEquals(Glyph.SmallDigit(9), iterator.next().glyph)
+        assertEquals(Glyph.SmallDigit(0), iterator.next().glyph)
 
         assertEquals(Glyph.LargeDigit(0), iterator.next().glyph)
-        assertEquals(Glyph.LargeDigit(8), iterator.next().glyph)
-        assertEquals(Glyph.LargeDigit(8), iterator.next().glyph)
+        assertEquals(Glyph.LargeDigit(2), iterator.next().glyph)
+        assertEquals(Glyph.LargeDigit(0), iterator.next().glyph)
 
         assertEquals(Glyph.LargeSymbol(Symbol.LARGE_BASAL), iterator.next().glyph)
         assertEquals(Glyph.LargeSymbol(Symbol.LARGE_UNITS_PER_HOUR), iterator.next().glyph)
@@ -77,7 +78,7 @@ class PatternMatchingTest {
         // the screen, thus testing that patterns are also properly
         // matched if they are at a border.
 
-        val matches = findPatternMatches(standardBolusDisplayFrame)
+        val matches = findPatternMatches(testFrameStandardBolusMenuScreen)
 
         assertEquals(14, matches.size)
 
