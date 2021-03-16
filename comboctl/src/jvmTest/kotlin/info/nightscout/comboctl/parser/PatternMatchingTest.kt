@@ -18,14 +18,14 @@ class PatternMatchingTest {
         val result1 = checkIfPatternMatchesAt(
             testFrameMainScreenWithTimeSeparator,
             largeBasalGlyphPattern,
-            0, 9
+            0, 8
         )
         assertTrue(result1)
 
         val result2 = checkIfPatternMatchesAt(
             testFrameMainScreenWithTimeSeparator,
             largeBasalGlyphPattern,
-            1, 9
+            1, 8
         )
         assertFalse(result2)
     }
@@ -56,13 +56,14 @@ class PatternMatchingTest {
         assertEquals(Glyph.SmallDigit(2), iterator.next().glyph)
         assertEquals(Glyph.SmallDigit(0), iterator.next().glyph)
 
+        assertEquals(Glyph.LargeSymbol(Symbol.LARGE_BASAL), iterator.next().glyph)
+
         assertEquals(Glyph.LargeDigit(0), iterator.next().glyph)
+        assertEquals(Glyph.LargeSymbol(Symbol.LARGE_DOT), iterator.next().glyph)
         assertEquals(Glyph.LargeDigit(2), iterator.next().glyph)
         assertEquals(Glyph.LargeDigit(0), iterator.next().glyph)
 
-        assertEquals(Glyph.LargeSymbol(Symbol.LARGE_BASAL), iterator.next().glyph)
         assertEquals(Glyph.LargeSymbol(Symbol.LARGE_UNITS_PER_HOUR), iterator.next().glyph)
-        assertEquals(Glyph.LargeSymbol(Symbol.LARGE_DOT), iterator.next().glyph)
 
         assertEquals(Glyph.SmallDigit(1), iterator.next().glyph)
     }

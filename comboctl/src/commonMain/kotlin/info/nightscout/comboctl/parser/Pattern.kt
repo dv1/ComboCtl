@@ -93,8 +93,8 @@ enum class Symbol {
     SMALL_NO_BATTERY,
     SMALL_WARNING,
     SMALL_DIVIDE,
-    SMALL_LOW_INSULIN,
-    SMALL_NO_INSULIN,
+    SMALL_RESERVOIR_LOW,
+    SMALL_RESERVOIR_EMPTY,
     SMALL_CALENDAR,
     SMALL_SEPARATOR,
     SMALL_ARROW,
@@ -138,7 +138,7 @@ enum class Symbol {
     LARGE_MENU_SETTINGS,
     LARGE_BASAL,
     LARGE_MY_DATA,
-    LARGE_ALARM_SETTINGS,
+    LARGE_REMINDER_SETTINGS,
     LARGE_CHECK,
     LARGE_ERROR
 }
@@ -173,33 +173,38 @@ sealed class Glyph(val isLarge: Boolean) {
  */
 val glyphPatterns = mapOf<Glyph, Pattern>(
     Glyph.LargeSymbol(Symbol.LARGE_DOT) to Pattern(arrayOf(
-        "    ",
-        "    ",
-        "    ",
-        "    ",
-        "    ",
-        "    ",
-        "    ",
-        "    ",
-        "███ ",
-        "███ ",
-        "███ ",
-        "    "
+        "     ",
+        "     ",
+        "     ",
+        "     ",
+        "     ",
+        "     ",
+        "     ",
+        "     ",
+        "     ",
+        "     ",
+        "     ",
+        "     ",
+        " ███ ",
+        " ███ ",
+        " ███ "
     )),
     Glyph.LargeSymbol(Symbol.LARGE_SEPARATOR) to Pattern(arrayOf(
-        "    ",
-        "    ",
-        "    ",
-        "███ ",
-        "███ ",
-        "███ ",
-        "    ",
-        "    ",
-        "███ ",
-        "███ ",
-        "███ ",
-        "    ",
-        "    "
+        "     ",
+        "     ",
+        "     ",
+        "     ",
+        "     ",
+        " ███ ",
+        " ███ ",
+        " ███ ",
+        "     ",
+        "     ",
+        " ███ ",
+        " ███ ",
+        " ███ ",
+        "     ",
+        "     "
     )),
     Glyph.LargeSymbol(Symbol.LARGE_WARNING) to Pattern(arrayOf(
         "       ██       ",
@@ -232,7 +237,8 @@ val glyphPatterns = mapOf<Glyph, Pattern>(
         "  ██  ██ ",
         " ██  ████",
         " ██  ████",
-        "██    ██ "
+        "██    ██ ",
+        "         "
     )),
     Glyph.LargeSymbol(Symbol.LARGE_UNITS_PER_HOUR) to Pattern(arrayOf(
         "██  ██    ██ ██    ",
@@ -249,6 +255,7 @@ val glyphPatterns = mapOf<Glyph, Pattern>(
         " ████  ██    ██  ██"
     )),
     Glyph.LargeSymbol(Symbol.LARGE_BASAL_SET) to Pattern(arrayOf(
+        "                 ",
         "     ███████     ",
         "     ███████     ",
         "     ██ █ ██     ",
@@ -265,6 +272,7 @@ val glyphPatterns = mapOf<Glyph, Pattern>(
         "██ █ █ █ █ █ █ ██"
     )),
     Glyph.LargeSymbol(Symbol.LARGE_RESERVOIR_FULL) to Pattern(arrayOf(
+        "                        ",
         "████████████████████    ",
         "████████████████████    ",
         "████████████████████ ███",
@@ -274,9 +282,11 @@ val glyphPatterns = mapOf<Glyph, Pattern>(
         "██████████████████████ █",
         "████████████████████ ███",
         "████████████████████    ",
-        "████████████████████    "
+        "████████████████████    ",
+        "                        "
     )),
     Glyph.LargeSymbol(Symbol.LARGE_RESERVOIR_LOW) to Pattern(arrayOf(
+        "                        ",
         "████████████████████    ",
         "█      █  █  █  ████    ",
         "█      █  █  █  ████ ███",
@@ -286,9 +296,11 @@ val glyphPatterns = mapOf<Glyph, Pattern>(
         "█               ██████ █",
         "█               ████ ███",
         "█               ████    ",
-        "████████████████████    "
+        "████████████████████    ",
+        "                        "
     )),
-    Glyph.LargeSymbol(Symbol.LARGE_RESERVOIR_LOW) to Pattern(arrayOf(
+    Glyph.LargeSymbol(Symbol.LARGE_RESERVOIR_EMPTY) to Pattern(arrayOf(
+        "                        ",
         "████████████████████    ",
         "█      █  █  █  █  █    ",
         "█      █  █  █  █  █ ███",
@@ -298,7 +310,8 @@ val glyphPatterns = mapOf<Glyph, Pattern>(
         "█                  ███ █",
         "█                  █ ███",
         "█                  █    ",
-        "████████████████████    "
+        "████████████████████    ",
+        "                        "
     )),
     Glyph.LargeSymbol(Symbol.LARGE_ARROW) to Pattern(arrayOf(
         "        ██      ",
@@ -431,6 +444,7 @@ val glyphPatterns = mapOf<Glyph, Pattern>(
         "██   ██   ██   ██  ██    ██ "
     )),
     Glyph.LargeSymbol(Symbol.LARGE_BASAL) to Pattern(arrayOf(
+        "                 ",
         "     ███████     ",
         "     ███████     ",
         "     ██   ██     ",
@@ -544,7 +558,7 @@ val glyphPatterns = mapOf<Glyph, Pattern>(
         "█     █ ██████",
         "███████ ██████"
     )),
-    Glyph.LargeSymbol(Symbol.LARGE_ALARM_SETTINGS) to Pattern(arrayOf(
+    Glyph.LargeSymbol(Symbol.LARGE_REMINDER_SETTINGS) to Pattern(arrayOf(
         "      █          ",
         "     █ █         ",
         "     ███         ",
@@ -890,7 +904,7 @@ val glyphPatterns = mapOf<Glyph, Pattern>(
         "██████████ "
 
     )),
-    Glyph.SmallSymbol(Symbol.SMALL_LOW_INSULIN) to Pattern(arrayOf(
+    Glyph.SmallSymbol(Symbol.SMALL_RESERVOIR_LOW) to Pattern(arrayOf(
         "█████████████    ",
         "█  █  █  █ ██ ███",
         "█  █  █  █ ████ █",
@@ -899,7 +913,7 @@ val glyphPatterns = mapOf<Glyph, Pattern>(
         "█          ██ ███",
         "█████████████    "
     )),
-    Glyph.SmallSymbol(Symbol.SMALL_NO_INSULIN) to Pattern(arrayOf(
+    Glyph.SmallSymbol(Symbol.SMALL_RESERVOIR_EMPTY) to Pattern(arrayOf(
         "█████████████    ",
         "█  █  █  █  █ ███",
         "█  █  █  █  ███ █",
