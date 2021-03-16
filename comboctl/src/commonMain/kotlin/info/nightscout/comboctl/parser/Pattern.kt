@@ -115,6 +115,8 @@ enum class Symbol {
     SMALL_MINUS,
     SMALL_WARRANTY,
 
+    LARGE_CLOCK,
+    LARGE_CALENDAR,
     LARGE_DOT,
     LARGE_SEPARATOR,
     LARGE_WARNING,
@@ -126,7 +128,7 @@ enum class Symbol {
     LARGE_RESERVOIR_EMPTY,
     LARGE_ARROW,
     LARGE_STOP,
-    LARGE_CALENDAR,
+    LARGE_CALENDAR_AND_CLOCK,
     LARGE_TBR,
     LARGE_BOLUS,
     LARGE_MULTIWAVE,
@@ -172,6 +174,40 @@ sealed class Glyph(val isLarge: Boolean) {
  * Map of hard-coded patterns, each associated with a glyph specifying what the pattern stands for.
  */
 val glyphPatterns = mapOf<Glyph, Pattern>(
+    Glyph.LargeSymbol(Symbol.LARGE_CLOCK) to Pattern(arrayOf(
+        "              ",
+        "    █████     ",
+        "  ██     ██   ",
+        " █    █    █  ",
+        " █    █    ██ ",
+        "█     █     █ ",
+        "█     █     ██",
+        "█     ████  ██",
+        "█           ██",
+        "█           ██",
+        " █         ███",
+        " █         ██ ",
+        "  ██     ████ ",
+        "   █████████  ",
+        "     █████    "
+    )),
+    Glyph.LargeSymbol(Symbol.LARGE_CALENDAR) to Pattern(arrayOf(
+        "              ",
+        "█████████████ ",
+        "█           ██",
+        "██████████████",
+        "█ █ █ █ █ █ ██",
+        "██████████████",
+        "█ █ █ █ █ █ ██",
+        "██████████████",
+        "█ █ █ █ █ █ ██",
+        "██████████████",
+        "█ █ █ █ ██████",
+        "██████████████",
+        " █████████████",
+        "              ",
+        "              "
+    )),
     Glyph.LargeSymbol(Symbol.LARGE_DOT) to Pattern(arrayOf(
         "     ",
         "     ",
@@ -314,6 +350,7 @@ val glyphPatterns = mapOf<Glyph, Pattern>(
         "                        "
     )),
     Glyph.LargeSymbol(Symbol.LARGE_ARROW) to Pattern(arrayOf(
+        "                ",
         "        ██      ",
         "        ███     ",
         "        ████    ",
@@ -411,7 +448,7 @@ val glyphPatterns = mapOf<Glyph, Pattern>(
         "   ██████████   ",
         "    ████████    "
     )),
-    Glyph.LargeSymbol(Symbol.LARGE_CALENDAR) to Pattern(arrayOf(
+    Glyph.LargeSymbol(Symbol.LARGE_CALENDAR_AND_CLOCK) to Pattern(arrayOf(
         "       █████     ",
         "      █     █    ",
         "██████   █   █   ",
@@ -1079,10 +1116,13 @@ val glyphPatterns = mapOf<Glyph, Pattern>(
         "█ █  █ █"
     )),
     Glyph.SmallSymbol(Symbol.SMALL_MINUS) to Pattern(arrayOf(
-        "     ",
-        "     ",
-        "█████",
-        "     "
+        "       ",
+        "       ",
+        "       ",
+        " █████ ",
+        "       ",
+        "       ",
+        "       "
     )),
     Glyph.SmallSymbol(Symbol.SMALL_WARRANTY) to Pattern(arrayOf(
         " ███ █  ",
