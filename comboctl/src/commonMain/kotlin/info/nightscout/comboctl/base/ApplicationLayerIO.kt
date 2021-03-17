@@ -1218,8 +1218,8 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
                     years = ((payload[payloadOffset + 3].toPosInt() and 0b11111100) ushr 2) + 2000
                 )
 
-                val eventId = (payload[payloadOffset + 8].toPosInt() shl 0) or
-                              (payload[payloadOffset + 9].toPosInt() shl 8)
+                val eventTypeId = (payload[payloadOffset + 8].toPosInt() shl 0) or
+                                  (payload[payloadOffset + 9].toPosInt() shl 8)
                 val detailBytesCrcChecksum = (payload[payloadOffset + 10].toPosInt() shl 0) or
                                              (payload[payloadOffset + 11].toPosInt() shl 8)
                 val eventCounter = (payload[payloadOffset + 12].toPosLong() shl 0) or
@@ -1231,7 +1231,7 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
                 val detailBytes = payload.subList(payloadOffset + 4, payloadOffset + 8)
 
                 logger(LogLevel.VERBOSE) {
-                    "Event #$eventIndex:  timestamp $timestamp  event ID $eventId  " +
+                    "Event #$eventIndex:  timestamp $timestamp  event type ID $eventTypeId  " +
                     "detail bytes CRC16 checksum ${detailBytesCrcChecksum.toHexString(width = 4, prependPrefix = true)}  " +
                     "event counter $eventCounter  " +
                     "counter CRC16 checksum ${eventCounterCrcChecksum.toHexString(width = 4, prependPrefix = true)}  " +
@@ -1253,7 +1253,7 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
 
                 // The detailBytesCrcChecksum is the CRC-16-MCRF4XX checksum
                 // of the first 10 bytes in the event's data (the "detail bytes").
-                // This includes: timestamp, detail bytes, and the event ID.
+                // This includes: timestamp, detail bytes, and the event type ID.
                 val computedDetailCrcChecksum = calculateCRC16MCRF4XX(payload.subList(payloadOffset + 0, payloadOffset + 10))
                 val detailIntegrityOk = computedDetailCrcChecksum == detailBytesCrcChecksum
                 if (!detailIntegrityOk) {
@@ -1268,13 +1268,13 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
                 // All bolus amounts are recorded as an integer that got multiplied by 10.
                 // For example, an amount of 3.7 IU is recorded as the 16-bit integer 37.
 
-                val eventDetail = when (eventId) {
+                val eventDetail = when (eventTypeId) {
                     // Quick bolus.
                     4, 5 -> {
                         // Bolus amount is recorded in the first 2 detail bytes as a 16-bit little endian integer.
                         val bolusAmount = (detailBytes[1].toPosInt() shl 8) or detailBytes[0].toPosInt()
-                        // Event ID 4 = bolus requested. ID 5 = bolus infused (= it is done).
-                        val requested = (eventId == 4)
+                        // Event type ID 4 = bolus requested. ID 5 = bolus infused (= it is done).
+                        val requested = (eventTypeId == 4)
 
                         logger(LogLevel.VERBOSE) {
                             "Detail info: got history event \"quick bolus ${if (requested) "requested" else "infused"}\" " +
@@ -1297,8 +1297,8 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
                         val totalBolusAmount = (detailBytes[1].toPosInt() shl 8) or detailBytes[0].toPosInt()
                         // Total duration in minutes is recorded in the next 2 detail bytes as a 16-bit little endian integer.
                         val totalDurationMinutes = (detailBytes[3].toPosInt() shl 8) or detailBytes[2].toPosInt()
-                        // Event ID 8 = bolus started. ID 9 = bolus ended.
-                        val started = (eventId == 8)
+                        // Event type ID 8 = bolus started. ID 9 = bolus ended.
+                        val started = (eventTypeId == 8)
 
                         logger(LogLevel.VERBOSE) {
                             "Detail info: got history event \"extended bolus ${if (started) "started" else "ended"}\" " +
@@ -1328,8 +1328,8 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
                                                    ((detailBytes[1].toPosInt() and 0b11111100) ushr 2)
                         val totalDurationMinutes = (detailBytes[3].toPosInt() shl 4) or
                                                    ((detailBytes[2].toPosInt() and 0b11110000) ushr 4)
-                        // Event ID 10 = bolus started. ID 11 = bolus ended.
-                        val started = (eventId == 10)
+                        // Event type ID 10 = bolus started. ID 11 = bolus ended.
+                        val started = (eventTypeId == 10)
 
                         logger(LogLevel.VERBOSE) {
                             "Detail info: got history event \"multiwave bolus ${if (started) "started" else "ended"}\" " +
@@ -1356,11 +1356,11 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
                     6, 14, 7, 15 -> {
                         // Bolus amount is recorded in the first 2 detail bytes as a 16-bit little endian integer.
                         val bolusAmount = (detailBytes[1].toPosInt() shl 8) or detailBytes[0].toPosInt()
-                        // Events with IDs 6 and 7 indicate manual infusion. (TODO: What exactly does "manual" mean here?)
-                        val manual = (eventId == 6) || (eventId == 7)
-                        // Events with IDs 6 and 14 indicate that a bolus was requested, while
-                        // events with IDs 7 and 15 indicate that a bolus was infused (= finished).
-                        val requested = (eventId == 6) || (eventId == 14)
+                        // Events with type IDs 6 and 7 indicate manual infusion. (TODO: What exactly does "manual" mean here?)
+                        val manual = (eventTypeId == 6) || (eventTypeId == 7)
+                        // Events with type IDs 6 and 14 indicate that a bolus was requested, while
+                        // events with type IDs 7 and 15 indicate that a bolus was infused (= finished).
+                        val requested = (eventTypeId == 6) || (eventTypeId == 14)
 
                         logger(LogLevel.VERBOSE) {
                             "Detail info: got history event \"${if (manual) "manual" else "automatic"} " +
@@ -1407,7 +1407,7 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
                     }
                     else -> {
                         logger(LogLevel.VERBOSE) {
-                            "No detail info available: event ID unrecognized; skipping this event"
+                            "No detail info available: event type ID unrecognized; skipping this event"
                         }
                         continue
                     }
