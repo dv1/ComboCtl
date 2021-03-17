@@ -1287,6 +1287,24 @@ val glyphPatterns = mapOf<Glyph, Pattern>(
         "█████",
         "█   █"
     )),
+    Glyph.SmallCharacter('Ą') to Pattern(arrayOf(
+        " ███ ",
+        "█   █",
+        "█████",
+        "█   █",
+        "█   █",
+        "   █ ",
+        "    █"
+    )),
+    Glyph.SmallCharacter('Å') to Pattern(arrayOf(
+        "  █  ",
+        " █ █ ",
+        "  █  ",
+        " █ █ ",
+        "█   █",
+        "█████",
+        "█   █"
+    )),
 
     Glyph.SmallCharacter('æ') to Pattern(arrayOf(
         " ████",
@@ -1374,6 +1392,15 @@ val glyphPatterns = mapOf<Glyph, Pattern>(
     Glyph.SmallCharacter('Ê') to Pattern(arrayOf(
         "  █  ",
         " █ █ ",
+        "█████",
+        "█    ",
+        "████ ",
+        "█    ",
+        "█████"
+    )),
+    Glyph.SmallCharacter('Ě') to Pattern(arrayOf(
+        " █ █ ",
+        "  █  ",
         "█████",
         "█    ",
         "████ ",
@@ -1525,6 +1552,15 @@ val glyphPatterns = mapOf<Glyph, Pattern>(
         "█  ██",
         "█   █"
     )),
+    Glyph.SmallCharacter('ń') to Pattern(arrayOf(
+        "   █ ",
+        "  █  ",
+        "█   █",
+        "██  █",
+        "█ █ █",
+        "█  ██",
+        "█   █"
+    )),
 
     Glyph.SmallCharacter('O') to Pattern(arrayOf(
         " ███ ",
@@ -1650,7 +1686,8 @@ val glyphPatterns = mapOf<Glyph, Pattern>(
         "█   █",
         "█   █",
         "█  ██",
-        " ██ █"
+        " ██ █",
+        "     "
     )),
     Glyph.SmallCharacter('Ü') to Pattern(arrayOf(
         "█   █",
@@ -1833,6 +1870,15 @@ val glyphPatterns = mapOf<Glyph, Pattern>(
         "██  █",
         "█   █"
     )),
+    Glyph.SmallCharacter('Г') to Pattern(arrayOf(
+        "█████",
+        "█    ",
+        "█    ",
+        "█    ",
+        "█    ",
+        "█    ",
+        "█    "
+    )),
     Glyph.SmallCharacter('д') to Pattern(arrayOf(
         "  ██ ",
         " █ █ ",
@@ -1841,6 +1887,15 @@ val glyphPatterns = mapOf<Glyph, Pattern>(
         "█  █ ",
         "█████",
         "█   █"
+    )),
+    Glyph.SmallCharacter('ь') to Pattern(arrayOf(
+        "█   ",
+        "█   ",
+        "█   ",
+        "███ ",
+        "█  █",
+        "█  █",
+        "███ "
     )),
     Glyph.SmallCharacter('ж') to Pattern(arrayOf(
         "█ █ █",
@@ -1870,13 +1925,13 @@ val glyphPatterns = mapOf<Glyph, Pattern>(
         "█    "
     )),
     Glyph.SmallCharacter('ч') to Pattern(arrayOf(
-        " █   █",
-        " █   █",
-        " █   █",
-        " █  ██",
-        "  ██ █",
-        "     █",
-        "     █"
+        "█   █",
+        "█   █",
+        "█   █",
+        "█  ██",
+        " ██ █",
+        "    █",
+        "    █"
     )),
     Glyph.SmallCharacter('з') to Pattern(arrayOf(
         "  ███ ",
