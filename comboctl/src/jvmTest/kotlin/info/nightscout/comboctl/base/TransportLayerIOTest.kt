@@ -349,6 +349,10 @@ class TransportLayerIOTest {
             // Wait until the exception is thrown in the worker.
             val caughtBackgroundWorkerException = deferredException.await()
 
+            // TODO: There is a race condition with this test. See the
+            // checkCanceledPINDeferredHandling test below for details.
+            delay(200)
+
             // At this point, the worker failed. Attempts at sending
             // and receiving must fail and throw the exception that
             // caused the worker to fail. This allows for propagating
