@@ -466,9 +466,5 @@ class DisplayFrameParsingTest {
             val result = parseDisplayFrame(testScreen)
             assertEquals(expectedResult, result)
         }
-
-        for ((titleString, titleID) in knownScreenTitles) {
-            println("ID $titleID  original [$titleString]  lowercase [${titleString.toLowerCase()}]")
-        }
     }
 }
