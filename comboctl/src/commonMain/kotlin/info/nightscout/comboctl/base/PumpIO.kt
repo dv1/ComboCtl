@@ -233,7 +233,7 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
                 // Initiate pairing and wait for the response.
                 // (The response contains no meaningful payload.)
                 logger(LogLevel.DEBUG) { "Sending pairing connection request" }
-                applicationLayerIO.sendPacketWithResponse(
+                sendPacketWithResponse(
                     TransportLayerIO.createRequestPairingConnectionPacketInfo(),
                     TransportLayerIO.Command.PAIRING_CONNECTION_REQUEST_ACCEPTED
                 )
@@ -242,14 +242,14 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
                 // This will cause the pump to generate and show a
                 // 10-digit PIN.
                 logger(LogLevel.DEBUG) { "Requesting the pump to generate and show the pairing PIN" }
-                applicationLayerIO.sendPacketNoResponse(TransportLayerIO.createRequestKeysPacketInfo())
+                sendPacketNoResponse(TransportLayerIO.createRequestKeysPacketInfo())
 
                 logger(LogLevel.DEBUG) { "Requesting the keys and IDs from the pump" }
-                applicationLayerIO.sendPacketWithResponse(
+                sendPacketWithResponse(
                     TransportLayerIO.createGetAvailableKeysPacketInfo(),
                     TransportLayerIO.Command.KEY_RESPONSE
                 )
-                applicationLayerIO.sendPacketWithResponse(
+                sendPacketWithResponse(
                     TransportLayerIO.createRequestIDPacketInfo(bluetoothFriendlyName),
                     TransportLayerIO.Command.ID_RESPONSE
                 )
@@ -260,7 +260,7 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
                 // _transport layer_ connection.
                 // Wait for the response and verify it.
                 logger(LogLevel.DEBUG) { "Sending regular connection request" }
-                applicationLayerIO.sendPacketWithResponse(
+                sendPacketWithResponse(
                     TransportLayerIO.createRequestRegularConnectionPacketInfo(),
                     TransportLayerIO.Command.REGULAR_CONNECTION_REQUEST_ACCEPTED
                 )
@@ -268,7 +268,7 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
                 // Initiate application-layer connection and wait for the response.
                 // (The response contains no meaningful payload.)
                 logger(LogLevel.DEBUG) { "Initiating application layer connection" }
-                applicationLayerIO.sendPacketWithResponse(
+                sendPacketWithResponse(
                     ApplicationLayerIO.createCTRLConnectPacket(),
                     ApplicationLayerIO.Command.CTRL_CONNECT_RESPONSE
                 )
@@ -279,14 +279,14 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
                 // otherwise the pump considers it an error.
                 // TODO: Further verify this.
                 logger(LogLevel.DEBUG) { "Requesting command mode service version" }
-                applicationLayerIO.sendPacketWithResponse(
+                sendPacketWithResponse(
                     ApplicationLayerIO.createCTRLGetServiceVersionPacket(ApplicationLayerIO.ServiceID.COMMAND_MODE),
                     ApplicationLayerIO.Command.CTRL_SERVICE_VERSION_RESPONSE
                 )
                 // NOTE: These two steps may not be necessary. See the
                 // "Application layer pairing" section in the spec.
                 /*
-                applicationLayerIO.sendPacketWithResponse(
+                sendPacketWithResponse(
                     ApplicationLayerIO.ApplicationLayerIO.createCTRLGetServiceVersionPacket(ApplicationLayerIO.ServiceID.RT_MODE),
                     ApplicationLayerIO.Command.CTRL_SERVICE_VERSION_RESPONSE
                 )
@@ -295,7 +295,7 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
                 // Next, send a BIND command and wait for the response.
                 // (The response contains no meaningful payload.)
                 logger(LogLevel.DEBUG) { "Sending BIND command" }
-                applicationLayerIO.sendPacketWithResponse(
+                sendPacketWithResponse(
                     ApplicationLayerIO.createCTRLBindPacket(),
                     ApplicationLayerIO.Command.CTRL_BIND_RESPONSE
                 )
@@ -305,7 +305,7 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
                 // is necessary for the pairing process to succeed.)
                 // Wait for the response and verify it.
                 logger(LogLevel.DEBUG) { "Reconnecting regular connection" }
-                applicationLayerIO.sendPacketWithResponse(
+                sendPacketWithResponse(
                     TransportLayerIO.createRequestRegularConnectionPacketInfo(),
                     TransportLayerIO.Command.REGULAR_CONNECTION_REQUEST_ACCEPTED
                 )
@@ -420,14 +420,14 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
                 logger(LogLevel.DEBUG) { "Sending regular connection request" }
 
                 // Initiate connection at the transport layer.
-                applicationLayerIO.sendPacketWithResponse(
+                sendPacketWithResponse(
                     TransportLayerIO.createRequestRegularConnectionPacketInfo(),
                     TransportLayerIO.Command.REGULAR_CONNECTION_REQUEST_ACCEPTED
                 )
 
                 // Initiate connection at the application layer.
                 logger(LogLevel.DEBUG) { "Initiating application layer connection" }
-                applicationLayerIO.sendPacketWithResponse(
+                sendPacketWithResponse(
                     ApplicationLayerIO.createCTRLConnectPacket(),
                     ApplicationLayerIO.Command.CTRL_CONNECT_RESPONSE
                 )
@@ -499,7 +499,7 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
         if (currentMode != Mode.COMMAND)
             throw IllegalStateException("Cannot get current pump datetime while being in $currentMode mode")
 
-        val packet = applicationLayerIO.sendPacketWithResponse(
+        val packet = sendPacketWithResponse(
             ApplicationLayerIO.createCMDReadDateTimePacket(),
             ApplicationLayerIO.Command.CMD_READ_DATE_TIME_RESPONSE
         )
@@ -526,7 +526,7 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
         if (currentMode != Mode.COMMAND)
             throw IllegalStateException("Cannot get history delta while being in $currentMode mode")
 
-        val packet = applicationLayerIO.sendPacketWithResponse(
+        val packet = sendPacketWithResponse(
             ApplicationLayerIO.createCMDReadPumpStatusPacket(),
             ApplicationLayerIO.Command.CMD_READ_PUMP_STATUS_RESPONSE
         )
@@ -586,7 +586,7 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
         // taken care of by parseCMDReadHistoryBlockResponsePacket()).
         for (requestNr in 1 until maxRequests) {
             // Request the current history block from the Combo.
-            val packet = applicationLayerIO.sendPacketWithResponse(
+            val packet = sendPacketWithResponse(
                 ApplicationLayerIO.createCMDReadHistoryBlockPacket(),
                 ApplicationLayerIO.Command.CMD_READ_HISTORY_BLOCK_RESPONSE
             )
@@ -604,7 +604,7 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
             // Confirm this history block to let the Combo consider
             // it processed. The Combo can then move on to the next
             // history block.
-            applicationLayerIO.sendPacketWithResponse(
+            sendPacketWithResponse(
                 ApplicationLayerIO.createCMDConfirmHistoryBlockPacket(),
                 ApplicationLayerIO.Command.CMD_CONFIRM_HISTORY_BLOCK_RESPONSE
             )
@@ -647,7 +647,7 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
      * @throws ComboIOException if IO with the pump fails.
      */
     suspend fun getCMDBolusStatus(): ApplicationLayerIO.CMDBolusDeliveryStatus {
-        val packet = applicationLayerIO.sendPacketWithResponse(
+        val packet = sendPacketWithResponse(
             ApplicationLayerIO.createCMDGetBolusStatusPacket(),
             ApplicationLayerIO.Command.CMD_GET_BOLUS_STATUS_RESPONSE
         )
@@ -676,7 +676,7 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
      * @throws ComboIOException if IO with the pump fails.
      */
     suspend fun deliverCMDStandardBolus(bolusAmount: Int): Boolean {
-        val packet = applicationLayerIO.sendPacketWithResponse(
+        val packet = sendPacketWithResponse(
             ApplicationLayerIO.createCMDDeliverBolusPacket(bolusAmount),
             ApplicationLayerIO.Command.CMD_DELIVER_BOLUS_RESPONSE
         )
@@ -720,7 +720,7 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
         val buttonCodes = getCombinedButtonCodes(buttons)
 
         try {
-            applicationLayerIO.sendPacketNoResponse(ApplicationLayerIO.createRTButtonStatusPacket(buttonCodes, true))
+            sendPacketNoResponse(ApplicationLayerIO.createRTButtonStatusPacket(buttonCodes, true))
             // Wait 100 ms to mimic a physical short button press.
             delay(100L)
         } finally {
@@ -728,7 +728,7 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
             // code to finish the short button press, even if
             // an exception is thrown.
             try {
-                applicationLayerIO.sendPacketNoResponse(
+                sendPacketNoResponse(
                     ApplicationLayerIO.createRTButtonStatusPacket(ApplicationLayerIO.RTButtonCode.NO_BUTTON.id, true)
                 )
             } catch (ignore: Exception) {
@@ -869,7 +869,7 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
         if (currentMode != null) {
             val modeToDeactivate = currentMode!!
             logger(LogLevel.VERBOSE) { "Deactivating current service" }
-            applicationLayerIO.sendPacketWithResponse(
+            sendPacketWithResponse(
                 ApplicationLayerIO.createCTRLDeactivateServicePacket(
                     when (modeToDeactivate) {
                         Mode.REMOTE_TERMINAL -> ApplicationLayerIO.ServiceID.RT_MODE
@@ -881,7 +881,7 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
         }
 
         logger(LogLevel.VERBOSE) { "Activating new service" }
-        applicationLayerIO.sendPacketWithResponse(
+        sendPacketWithResponse(
             ApplicationLayerIO.createCTRLActivateServicePacket(
                 when (newMode) {
                     Mode.REMOTE_TERMINAL -> ApplicationLayerIO.ServiceID.RT_MODE
@@ -918,6 +918,52 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
             Button.MENU -> ApplicationLayerIO.RTButtonCode.MENU
             Button.CHECK -> ApplicationLayerIO.RTButtonCode.CHECK
         }
+
+    // Proxy functions to reset the RT keep-alive timeout
+    // if the application layer packet contains an RT command.
+    // This reset is only done if the RT keep-alive background
+    // loop is running. If it isn't, then these functions
+    // behave exactly as the ApplicationLayerIO ones
+
+    private suspend fun sendPacketNoResponse(appLayerPacket: ApplicationLayerIO.Packet) {
+        restartKeepAliveIfRequired(appLayerPacket)
+        applicationLayerIO.sendPacketNoResponse(appLayerPacket)
+    }
+
+    private suspend fun sendPacketWithResponse(
+        appLayerPacket: ApplicationLayerIO.Packet,
+        expectedResponseCommand: ApplicationLayerIO.Command? = null
+    ): ApplicationLayerIO.Packet {
+        restartKeepAliveIfRequired(appLayerPacket)
+        return applicationLayerIO.sendPacketWithResponse(appLayerPacket, expectedResponseCommand)
+    }
+
+    // Overloads provided for convenience (since we
+    // also provide sendPacket* proxy functions above
+    // for application layer packets).
+
+    private suspend fun sendPacketNoResponse(tpLayerPacketInfo: TransportLayerIO.OutgoingPacketInfo) =
+        applicationLayerIO.sendPacketNoResponse(tpLayerPacketInfo)
+
+    private suspend fun sendPacketWithResponse(
+        tpLayerPacketInfo: TransportLayerIO.OutgoingPacketInfo,
+        expectedResponseCommand: TransportLayerIO.Command? = null
+    ): TransportLayerIO.Packet =
+        applicationLayerIO.sendPacketWithResponse(tpLayerPacketInfo, expectedResponseCommand)
+
+    // Restarts the keep-alive background loop if the
+    // given application layer packet contains an
+    // RT command and if the RT keep-alive loop is
+    // already running.
+    // TODO: Do the same for CMD commands and the
+    // CMD ping loop (if it functions the same way).
+    private suspend fun restartKeepAliveIfRequired(appLayerPacket: ApplicationLayerIO.Packet) {
+        if (isRTKeepAliveBackgroundLoopRunning() &&
+            (appLayerPacket.command.serviceID == ApplicationLayerIO.ServiceID.RT_MODE)) {
+            stopRTKeepAliveBackgroundLoop()
+            startRTKeepAliveBackgroundLoop()
+        }
+    }
 
     private fun startCMDPingBackgroundLoop() {
         if (isCMDPingBackgroundLoopRunning())
@@ -968,15 +1014,37 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
         require(backgroundIOScope != null)
 
         rtKeepAliveJob = backgroundIOScope!!.launch {
-            // We have to send an RT_KEEP_ALIVE packet to the Combo
-            // every second to let the Combo know that we are still
-            // there. Otherwise, it will terminate the connection,
-            // since it then assumes that we are no longer connected
-            // (for example due to a system crash).
+            // In RT mode, if no RT command has been sent to the Combo
+            // within about 1-1.5 seconds, the Combo terminates the
+            // connection, assuming that the client is gone. As a
+            // consequence, we have to send an RT_KEEP_ALIVE packet
+            // to the Combo after a second.
+            //
+            // It is possible to prevent these packets from being
+            // sent when other RT commands were sent. To that end, if
+            // an RT command is to be sent, restartKeepAliveIfRequired()
+            // can be called to effectively reset this timeout back to
+            // one second. If RT commands are sent frequently, this
+            // causes the timeout to be constantly reset, and the
+            // RT_KEEP_ALIVE packet isn't sent until no more RT
+            // commands are sent.
+            //
+            // Also note that in here, we use applicationLayerIO's
+            // sendPacketNoResponse() function directly, and not
+            // this class' sendPacketNoResponse() version. The reason
+            // for this is that the sendPacketNoResponse() version
+            // in this class internally resets the timeout using that
+            // restartKeepAliveIfRequired(), and doing that here would
+            // make no sense.
             while (true) {
+                // *First* wait, and only *afterwards* send the
+                // RT_KEEP_ALIVE packet. This order is important, since
+                // otherwise, an RT_KEEP_ALIVE packet would be sent out
+                // immediately, and thus we would not have the timeout
+                // behavior described above.
+                delay(1000)
                 logger(LogLevel.VERBOSE) { "Transmitting RT keep-alive packet" }
                 applicationLayerIO.sendPacketNoResponse(ApplicationLayerIO.createRTKeepAlivePacket())
-                delay(1000)
             }
         }
     }
@@ -1029,7 +1097,7 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
                         "Sending long RT button press; button(s) = ${toString(buttons)} status changed = $buttonStatusChanged"
                     }
 
-                    applicationLayerIO.sendPacketNoResponse(
+                    sendPacketNoResponse(
                         ApplicationLayerIO.createRTButtonStatusPacket(buttonCodes, buttonStatusChanged)
                     )
 
@@ -1047,7 +1115,7 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
                 // cancellation to end a long-press sequence cleanly. Then,
                 // this workaround would not be needed anymore.
                 withContext(NonCancellable) {
-                    applicationLayerIO.sendPacketNoResponse(
+                    sendPacketNoResponse(
                         ApplicationLayerIO.createRTButtonStatusPacket(ApplicationLayerIO.RTButtonCode.NO_BUTTON.id, true)
                     )
                 }
