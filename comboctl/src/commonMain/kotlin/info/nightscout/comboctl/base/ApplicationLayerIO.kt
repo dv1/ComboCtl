@@ -1761,7 +1761,11 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
      *         and its payload is not big enough to contain the RT sequence
      *         number, indicating that this is an invalid / malformed packet.
      */
-    suspend fun sendPacketNoResponse(appLayerPacket: Packet) {
+    suspend fun sendPacketNoResponse(appLayerPacket: Packet) = sendPacketWithResponseMutex.withLock {
+        sendPacketNoResponseInternal(appLayerPacket)
+    }
+
+    private suspend fun sendPacketNoResponseInternal(appLayerPacket: Packet) {
         // RT packets contain a sequence number which is incremented
         // every time an RT packet is sent out. Since the create*
         // functions are stateless, the RT sequence number that is
@@ -1834,7 +1838,7 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
         appLayerPacket: Packet,
         expectedResponseCommand: ApplicationLayerIO.Command? = null
     ): Packet = sendPacketWithResponseMutex.withLock {
-        sendPacketNoResponse(appLayerPacket)
+        sendPacketNoResponseInternal(appLayerPacket)
         return receiveAppLayerPacket(expectedResponseCommand)
     }
 
