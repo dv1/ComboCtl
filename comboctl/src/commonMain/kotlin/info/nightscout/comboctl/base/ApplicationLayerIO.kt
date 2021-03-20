@@ -1790,6 +1790,8 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
                 )
             }
 
+            logger(LogLevel.VERBOSE) { "Writing current RT sequence number $currentRTSequence into packet" }
+
             // The RT sequence is always stored in the
             // first 2 bytes  of an RT packet's payload.
             // 
@@ -1990,7 +1992,9 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
         try {
             logger(LogLevel.VERBOSE) { "Parsing DATA packet as application layer packet" }
             val appLayerPacket = ApplicationLayerIO.Packet(tpLayerPacket)
-            logger(LogLevel.VERBOSE) { "This is an application layer packet with command ${appLayerPacket.command}" }
+            logger(LogLevel.VERBOSE) {
+                "This is an application layer packet with command ${appLayerPacket.command} and payload ${appLayerPacket.payload.toHexString()}"
+            }
 
             // Application layer packets which were transmitted inside  a transport
             // layer packet with the reliability bit set always have a 16-bit error
