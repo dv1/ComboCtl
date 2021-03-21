@@ -998,6 +998,18 @@ open class TransportLayerIO(persistentPumpStateStore: PersistentPumpStateStore, 
             )
     }
 
+    /**
+     * Runs the specified block with the single threaded dispatcher.
+     *
+     * This uses the existing single threaded dispatcher that is already
+     * being used for running the worker coroutines, and suspends until
+     * that block is done.
+     *
+     * @param block Block to run with the single threaded dispatcher.
+     */
+    suspend fun <T> runInSingleThreadedDispatcher(block: suspend CoroutineScope.() -> T) =
+        withContext(workerThreadDispatcherManager.dispatcher, block)
+
     /***************************************
      *** PROTECTED FUNCTIONS AND CLASSES ***
      ***************************************/
@@ -1019,6 +1031,13 @@ open class TransportLayerIO(persistentPumpStateStore: PersistentPumpStateStore, 
      *
      * If an exception is thrown here, the background worker will
      * cease to function, and be considered failed.
+     *
+     * Note that this is called by a coroutine that is run with the
+     * single threaded dispatcher that runs the receive loop. So
+     * if something is done here that affects states, and if there
+     * if other code that also touches these states, it is recommended
+     * to either use [runInSingleThreadedDispatcher] to run that code
+     * with this dispatcher or use a Mutex or similar synchronization.
      *
      * @param tpLayerPacket Transport layer packet to process.
      * @return true if the incoming packet loop shall forward this
