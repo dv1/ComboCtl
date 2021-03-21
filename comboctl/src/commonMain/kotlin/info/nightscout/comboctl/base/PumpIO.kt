@@ -2,13 +2,14 @@ package info.nightscout.comboctl.base
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.transformWhile
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 private val logger = Logger.get("PumpIO")
 
@@ -81,6 +82,17 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
     // held down at the same time.)
     private var currentLongRTPressJob: Job? = null
     private var currentLongRTPressedButtons = listOf<Button>()
+    // This runs the inner loop that repeatedly sends long RT button
+    // press commands to the Combo. It is separate to allow for orderly
+    // shutdowns. See the sendLongRTButtonPress function for more.
+    private var currentLongRTPressInnerFlow = MutableStateFlow(true)
+
+    // A rendezvous channel that is used as a barrier of sorts to block
+    // button pressing functions from continuing until the Combo sends
+    // a confirmation for the key press. Up until that confirmation is
+    // received, the client must not send any other button press
+    // commands to the Combo. To ensure that, this barrier exists.
+    private var rtButtonConfirmationBarrier = Channel<Unit>(0)
 
     // Members associated with display frame generation.
     // The mutable version of the displayFrameFlow is used internally
@@ -143,16 +155,31 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
                 // RT_AUDIO and RT_VIBRATION packets inform us about simulated notification
                 // sounds and vibrations, respectively. We do not need those here.
                 //
-                // As for the RT_BUTTON_CONFIRMATION and RT_KEEP_ALIVE packets, they are
-                // notifications that we don't need here, so we ignore them. (Note that
-                // RT_KEEP_ALIVE serves a dual purpose; we _do_ have to also send such
-                // packets _to_ the Combo. The rtKeepAliveJob takes care of that.)
+                // As for the RT_KEEP_ALIVE packets, they are notifications that we don't
+                // need here, so we ignore them. (Note that RT_KEEP_ALIVE serves a dual
+                // purpose; we _do_ have to also send such packets _to_ the Combo. The
+                // rtKeepAliveJob takes care of that.)
+                //
+                // Both RT_DISPLAY and RT_BUTTON_CONFIRMATION are confirmations sent by
+                // the Combo when a button status was sent to it. Up until the Combo sends
+                // such a confirmation, no further button status commands may be sent by
+                // the client to the Combo. The rtButtonConfirmationBarrier makes sure that
+                // code that sends such commands is suspended until a confirmation arrived.
 
                 when (appLayerPacket.command) {
-                    ApplicationLayerIO.Command.RT_DISPLAY ->
+                    ApplicationLayerIO.Command.RT_DISPLAY -> {
                         processRTDisplayPayload(ApplicationLayerIO.parseRTDisplayPacket(appLayerPacket))
+                        // Signal the arrival of the button confirmation.
+                        // (Either RT_BUTTON_CONFIRMATION or RT_DISPLAY
+                        // function as confirmations.)
+                        rtButtonConfirmationBarrier.offer(Unit)
+                    }
                     ApplicationLayerIO.Command.RT_BUTTON_CONFIRMATION -> {
-                        logger(LogLevel.VERBOSE) { "Got RT_BUTTON_CONFIRMATION packet from the Combo; ignoring" }
+                        logger(LogLevel.VERBOSE) { "Got RT_BUTTON_CONFIRMATION packet from the Combo" }
+                        // Signal the arrival of the button confirmation.
+                        // (Either RT_BUTTON_CONFIRMATION or RT_DISPLAY
+                        // function as confirmations.)
+                        rtButtonConfirmationBarrier.offer(Unit)
                     }
                     ApplicationLayerIO.Command.RT_KEEP_ALIVE -> {
                         logger(LogLevel.VERBOSE) { "Got RT_KEEP_ALIVE packet from the Combo; ignoring" }
@@ -466,6 +493,10 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
      *        [TransportLayerIO.stopIO] documentation for details.
      */
     suspend fun disconnect(disconnectDeviceCallback: suspend () -> Unit = { }) {
+        // Make sure that any function that is suspended by this
+        // barrier is woken up.
+        rtButtonConfirmationBarrier.offer(Unit)
+
         stopCMDPingBackgroundLoop()
         stopRTKeepAliveBackgroundLoop()
         applicationLayerIO.stopIO(disconnectDeviceCallback)
@@ -720,9 +751,21 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
         val buttonCodes = getCombinedButtonCodes(buttons)
 
         try {
-            sendPacketNoResponse(ApplicationLayerIO.createRTButtonStatusPacket(buttonCodes, true))
-            // Wait 100 ms to mimic a physical short button press.
-            delay(100L)
+            // Run this block in the single-threaded dispatcher to make
+            // sure the code in processIncomingPacket() does not signal
+            // the arrival of the RT_BUTTON_CONFIRMATION before we wait
+            // for it here via the receive() call.
+            applicationLayerIO.runInSingleThreadedDispatcher {
+                sendPacketNoResponse(ApplicationLayerIO.createRTButtonStatusPacket(buttonCodes, true))
+                rtButtonConfirmationBarrier.receive()
+            }
+
+            // We wait for 200 ms here to not overload the Combo's
+            // internal Rx packet ringbuffer. Otherwise, if that happens,
+            // older packets apparently get overwritten inside the Combo,
+            // and the connection is terminated with an error.
+            // (The 200ms were found empirically; maybe 150ms also works.)
+            delay(200L)
         } finally {
             // Make sure we always attempt to send the NO_BUTTON
             // code to finish the short button press, even if
@@ -1065,61 +1108,133 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
     private fun isRTKeepAliveBackgroundLoopRunning() = (rtKeepAliveJob != null)
 
     private suspend fun sendLongRTButtonPress(buttons: List<Button>, pressing: Boolean) {
-        val currentJob = currentLongRTPressJob
-
         if (!pressing) {
             logger(LogLevel.DEBUG) {
                 "Releasing RTs button(s) ${toString(currentLongRTPressedButtons)}"
             }
-            if (currentJob != null) {
-                currentJob.cancel()
-                currentJob.join()
+
+            // This wakes up the ongoing flow and cancels it.
+            currentLongRTPressInnerFlow.value = false
+
+            if (currentLongRTPressJob != null) {
+                currentLongRTPressJob!!.join()
+                currentLongRTPressJob = null
             }
-            currentLongRTPressJob = null
             return
         }
 
         currentLongRTPressedButtons = buttons
         val buttonCodes = getCombinedButtonCodes(buttons)
 
+        // Set this to true to make sure the flow will keep running
+        // once it is started. (If its value is true, it runs. If it
+        // is false, it is cancelled.)
+        currentLongRTPressInnerFlow.value = true
+
+        // Launch the coroutine that will run the flow that keeps
+        // sending the button status commands to the Combo. This
+        // will keep running until the flow is cancelled. We do
+        // _not_ cancel the currentLongRTPressJob coroutine directly.
+        // See the code below for the reason why.
         currentLongRTPressJob = backgroundIOScope!!.launch {
             try {
-                var buttonStatusChanged = true
+                applicationLayerIO.runInSingleThreadedDispatcher {
+                    // Run the inner long press button loop in the single
+                    // threaded dispatcher. We run it there because we
+                    // must be sure that the code in processIncomingPacket()
+                    // does not signal the arrival of RT_BUTTON_CONFIRMATION
+                    // before we wait for it here via the receive() call.
+                    //
+                    // Also, we run this loop inside an "inner flow" to
+                    // ensure that the final NO_BUTTON button status is
+                    // always sent (see below). The flow works this way:
+                    //
+                    // Initially, its value is true. The transformWhile
+                    // block passes that value through with the emit()
+                    // call, and also returns true to inform the
+                    // transformWhile function to let the flow continue.
+                    // In the collectLatest block, the value is received.
+                    // Since the value is "true", the while-loop inside
+                    // the block starts, and runs indefinitely.
+                    //
+                    // When the flow's value is set to false, the
+                    // transformWhile passes through that value, but
+                    // returns false, which instructs transformWhile to
+                    // abort the flow once its current iteration is done.
+                    // The value reaches the collectLatest block. The
+                    // behavior of collectLatest is such that if a new
+                    // value arrives, it cancels any previously started
+                    // block. In this case, it means it cancels the block
+                    // that has been running the infinite while-loop and
+                    // then runs the new block. But this new block gets
+                    // the value "false", which means that the while-loop
+                    // is _not_ run (the block exits immediately instead).
+                    //
+                    // That way, it becomes possible to control how long
+                    // that loop keeps running without having to resort
+                    // to trickery with internal coroutines and Job
+                    // instances, or with NonCancellable withContext calls.
 
-                // Long RT button presses require their own kind
-                // of keep-alive mechanism. This consists of an
-                // RT_BUTTON_STATUS packet that has to be sent
-                // repeatedly every 200 ms until the long button
-                // press is stopped.
+                    // TODO: As of Kotlin 1.4.31 and kotlinx-coroutines-core
+                    // 1.4.3, transformWhile is still marked as experimental.
+                    // Revisit this in the future.
+                    @Suppress("EXPERIMENTAL_API_USAGE")
+                    currentLongRTPressInnerFlow.transformWhile { emit(it); it }.collectLatest {
+                        // First time, we send the button status with
+                        // the CHANGED status and with the codes for
+                        // the pressed buttons.
+                        var buttonStatusChanged = true
 
-                while (true) {
-                    logger(LogLevel.DEBUG) {
-                        "Sending long RT button press; button(s) = ${toString(buttons)} status changed = $buttonStatusChanged"
+                        while (it) {
+                            logger(LogLevel.DEBUG) {
+                                "Sending long RT button press; button(s) = ${toString(buttons)} status changed = $buttonStatusChanged"
+                            }
+
+                            sendPacketNoResponse(
+                                ApplicationLayerIO.createRTButtonStatusPacket(buttonCodes, buttonStatusChanged)
+                            )
+
+                            // Wait for the Combo to send us a button
+                            // confirmation. We cannot send more button
+                            // status commands until then.
+                            logger(LogLevel.VERBOSE) { "Waiting for button confirmation" }
+                            rtButtonConfirmationBarrier.receive()
+                            logger(LogLevel.VERBOSE) { "Got button confirmation" }
+
+                            // The next time we send the button status, we must
+                            // send NOT_CHANGED to the Combo.
+                            buttonStatusChanged = false
+
+                            // We wait for 200 ms here to not overload the Combo's
+                            // internal Rx packet ringbuffer. Otherwise, if that happens,
+                            // older packets apparently get overwritten inside the Combo,
+                            // and the connection is terminated with an error.
+                            // (The 200ms were found empirically; maybe 150ms also works.)
+                            delay(200L)
+                        }
                     }
-
-                    sendPacketNoResponse(
-                        ApplicationLayerIO.createRTButtonStatusPacket(buttonCodes, buttonStatusChanged)
-                    )
-
-                    delay(200L)
-
-                    buttonStatusChanged = false
                 }
             } finally {
-                logger(LogLevel.DEBUG) { "Long RT button press canceled" }
-                // Need to call sendPacket() in a NonCancellable context, since
-                // we may have reached that point due to a cancellation. Without
-                // that context, the sendPacket() call would be cancelled, and
-                // we would not send out the terminating NO_BUTTON packet.
-                // TODO: This is not a good solution. Find a better way than
-                // cancellation to end a long-press sequence cleanly. Then,
-                // this workaround would not be needed anymore.
-                withContext(NonCancellable) {
-                    sendPacketNoResponse(
-                        ApplicationLayerIO.createRTButtonStatusPacket(ApplicationLayerIO.RTButtonCode.NO_BUTTON.id, true)
-                    )
-                }
-                currentLongRTPressJob = null
+                // We must make sure that the long press sequence
+                // is ended with a NO_BUTTON code. This is why the
+                // actual long press button loop exits inside the
+                // inner flow. By cancelling that inner flow, and
+                // not this entire coroutine, it becomes possible
+                // to still send this NO_BUTTON button status.
+                // If this coroutine were to be cancelled, the
+                // resulting CancellationException would cause this
+                // block to be reached, but sendPacketNoResponse()
+                // would not actually do anything. That's because
+                // internally,it uses a withContext call, and due
+                // to the "prompt cancellation guarantee" in Kotlin
+                // coroutines, a withContext call that is executed
+                // in a cancelled coroutine will cancel itself
+                // immediately and not run its block. By cancelling
+                // the inner flow instead, this is circumvented,
+                // and the NO_BUTTON status is sent successfully.
+                sendPacketNoResponse(
+                    ApplicationLayerIO.createRTButtonStatusPacket(ApplicationLayerIO.RTButtonCode.NO_BUTTON.id, true)
+                )
             }
         }
     }

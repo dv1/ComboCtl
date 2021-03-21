@@ -6,6 +6,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.test.fail
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 class PumpIOTest {
     // Common test code.
@@ -289,6 +290,19 @@ class PumpIOTest {
                 onBackgroundIOException = { e -> fail("Exception thrown in background worker: $e") },
                 runKeepAliveLoop = false
             ).join()
+
+            launch {
+                delay(300L)
+                testIO.feedIncomingData(
+                    produceTpLayerPacket(
+                        ApplicationLayerIO.Packet(
+                            command = ApplicationLayerIO.Command.RT_BUTTON_CONFIRMATION,
+                            payload = byteArrayListOfInts(0, 0)
+                        ).toTransportLayerPacketInfo(),
+                        testStates.testPumpStateStore.pairingData!!.pumpClientCipher
+                    ).toByteList()
+                )
+            }
 
             pumpIO.sendShortRTButtonPress(PumpIO.Button.UP)
             delay(500L)
