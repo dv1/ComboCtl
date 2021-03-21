@@ -211,3 +211,13 @@ fun Byte.toHexString(width: Int, prependPrefix: Boolean = true): String {
 	val numLeadingChars = max(width - hexstring.length, 0)
 	return prefix + "0".repeat(numLeadingChars) + hexstring
 }
+
+/**
+ * Returns the elapsed time in milliseconds.
+ *
+ * This measures the elapsed time that started at some arbitrary point
+ * (typically the moment the system was booted). It does _not_ necessarily
+ * return the current wall-clock time, and is intended to be used for
+ * calculating intervals.
+ */
+internal expect fun getElapsedTimeInMs(): Long
