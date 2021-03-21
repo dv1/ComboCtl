@@ -2,11 +2,13 @@ package info.nightscout.comboctl.base
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.transformWhile
 import kotlinx.coroutines.launch
@@ -96,8 +98,21 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
 
     // Members associated with display frame generation.
     // The mutable version of the displayFrameFlow is used internally
-    // when a new frame is available.
-    private var mutableDisplayFrameFlow = MutableStateFlow(NullDisplayFrame)
+    // when a new frame is available. This is a SharedFlow, since
+    // the display frame emission is independent of the presence of
+    // collectors. This means that flow collection never ends. (See
+    // the Kotlin SharedFlow documentation for details.) It is set
+    // up to not suspend emission calls, instead dropping the oldest
+    // frames, and store up to 2 frames. That way, the display frame
+    // producer is not held back by backpressure. And, in case the
+    // collectors do not collect fast enough, there's one more frame
+    // available. (Being more than 2 frames behind would indicate a
+    // very slow collector which would otherwise lead to frequent
+    // backpressure anyway.)
+    private var mutableDisplayFrameFlow = MutableSharedFlow<DisplayFrame>(
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+        extraBufferCapacity = 2
+    )
     private val displayFrameAssembler = DisplayFrameAssembler()
 
     // Whether we are in RT or COMMAND mode, or null at startup
@@ -109,14 +124,14 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
      ************************************/
 
     /**
-     * Read-only [StateFlow] property that delivers newly assembled display frames.
+     * Read-only [SharedFlow] property that delivers newly assembled display frames.
      *
-     * Note that, unlike most other flow types, a [StateFlow] is a _hot_ flow.
+     * Note that, unlike most other flow types, a [SharedFlow] is a _hot_ flow.
      * This means that its emitter runs independently of any collector.
      *
      * See [DisplayFrame] for details about these frames.
      */
-    val displayFrameFlow = mutableDisplayFrameFlow.asStateFlow()
+    val displayFrameFlow = mutableDisplayFrameFlow.asSharedFlow()
 
     /**
      * The mode the IO can operate in.
@@ -1246,7 +1261,7 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
         try {
             val displayFrame = displayFrameAssembler.processRTDisplayPayload(rtDisplayPayload)
             if (displayFrame != null)
-                mutableDisplayFrameFlow.value = displayFrame
+                mutableDisplayFrameFlow.tryEmit(displayFrame)
         } catch (e: Exception) {
             logger(LogLevel.ERROR) { "Could not process RT_DISPLAY payload: $e" }
             throw e
