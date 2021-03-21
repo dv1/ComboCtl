@@ -1543,6 +1543,9 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
          * of IDs from the RTButtonCode enum.
          *
          * @param rtButtonCodes Button ID / combined button IDs.
+         * @param buttonStatusChanged Whether or not the button status
+         *        actually changed since the last time the status was
+         *        sent to the Combo.
          * @return The produced packet.
          */
         fun createRTButtonStatusPacket(rtButtonCodes: Int, buttonStatusChanged: Boolean) = Packet(
