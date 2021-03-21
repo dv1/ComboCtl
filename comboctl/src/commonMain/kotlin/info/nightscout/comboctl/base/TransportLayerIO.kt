@@ -5,6 +5,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -127,6 +128,10 @@ open class TransportLayerIO(persistentPumpStateStore: PersistentPumpStateStore, 
     // Packet state object. Will be touched by functions that run inside
     // the background worker (and by startIO before said worker is launched).
     private val packetState = PacketState(persistentPumpStateStore)
+
+    // Timestamp (in ms) of the last time a packet was sent.
+    // Used for throttling the output.
+    private var lastSentPacketTimestamp: Long? = null
 
     /************************************
      *** PUBLIC FUNCTIONS AND CLASSES ***
@@ -578,6 +583,8 @@ open class TransportLayerIO(persistentPumpStateStore: PersistentPumpStateStore, 
 
         this.pairingPINCallback = pairingPINCallback
 
+        lastSentPacketTimestamp = null
+
         logger(LogLevel.VERBOSE) { "Starting background IO worker" }
 
         // Run the worker with the single-threaded dispatcher to ensure thread
@@ -809,6 +816,30 @@ open class TransportLayerIO(persistentPumpStateStore: PersistentPumpStateStore, 
             throw IllegalStateException("Attempted to send packet even though the background IO worker failed or was cancelled")
 
         withContext(workerThreadDispatcherManager.dispatcher) {
+            // It is important to throttle the output to not overload
+            // the Combo's packet ringbuffer. Otherwise, old packets
+            // apprently get overwritten by new ones, and the Combo
+            // begins to report errors. Empirically, a waiting period
+            // of around 150-200 ms seems to work well to avoid this.
+            // Here, we check how much time has passed since the last
+            // packet transmission. If less than 200 ms have passed,
+            // we wait with delay() until a total of 200 ms elapsed.
+
+            val elapsedTime = getElapsedTimeInMs()
+
+            if (lastSentPacketTimestamp != null) {
+                val timePassed = elapsedTime - lastSentPacketTimestamp!!
+                if (timePassed < 200L) {
+                    val waitPeriod = 200L - timePassed
+                    logger(LogLevel.VERBOSE) { "Waiting for $waitPeriod ms until a packet can be sent" }
+                    delay(waitPeriod)
+                }
+            }
+
+            lastSentPacketTimestamp = elapsedTime
+
+            // Proceed with sending the packet.
+
             val packet = produceOutgoingPacket(packetInfo)
 
             logger(LogLevel.VERBOSE) { "Sending transport layer packet: $packet" }

@@ -774,13 +774,6 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
                 sendPacketNoResponse(ApplicationLayerIO.createRTButtonStatusPacket(buttonCodes, true))
                 rtButtonConfirmationBarrier.receive()
             }
-
-            // We wait for 200 ms here to not overload the Combo's
-            // internal Rx packet ringbuffer. Otherwise, if that happens,
-            // older packets apparently get overwritten inside the Combo,
-            // and the connection is terminated with an error.
-            // (The 200ms were found empirically; maybe 150ms also works.)
-            delay(200L)
         } finally {
             // Make sure we always attempt to send the NO_BUTTON
             // code to finish the short button press, even if
@@ -1219,13 +1212,6 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
                             // The next time we send the button status, we must
                             // send NOT_CHANGED to the Combo.
                             buttonStatusChanged = false
-
-                            // We wait for 200 ms here to not overload the Combo's
-                            // internal Rx packet ringbuffer. Otherwise, if that happens,
-                            // older packets apparently get overwritten inside the Combo,
-                            // and the connection is terminated with an error.
-                            // (The 200ms were found empirically; maybe 150ms also works.)
-                            delay(200L)
                         }
                     }
                 }
