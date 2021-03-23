@@ -1,4 +1,3 @@
-#include <string>
 #include "glib_misc.hpp"
 
 

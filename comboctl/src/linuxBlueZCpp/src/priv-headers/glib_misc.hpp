@@ -4,6 +4,7 @@
 #include <array>
 #include <memory>
 #include <thread>
+#include <string>
 #include <glib.h>
 #include <gio/gio.h>
 
