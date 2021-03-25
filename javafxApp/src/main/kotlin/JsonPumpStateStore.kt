@@ -8,9 +8,9 @@ import info.nightscout.comboctl.base.LogLevel
 import info.nightscout.comboctl.base.Logger
 import info.nightscout.comboctl.base.Nonce
 import info.nightscout.comboctl.base.NullNonce
-import info.nightscout.comboctl.base.PersistentPumpStateStore
-import info.nightscout.comboctl.base.PersistentPumpStateStoreBackend
 import info.nightscout.comboctl.base.PumpPairingData
+import info.nightscout.comboctl.base.PumpStateStore
+import info.nightscout.comboctl.base.PumpStateStoreProvider
 import info.nightscout.comboctl.base.toBluetoothAddress
 import info.nightscout.comboctl.base.toCipher
 import info.nightscout.comboctl.base.toNonce
@@ -22,20 +22,20 @@ private val logger = Logger.get("JsonPumpStateStore")
 
 class JsonPumpStateStore(
     val pumpAddress: BluetoothAddress,
-    private var backend: JsonPumpStateStoreBackend,
+    private var storeProvider: JsonPumpStateStoreProvider,
     private var pairingData: PumpPairingData? = null,
     pumpID: String = "",
     txNonce: Nonce = NullNonce
-) : PersistentPumpStateStore {
+) : PumpStateStore {
     override fun retrievePumpPairingData(): PumpPairingData {
         if (!isValid())
-            throw IllegalStateException("Persistent pump state store is not valid")
+            throw IllegalStateException("Pump state store is not valid")
         return pairingData!!
     }
 
     override fun storePumpPairingData(pumpPairingData: PumpPairingData) {
         pairingData = pumpPairingData
-        backend.write()
+        storeProvider.write()
     }
 
     override fun isValid() = (pairingData != null)
@@ -43,14 +43,14 @@ class JsonPumpStateStore(
     override fun reset() {
         pairingData = null
         txNonceValue = NullNonce
-        backend.erase(this)
+        storeProvider.erase(this)
     }
 
     override var currentTxNonce
         get() = txNonceValue
         set(value) {
             txNonceValue = value
-            backend.write()
+            storeProvider.write()
         }
 
     private var txNonceValue = txNonce
@@ -58,11 +58,11 @@ class JsonPumpStateStore(
     override var pumpID = pumpID
         set(value) {
             field = value
-            backend.write()
+            storeProvider.write()
         }
 }
 
-class JsonPumpStateStoreBackend : PersistentPumpStateStoreBackend {
+class JsonPumpStateStoreProvider : PumpStateStoreProvider {
     private val jsonFilename = "jsonPumpStores.json"
     private val storeMap = mutableMapOf<BluetoothAddress, JsonPumpStateStore>()
 
@@ -102,7 +102,7 @@ class JsonPumpStateStoreBackend : PersistentPumpStateStoreBackend {
 
     override fun getAvailableStoreAddresses() = storeMap.keys
 
-    override fun requestStore(pumpAddress: BluetoothAddress): PersistentPumpStateStore {
+    override fun requestStore(pumpAddress: BluetoothAddress): PumpStateStore {
         var store = storeMap[pumpAddress]
 
         if (store == null) {

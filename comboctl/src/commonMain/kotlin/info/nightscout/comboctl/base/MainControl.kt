@@ -12,7 +12,7 @@ typealias PumpPairingPINCallback =
 
 class MainControl(
     private val bluetoothInterface: BluetoothInterface,
-    private val persistentPumpStateStoreBackend: PersistentPumpStateStoreBackend
+    private val pumpStateStoreProvider: PumpStateStoreProvider
 ) {
     // Event handling related properties.
     private var eventHandlingStarted = false
@@ -26,12 +26,12 @@ class MainControl(
     private var pumpPairingPINCallback: PumpPairingPINCallback = { _, _ -> nullPairingPIN() }
 
     // Coroutine mutex. This is used to prevent race conditions while
-    // accessing acquiredPumps and the persistentPumpStateStoreBackend. The
-    // mutex is needed when acquiring pumps (accesses the store backend and
+    // accessing acquiredPumps and the pumpStateStoreProvider. The
+    // mutex is needed when acquiring pumps (accesses the store provider and
     // the acquiredPumps map), releasing pumps (accesses the acquiredPumps
     // list), when a new pump is found during discovery (accesses the store
-    // backend), and when a pump is unpaired (accesses the store backend).
-    // These occasions are uncommon, and both the store backend & the list
+    // provider), and when a pump is unpaired (accesses the store provider).
+    // These occasions are uncommon, and both the store provider & the list
     // of acquired pumps are accessed in acquirePumps(), which is why one
     // mutex for both is used.
     // Note that a coroutine mutex is rather slow. But since, as said, the
@@ -77,11 +77,11 @@ class MainControl(
      * moment (since the user could always unpair via the Bluetooth system settings
      * on their desktop or their mobile device).
      *
-     * This also checks the available stores in the [persistentPumpStateStoreBackend]
+     * This also checks the available stores in the [pumpStateStoreProvider]
      * and compares this with the list of paired device addresses returned by the
      * [BluetoothInterface.getPairedDeviceAddresses] function to check for pumps
      * that may have been unpaired while ComboCtl was not running. This makes sure
-     * that there are no stale states inside the pump backend which otherwise would
+     * that there are no stale states inside the store provider which otherwise would
      * impact the event handling and cause other IO issues.
      *
      * Event handling must be started before calling [startDiscovery].
@@ -100,7 +100,7 @@ class MainControl(
      *        This is called from within the [miscEventHandlingScope].
      * @throws IllegalStateException if event handling was already started.
      * @throws PumpStateStoreRequestException if while checking for stale store
-     *         states the [PersistentPumpStateStoreBackend.requestStore] call fails.
+     *         states the [PumpStateStoreProvider.requestStore] call fails.
      *         Look up that function's documentation for notes about error handling.
      */
     fun startEventHandling(
@@ -149,7 +149,7 @@ class MainControl(
             // Now go through each store and check if its address is also
             // present in the pairedDeviceAddresses set. If not, the store
             // is stale, and needs to be erased.
-            val availableStoreAddresses = persistentPumpStateStoreBackend.getAvailableStoreAddresses()
+            val availableStoreAddresses = pumpStateStoreProvider.getAvailableStoreAddresses()
             logger(LogLevel.DEBUG) { "${availableStoreAddresses.size} available store(s)" }
             for (storeAddress in availableStoreAddresses) {
                 logger(LogLevel.DEBUG) { "Available store: $storeAddress" }
@@ -157,7 +157,7 @@ class MainControl(
                 val pairedDevicePresent = pairedDeviceAddresses.contains(storeAddress)
                 if (!pairedDevicePresent) {
                     logger(LogLevel.DEBUG) { "There is no paired device for this store; erasing store" }
-                    val store = persistentPumpStateStoreBackend.requestStore(storeAddress)
+                    val store = pumpStateStoreProvider.requestStore(storeAddress)
                     store.reset()
                 }
             }
@@ -205,9 +205,9 @@ class MainControl(
      * the 10-digit Combo PIN).
      *
      * When the Bluetooth-level pairing is done, additional processing
-     * is necessary: A new [PersistentPumpStateStore] must be created,
-     * and the Combo-level pairing must be performed. These are done by
-     * background coroutines that run in the [discoveryEventHandlingScope].
+     * is necessary: A new [PumpStateStore] must be created, and the
+     * Combo-level pairing must be performed. These are done by background
+     * coroutines that run in the [discoveryEventHandlingScope].
      * The [pumpPairingPINCallback] is called when the Combo-level pairing
      * process reaches a point where the user must be asked for the
      * 10-digit PIN.
@@ -314,14 +314,14 @@ class MainControl(
 
             logger(LogLevel.DEBUG) { "Getting Pump instance for pump $pumpAddress" }
 
-            val persistentPumpStateStore = persistentPumpStateStoreBackend.requestStore(pumpAddress)
+            val pumpStateStore = pumpStateStoreProvider.requestStore(pumpAddress)
 
-            if (!persistentPumpStateStore.isValid())
+            if (!pumpStateStore.isValid())
                 throw PumpNotPairedException(pumpAddress)
 
             val bluetoothDevice = bluetoothInterface.getDevice(pumpAddress)
 
-            val pump = Pump(bluetoothDevice, persistentPumpStateStore)
+            val pump = Pump(bluetoothDevice, pumpStateStore)
 
             acquiredPumps[pumpAddress] = pump
 
@@ -358,7 +358,7 @@ class MainControl(
             try {
                 logger(LogLevel.DEBUG) { "Found pump with address $pumpAddress" }
 
-                if (persistentPumpStateStoreBackend.hasValidStore(pumpAddress)) {
+                if (pumpStateStoreProvider.hasValidStore(pumpAddress)) {
                     logger(LogLevel.DEBUG) { "Skipping added pump since it has already been paired" }
                 } else {
                     performPairing(pumpAddress)
@@ -377,14 +377,14 @@ class MainControl(
 
         logger(LogLevel.DEBUG) { "About to perform pairing with pump $pumpAddress" }
 
-        val persistentPumpStateStore = persistentPumpStateStoreBackend.requestStore(pumpAddress)
+        val pumpStateStore = pumpStateStoreProvider.requestStore(pumpAddress)
 
         val bluetoothDevice = bluetoothInterface.getDevice(pumpAddress)
         logger(LogLevel.DEBUG) { "Got Bluetooth device instance for pump" }
 
         val pump = Pump(
             bluetoothDevice,
-            persistentPumpStateStore
+            pumpStateStore
         )
 
         if (pump.isPaired()) {
@@ -415,11 +415,11 @@ class MainControl(
 
             logger(LogLevel.DEBUG) { "Previously paired pump with address $pumpAddress removed" }
 
-            if (persistentPumpStateStoreBackend.hasValidStore(pumpAddress)) {
+            if (pumpStateStoreProvider.hasValidStore(pumpAddress)) {
                 // Reset the pump state store for the removed pump.
                 try {
-                    val persistentPumpStateStore = persistentPumpStateStoreBackend.requestStore(pumpAddress)
-                    persistentPumpStateStore.reset()
+                    val pumpStateStore = pumpStateStoreProvider.requestStore(pumpAddress)
+                    pumpStateStore.reset()
                 } catch (e: PumpStateStoreAccessException) {
                     logger(LogLevel.ERROR) { "Caught exception while resetting store of removed pump $pumpAddress: $e" }
                 }

@@ -6,7 +6,7 @@ package info.nightscout.comboctl.base
  * This data is created by [PumpIO.performPairing]. Once
  * it is created, it does not change until the pump is unpaired,
  * at which point it is erased. This data is managed by the
- * [PersistentPumpStateStore] class, which stores / retrieves it.
+ * [PumpStateStore] class, which stores / retrieves it.
  *
  * @property clientPumpCipher This cipher is used for authenticating
  *           packets going to the Combo.
@@ -44,7 +44,7 @@ class PumpStateStoreRequestException(cause: Exception) : ComboException(cause)
 class PumpStateStoreAccessException(cause: Exception) : ComboException(cause)
 
 /**
- * Persistent state store interface for a specific pump.
+ * State store interface for a specific pump.
  *
  * This interface provides access to a store that persistently
  * records the data of [PumpPairingData] instances along with
@@ -57,14 +57,14 @@ class PumpStateStoreAccessException(cause: Exception) : ComboException(cause)
  * if the device running ComboCtl crashes or freezes while the data is
  * being written into the store, the data may not be written completely.)
  *
- * There is one [PersistentPumpStateStore] instance for each paired
+ * There is one [PumpStateStore] instance for each paired
  * pump. Each store contains the pairing data, which does not change
  * after the pump was paired, and the Tx nonce, which does change
  * after each packet sent to the Combo. These two parts of the store
  * are kept separate due to this difference in access, since this allows
  * for optimizations in implementations.
  *
- * [PersistentPumpStateStore] instances also know an "initial state".
+ * [PumpStateStore] instances also know an "initial state".
  * In this state, [isValid] returns false, and [retrievePumpPairingData]
  * throws an IllegalStateException. There is no actual data stored in
  * this state. Only when pump pairing data is set by calling
@@ -75,8 +75,8 @@ class PumpStateStoreAccessException(cause: Exception) : ComboException(cause)
  * with valid [PumpPairingData]. Regular connections must always get
  * a valid store.
  *
- * Instances of [PersistentPumpStateStore] subclasses are requested
- * via [PersistentPumpStateStoreBackend.requestStore].
+ * Instances of [PumpStateStore] subclasses are requested
+ * via [PumpStateStoreProvider.requestStore].
  *
  * If a function or property access throws [PumpStateStoreAccessException],
  * then the store is to be considered invalid, any existing connections
@@ -90,7 +90,7 @@ class PumpStateStoreAccessException(cause: Exception) : ComboException(cause)
  * then also unpair the pump at the Bluetooth level. The user must be told
  * about this error, and instructed that the pump must be paired again.
  */
-interface PersistentPumpStateStore {
+interface PumpStateStore {
     /**
      * Retrieves pairing data from the store.
      *
@@ -166,17 +166,17 @@ interface PersistentPumpStateStore {
 }
 
 /**
- * Backend for retrieving and querying [PersistentPumpStateStore] instances.
+ * Backend for retrieving and querying [PumpStateStore] instances.
  *
- * This is used by [MainControl] to fetch a [PersistentPumpStateStore]
+ * This is used by [MainControl] to fetch a [PumpStateStore]
  * when creating a new [Pump] instance.
  */
-interface PersistentPumpStateStoreBackend {
+interface PumpStateStoreProvider {
     /**
-     * Requests a [PersistentPumpStateStore] instance for a pump with the given address.
+     * Requests a [PumpStateStore] instance for a pump with the given address.
      *
      * If no such store exists, this returns an instance which is set to the
-     * initial state (see the [PersistentPumpStateStore] store for details).
+     * initial state (see the [PumpStateStore] store for details).
      * It throws only if a non-recoverable error happens while fetching the
      * pump state store data. In such a case, implementations must wipe any
      * stored data associated with [pumpAddress], and callers must unpair the
@@ -185,12 +185,12 @@ interface PersistentPumpStateStoreBackend {
      * attempt to retrieve the store suceeds, the data may no longer be valid.
      *
      * pumpAddress Bluetooth address of the pump this call shall fetch a
-     *             [PersistentPumpStateStore] for.
-     * @return [PersistentPumpStateStore] instance for the given address.
+     *             [PumpStateStore] for.
+     * @return [PumpStateStore] instance for the given address.
      * @throws PumpStateStoreRequestException in case of an error while
      *         retrieving the store.
      */
-    fun requestStore(pumpAddress: BluetoothAddress): PersistentPumpStateStore
+    fun requestStore(pumpAddress: BluetoothAddress): PumpStateStore
 
     /**
      * Checks if there is a valid store associated with the given address.

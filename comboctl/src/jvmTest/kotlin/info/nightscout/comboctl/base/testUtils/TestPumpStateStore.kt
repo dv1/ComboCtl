@@ -2,7 +2,7 @@ package info.nightscout.comboctl.base.testUtils
 
 import info.nightscout.comboctl.base.*
 
-class TestPersistentPumpStateStore : PersistentPumpStateStore {
+class TestPumpStateStore : PumpStateStore {
     var pairingData: PumpPairingData? = null
         private set
 
@@ -10,7 +10,7 @@ class TestPersistentPumpStateStore : PersistentPumpStateStore {
 
     override fun retrievePumpPairingData(): PumpPairingData {
         if (!valid)
-            throw IllegalStateException("Persistent pump state store is not valid")
+            throw IllegalStateException("Pump state store is not valid")
         return pairingData!!
     }
 

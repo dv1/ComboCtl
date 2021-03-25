@@ -18,7 +18,7 @@ class ApplicationLayerIOTest {
         // the test if it does not finish within 5 seconds
         // (in case the tested code hangs).
         runBlockingWithWatchdog(5000) {
-            val testPumpStateStore = TestPersistentPumpStateStore()
+            val testPumpStateStore = TestPumpStateStore()
             val testComboIO = TestComboIO()
             val appLayerIO = ApplicationLayerIO(testPumpStateStore, testComboIO)
 
@@ -84,7 +84,7 @@ class ApplicationLayerIOTest {
         // the second one should have RT sequence 1 etc.
 
         runBlockingWithWatchdog(5000) {
-            val testPumpStateStore = TestPersistentPumpStateStore()
+            val testPumpStateStore = TestPumpStateStore()
             val testComboIO = TestComboIO()
             val appLayerIO = ApplicationLayerIO(testPumpStateStore, testComboIO)
 
@@ -150,7 +150,7 @@ class ApplicationLayerIOTest {
         // in fact received by the ApplicationLayerIO.
 
         runBlockingWithWatchdog(6000) {
-            val testPumpStateStore = TestPersistentPumpStateStore()
+            val testPumpStateStore = TestPumpStateStore()
             val testComboIO = TestComboIO()
             val appLayerIO = object : ApplicationLayerIO(testPumpStateStore, testComboIO) {
                 var keepAliveCounter = 0

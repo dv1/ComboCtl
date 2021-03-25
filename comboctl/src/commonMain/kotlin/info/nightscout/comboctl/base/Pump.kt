@@ -20,8 +20,8 @@ private val logger = Logger.get("Pump")
  * ComboCtl. Programs using ComboCtl primarily use this class,
  * along with [MainControl].
  *
- * Each Pump object has a [PersistentPumpStateStore] associated with
- * it. A [PersistentPumpStateStore] of one Pump instance must be kept
+ * Each Pump object has a [PumpStateStore] associated with
+ * it. A [PumpStateStore] of one Pump instance must be kept
  * entirely separate from other persistent states. So, even if a
  * pump's persistent state is reset (that is, completely wiped),
  * other pump states must not be affected.
@@ -50,11 +50,11 @@ private val logger = Logger.get("Pump")
  * @param bluetoothDevice [BluetoothDevice] object to use for
  *        Bluetooth I/O. Must be in a disconnected state when
  *        assigned to this instance.
- * @param persistentPumpStateStore Persistent state store for this pump.
+ * @param pumpStateStore Pump state store for this pump.
  */
 class Pump(
     private val bluetoothDevice: BluetoothDevice,
-    private val persistentPumpStateStore: PersistentPumpStateStore
+    private val pumpStateStore: PumpStateStore
 ) {
     private val pumpIO: PumpIO
     private val framedComboIO = FramedComboIO(bluetoothDevice)
@@ -64,7 +64,7 @@ class Pump(
         // sends packets in a framed form (See [ComboFrameParser]
         // and [List<Byte>.toComboFrame] for details).
         pumpIO = PumpIO(
-            persistentPumpStateStore,
+            pumpStateStore,
             framedComboIO
         )
     }
@@ -99,7 +99,7 @@ class Pump(
      *
      * @return true if the pump is paired.
      */
-    fun isPaired() = persistentPumpStateStore.isValid()
+    fun isPaired() = pumpStateStore.isValid()
 
     /**
      * Performs a pairing procedure with the pump.
@@ -110,7 +110,7 @@ class Pump(
      * the client at this point. But the Combo itself needs additional
      * pairing, which we perform with this function.
      *
-     * Once this is done, the [persistentPumpStateStore will be filled
+     * Once this is done, the [pumpStateStore will be filled
      * with all of the necessary information (ciphers etc.) for
      * establishing regular connections with [connect].
      *
@@ -174,7 +174,7 @@ class Pump(
         // to ensure that we always disconnect afterwards, even
         // in case of an exception, to make sure we always do
         // an ordered shutdown. In case of an exception, we also
-        // unpair and reset the persistentPumpStateStore to revert
+        // unpair and reset the pumpStateStore to revert
         // back to the unpaired state, since pairing failed, and
         // the state is undefined when that happens.
         try {
@@ -195,7 +195,7 @@ class Pump(
                 withContext(ioDispatcher()) {
                     bluetoothDevice.unpair()
                 }
-                persistentPumpStateStore.reset()
+                pumpStateStore.reset()
             }
         }
     }
@@ -203,7 +203,7 @@ class Pump(
     /**
      * Unpairs the pump.
      *
-     * Unpairing consists of resetting the [persistentPumpStateStore],
+     * Unpairing consists of resetting the [pumpStateStore],
      * followed by unpairing the Bluetooth device.
      *
      * This calls [disconnect] before unpairing to make sure there
@@ -217,12 +217,12 @@ class Pump(
         // makes sense? And if so, what should the caller do?
         // Try to unpair again?
 
-        if (!persistentPumpStateStore.isValid())
+        if (!pumpStateStore.isValid())
             return
 
         disconnect()
 
-        persistentPumpStateStore.reset()
+        pumpStateStore.reset()
 
         // Unpairing in a coroutine with an IO dispatcher
         // in case unpairing blocks.
@@ -293,9 +293,9 @@ class Pump(
      * @return [kotlinx.coroutines.Job] representing the coroutine that
      *         runs the connection setup procedure.
      * @throws IllegalStateException if IO was already started by a
-     *         previous [startIO] call or if the [PersistentPumpStateStore]
+     *         previous [startIO] call or if the [PumpStateStore]
      *         that was passed to the class constructor isn't initialized
-     *         (= [PersistentPumpStateStore.isValid] returns false).
+     *         (= [PumpStateStore.isValid] returns false).
      */
     fun connect(
         backgroundIOScope: CoroutineScope,

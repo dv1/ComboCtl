@@ -87,10 +87,10 @@ const val MAX_VALID_AL_PAYLOAD_SIZE = 65535 - PACKET_HEADER_SIZE
  * add cost and not yield enough benefit. This may change in the future
  * though.
  *
- * @param persistentPumpStateStore Persistent state store to use.
+ * @param pumpStateStore Pump state store to use.
  * @param comboIO Combo IO object to use for sending/receiving data.
  */
-open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore, private val comboIO: ComboIO) {
+open class ApplicationLayerIO(pumpStateStore: PumpStateStore, private val comboIO: ComboIO) {
     // RT sequence number. Used in outgoing RT packets.
     private var currentRTSequence: Int = 0
 
@@ -238,7 +238,7 @@ open class ApplicationLayerIO(persistentPumpStateStore: PersistentPumpStateStore
         // RT_DISPLAY only ever need to be handled inside the
         // processIncomingPacket callback (it makes no sense to pass those
         // packets to waiting receivePacket calls).
-        transportLayerIO = object : TransportLayerIO(persistentPumpStateStore, comboIO) {
+        transportLayerIO = object : TransportLayerIO(pumpStateStore, comboIO) {
             override fun applyAdditionalIncomingPacketProcessing(tpLayerPacket: TransportLayerIO.Packet) =
                 if (tpLayerPacket.command == TransportLayerIO.Command.DATA) {
                     val appLayerPacket = checkAndParseTransportLayerDataPacket(tpLayerPacket)

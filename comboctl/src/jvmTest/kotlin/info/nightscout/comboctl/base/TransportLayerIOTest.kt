@@ -148,7 +148,7 @@ class TransportLayerIOTest {
         // the test if it does not finish within 5 seconds
         // (in case the tested code hangs).
         runBlockingWithWatchdog(5000) {
-            val testPumpStateStore = TestPersistentPumpStateStore()
+            val testPumpStateStore = TestPumpStateStore()
             val testComboIO = TestComboIO()
             val tpLayerIO = TransportLayerIO(testPumpStateStore, testComboIO)
 
@@ -210,7 +210,7 @@ class TransportLayerIOTest {
         // internal states.
 
         runBlockingWithWatchdog(5000) {
-            val testPumpStateStore = TestPersistentPumpStateStore()
+            val testPumpStateStore = TestPumpStateStore()
             val testComboIO = TestComboIO()
             val tpLayerIO = TransportLayerIO(testPumpStateStore, testComboIO)
 
@@ -286,7 +286,7 @@ class TransportLayerIOTest {
         // to throw the exception that caused the worker to fail.
 
         runBlockingWithWatchdog(5000) {
-            val testPumpStateStore = TestPersistentPumpStateStore()
+            val testPumpStateStore = TestPumpStateStore()
             val testComboIO = TestComboIO()
             val tpLayerIO = TransportLayerIO(testPumpStateStore, testComboIO)
 
@@ -396,7 +396,7 @@ class TransportLayerIOTest {
         // an exception by canceling the getPINDeferred in the PIN callback.
 
         runBlockingWithWatchdog(5000) {
-            val testPumpStateStore = TestPersistentPumpStateStore()
+            val testPumpStateStore = TestPumpStateStore()
             val testComboIO = TestComboIO()
             val tpLayerIO = TransportLayerIO(testPumpStateStore, testComboIO)
 

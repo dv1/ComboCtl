@@ -51,9 +51,9 @@ private val logger = Logger.get("PumpIO")
  * run on the same thread, race conditions are prevented, and thread
  * safety is established.
  *
- * Likewise, access to the persistentPumpStateStore is done in a thread
+ * Likewise, access to the pumpStateStore is done in a thread
  * safe manner, since updates to the store happen inside those coroutines.
- * This implies that [PersistentPumpStateStore] functions do not have to
+ * This implies that [PumpStateStore] functions do not have to
  * be thread safe themselves.
  *
  * [disconnect] cancels the coroutines, and thus "stops" the worker.
@@ -61,10 +61,10 @@ private val logger = Logger.get("PumpIO")
  * pairing, the worker is only needed for communicating the pairing
  * packets with the Combo.
  *
- * @param persistentPumpStateStore Persistent state store to use.
+ * @param pumpStateStore Pump state store to use.
  * @param comboIO Combo IO object to use for sending/receiving data.
  */
-class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, private val comboIO: ComboIO) {
+class PumpIO(private val pumpStateStore: PumpStateStore, private val comboIO: ComboIO) {
     private val applicationLayerIO: ApplicationLayerIO
 
     // The coroutine scope passed to connect() as an argument.
@@ -158,7 +158,7 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
     init {
         // Set up ApplicationLayerIO subclass that processes incoming
         // packets in order to handle notifications from the Combo.
-        applicationLayerIO = object : ApplicationLayerIO(persistentPumpStateStore, comboIO) {
+        applicationLayerIO = object : ApplicationLayerIO(pumpStateStore, comboIO) {
             override fun processIncomingPacket(appLayerPacket: Packet): Boolean {
                 // RT_DISPLAY packets regularly come from the Combo (when running in RT mode),
                 // and contains new display frame updates.
@@ -233,7 +233,7 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
      * the client at this point. But the Combo itself needs an additional
      * custom pairing.
      *
-     * Pairing will initialize the [PersistentPumpStateStore] that was
+     * Pairing will initialize the [PumpStateStore] that was
      * passed to the constructor of this class. The store will then contain
      * new pairing data, a new pump ID string, and a new initial nonce.
      *
@@ -422,9 +422,9 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
      * @return [kotlinx.coroutines.Job] representing the coroutine that
      *         runs the connection setup procedure.
      * @throws IllegalStateException if IO was already started by a
-     *         previous [startIO] call or if the [PersistentPumpStateStore]
+     *         previous [startIO] call or if the [PumpStateStore]
      *         that was passed to the class constructor isn't initialized
-     *         (= [PersistentPumpStateStore.isValid] returns false).
+     *         (= [PumpStateStore.isValid] returns false).
      */
     fun connect(
         backgroundIOScope: CoroutineScope,
@@ -434,7 +434,7 @@ class PumpIO(private val persistentPumpStateStore: PersistentPumpStateStore, pri
     ): Job {
         // Prerequisites.
 
-        if (!persistentPumpStateStore.isValid()) {
+        if (!pumpStateStore.isValid()) {
             throw IllegalStateException(
                 "Attempted to connect without a valid persistent state; pairing may not have been done"
             )

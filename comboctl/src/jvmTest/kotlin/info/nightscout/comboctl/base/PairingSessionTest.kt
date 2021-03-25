@@ -356,7 +356,7 @@ class PairingSessionTest {
         )
 
         val testIO = PairingTestComboIO(expectedTestSequence)
-        val testPumpStateStore = TestPersistentPumpStateStore()
+        val testPumpStateStore = TestPumpStateStore()
         val pumpIO = PumpIO(testPumpStateStore, testIO)
 
         runBlockingWithWatchdog(6001) {

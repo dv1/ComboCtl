@@ -59,7 +59,7 @@ const val MAX_VALID_TL_PAYLOAD_SIZE = 65535
  * This implements IO functionality with the Combo at the transport layer.
  * It takes care of creating, sending, receiving, parsing TL packets.
  * To this end, this class uses the supplied [comboIO] for the low-level
- * IO, and the [persistentPumpStateStore] for packet authentication,
+ * IO, and the [pumpStateStore] for packet authentication,
  * verification, and generation (the store's tx nonce is used for the latter).
  *
  * Users must call [startIO] before using the IO functionality of this
@@ -72,7 +72,7 @@ const val MAX_VALID_TL_PAYLOAD_SIZE = 65535
  * by a special internal dispatcher that is single threaded. Internal
  * states are updated in these coroutines. Since they run on the same
  * thread, race conditions are prevented, and thread safety is established.
- * Likewise, access to the persistentPumpStateStore is done in a thread
+ * Likewise, access to the pumpStateStore is done in a thread
  * safe manner, since updates to the store happen inside those coroutines.
  * [stopIO] cancels the coroutines, and thus "stops" the worker.
  *
@@ -98,10 +98,10 @@ const val MAX_VALID_TL_PAYLOAD_SIZE = 65535
  * immediately when they arrive within runIncomingPacketLoop(). To that
  * end, the subclass must override [applyAdditionalIncomingPacketProcessing].
  *
- * @param persistentPumpStateStore Persistent state store to use.
+ * @param pumpStateStore Pump state store to use.
  * @param comboIO Combo IO object to use for sending/receiving data.
  */
-open class TransportLayerIO(persistentPumpStateStore: PersistentPumpStateStore, private val comboIO: ComboIO) {
+open class TransportLayerIO(pumpStateStore: PumpStateStore, private val comboIO: ComboIO) {
     // Job for keeping track of the toplevel background worker coroutine
     // that runs the incoming packet loop (see runIncomingPacketLoop()).
     // The worker is marked as "failed" if backgroundIOWorkerJob
@@ -127,7 +127,7 @@ open class TransportLayerIO(persistentPumpStateStore: PersistentPumpStateStore, 
 
     // Packet state object. Will be touched by functions that run inside
     // the background worker (and by startIO before said worker is launched).
-    private val packetState = PacketState(persistentPumpStateStore)
+    private val packetState = PacketState(pumpStateStore)
 
     // Timestamp (in ms) of the last time a packet was sent.
     // Used for throttling the output.
@@ -1084,21 +1084,21 @@ open class TransportLayerIO(persistentPumpStateStore: PersistentPumpStateStore, 
     /**
      * Class containing state that is used for transport layer IO.
      *
-     * The state consists of the persistent pump state and the current
-     * sequence flag (used when sending packets with the reliability
-     * flag set). The weak key cipher (used during pairing) is _not_
-     * included, since it does not need to exist after pairing.
+     * The state consists of the pump state and the current sequence
+     * flag (used when sending packets with the reliability flag set).
+     * The weak key cipher (used during pairing) is _not_ included,
+     * since it does not need to exist after pairing.
      *
      * It also contains a cached PumpPairingData copy. If the pump
      * is not paired yet, this copy will be set to a default value
      * in reset(), otherwise that call will retrieve the pairing data
-     * from the persistent store and make a copy of it (which is then
-     * the cached copy). That way, the ciphers inside the pairing data
+     * from the pump store and make a copy of it (which is then the
+     * cached copy). That way, the ciphers inside the pairing data
      * (which are needed all the time when dealing with Combo packets)
      * aren't constantly being pulled from the persistent store.
      *
      * During pairing, both that cached copy and the pairing data inside
-     * the persistent state will be initiialized.
+     * the persistent state will be initialized.
      *
      * Also, when generating new outgoing packets, the nonce inside
      * the persistent state is updated.
@@ -1108,10 +1108,10 @@ open class TransportLayerIO(persistentPumpStateStore: PersistentPumpStateStore, 
      * update the state can be easily contained in one thread, thus
      * avoiding race conditions.
      *
-     * @property persistentPumpStateStore Persistent pump state store to
+     * @property pumpStateStore Pump pump state store to
      *           use and update during IO.
      */
-    private class PacketState(val persistentPumpStateStore: PersistentPumpStateStore) {
+    private class PacketState(val pumpStateStore: PumpStateStore) {
         var currentSequenceFlag = false
 
         var cachedPumpPairingData = PumpPairingData(
@@ -1125,7 +1125,7 @@ open class TransportLayerIO(persistentPumpStateStore: PersistentPumpStateStore, 
          *
          * The states that only exist inside this PacketState object
          * are always reset to initial values. The cached pairing data
-         * is reset to an initial default value or copied from the persistent
+         * is reset to an initial default value or copied from the
          * pump state store if the pump has been paired already.
          *
          * Note that in the former case, the pairing data is not supposed
@@ -1137,8 +1137,8 @@ open class TransportLayerIO(persistentPumpStateStore: PersistentPumpStateStore, 
         fun reset() {
             currentSequenceFlag = false
 
-            cachedPumpPairingData = if (persistentPumpStateStore.isValid())
-                persistentPumpStateStore.retrievePumpPairingData()
+            cachedPumpPairingData = if (pumpStateStore.isValid())
+                pumpStateStore.retrievePumpPairingData()
             else
                 PumpPairingData(
                     Cipher(ByteArray(CIPHER_KEY_SIZE)),
@@ -1220,7 +1220,7 @@ open class TransportLayerIO(persistentPumpStateStore: PersistentPumpStateStore, 
                 Command.DATA,
                 Command.ERROR_RESPONSE -> {
                     logger(LogLevel.VERBOSE) { "Verifying incoming packet with pump-client cipher" }
-                    if (!packetState.persistentPumpStateStore.isValid())
+                    if (!packetState.pumpStateStore.isValid())
                         throw IllegalStateException("Cannot verify incoming ${packet.command} packet without a pump-client cipher")
                     packet.verifyAuthentication(packetState.cachedPumpPairingData.pumpClientCipher)
                 }
@@ -1331,8 +1331,8 @@ open class TransportLayerIO(persistentPumpStateStore: PersistentPumpStateStore, 
                 val currentTxNonce = Nonce(byteArrayListOfInts(
                     0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
                 ))
-                packetState.persistentPumpStateStore.currentTxNonce = currentTxNonce
-                packetState.persistentPumpStateStore.currentTxNonce
+                packetState.pumpStateStore.currentTxNonce = currentTxNonce
+                packetState.pumpStateStore.currentTxNonce
             }
 
             // These are the commands that are used in regular
@@ -1341,9 +1341,9 @@ open class TransportLayerIO(persistentPumpStateStore: PersistentPumpStateStore, 
             Command.REQUEST_REGULAR_CONNECTION,
             Command.ACK_RESPONSE,
             Command.DATA -> {
-                val currentTxNonce = packetState.persistentPumpStateStore.currentTxNonce
-                packetState.persistentPumpStateStore.currentTxNonce = currentTxNonce.getIncrementedNonce()
-                packetState.persistentPumpStateStore.currentTxNonce
+                val currentTxNonce = packetState.pumpStateStore.currentTxNonce
+                packetState.pumpStateStore.currentTxNonce = currentTxNonce.getIncrementedNonce()
+                packetState.pumpStateStore.currentTxNonce
             }
 
             else -> throw Error("This is not a valid outgoing packet")
@@ -1446,8 +1446,8 @@ open class TransportLayerIO(persistentPumpStateStore: PersistentPumpStateStore, 
             throw IncorrectPacketException(packet, Command.ID_RESPONSE)
         if (packet.payload.size != 17)
             throw InvalidPayloadException(packet, "Expected 17 bytes, got ${packet.payload.size}")
-        if (!packetState.persistentPumpStateStore.isValid())
-            throw IllegalStateException("Expected a valid persistent pump state store by the time an ID_RESPONSE packet arrives")
+        if (!packetState.pumpStateStore.isValid())
+            throw IllegalStateException("Expected a valid pump state store by the time an ID_RESPONSE packet arrives")
 
         val serverID = ((packet.payload[0].toPosLong() shl 0) or
             (packet.payload[1].toPosLong() shl 8) or
@@ -1468,7 +1468,7 @@ open class TransportLayerIO(persistentPumpStateStore: PersistentPumpStateStore, 
             "Received IDs: server ID: $serverID pump ID: $pumpID"
         }
 
-        packetState.persistentPumpStateStore.pumpID = pumpID
+        packetState.pumpStateStore.pumpID = pumpID
     }
 
     // Reads the error ID out of the packet and throws an exception.
@@ -1479,8 +1479,8 @@ open class TransportLayerIO(persistentPumpStateStore: PersistentPumpStateStore, 
             throw IncorrectPacketException(packet, Command.ERROR_RESPONSE)
         if (packet.payload.size != 1)
             throw InvalidPayloadException(packet, "Expected 1 byte, got ${packet.payload.size}")
-        if (!packetState.persistentPumpStateStore.isValid())
-            throw IllegalStateException("Expected a valid persistent pump state store by the time an ID_RESPONSE packet arrives")
+        if (!packetState.pumpStateStore.isValid())
+            throw IllegalStateException("Expected a valid pump state store by the time an ID_RESPONSE packet arrives")
 
         val errorID = packet.payload[0].toInt()
 
@@ -1558,7 +1558,7 @@ open class TransportLayerIO(persistentPumpStateStore: PersistentPumpStateStore, 
             "  decrypted pump->client key: ${packetState.cachedPumpPairingData.pumpClientCipher.key.toHexString()}"
         }
 
-        packetState.persistentPumpStateStore.storePumpPairingData(packetState.cachedPumpPairingData)
+        packetState.pumpStateStore.storePumpPairingData(packetState.cachedPumpPairingData)
     }
 }
 

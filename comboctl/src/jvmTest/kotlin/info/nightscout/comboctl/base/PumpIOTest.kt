@@ -11,14 +11,14 @@ import kotlinx.coroutines.launch
 class PumpIOTest {
     // Common test code.
     class TestStates(setupPumpPairingData: Boolean) {
-        var testPumpStateStore: TestPersistentPumpStateStore
+        var testPumpStateStore: TestPumpStateStore
         var testIO: TestComboIO
         var pumpIO: PumpIO
 
         init {
             // Set up the "pairing data" to be able to test regular connections.
 
-            testPumpStateStore = TestPersistentPumpStateStore()
+            testPumpStateStore = TestPumpStateStore()
 
             if (setupPumpPairingData) {
                 val pumpPairingData = PumpPairingData(
