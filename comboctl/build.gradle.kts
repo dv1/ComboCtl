@@ -29,6 +29,7 @@ kotlin {
                 implementation(kotlin("test-annotations-common"))
             }
         }
+        val androidMain by getting
         val jvmMain by getting
         val jvmTest by getting {
             dependencies {
