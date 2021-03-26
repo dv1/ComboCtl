@@ -124,13 +124,15 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
 
         logger(LogLevel.DEBUG) { "Starting activity for making this Android device discoverable" }
 
-        val discoverableIntent = Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE)
         // TODO: Currently, the ComboCtl API does not support time-limited
         // discovery. Either, add this to the API, or try to work around
         // this Android limitation, for example by detecting the end of
         // the discoverable mode & re-requesting it then.
-        discoverableIntent.putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 300)
-        discoverableIntent.putExtra(BluetoothAdapter.EXTRA_SCAN_MODE, BluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE)
+        val discoverableIntent = Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE).apply {
+            putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 300)
+            putExtra(BluetoothAdapter.EXTRA_SCAN_MODE, BluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE)
+            flags = flags or Intent.FLAG_ACTIVITY_NEW_TASK
+        }
         androidContext.startActivity(discoverableIntent)
 
         logger(LogLevel.DEBUG) { "Started discovery" }

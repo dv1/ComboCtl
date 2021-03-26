@@ -2,8 +2,8 @@ package info.nightscout.comboctl.comboandroid
 
 import android.app.Application
 import android.content.Context
-import info.nightscout.comboctl.base.MainControl
 import info.nightscout.comboctl.android.AndroidBluetoothInterface
+import info.nightscout.comboctl.base.MainControl
 import info.nightscout.comboctl.comboandroid.persist.SharedPrefsStoreProvider
 
 class App : Application() {

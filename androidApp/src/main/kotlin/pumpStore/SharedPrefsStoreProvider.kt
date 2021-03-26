@@ -12,7 +12,6 @@ import info.nightscout.comboctl.base.toBluetoothAddress
 import info.nightscout.comboctl.base.toCipher
 import info.nightscout.comboctl.base.toNonce
 import info.nightscout.comboctl.base.toPosInt
-import info.nightscout.comboctl.comboandroid.App
 
 class SharedPrefsStoreProvider(private val sharedPreferences: SharedPreferences) :
     PumpStateStoreProvider {

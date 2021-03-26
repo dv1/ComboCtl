@@ -4,7 +4,6 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import info.nightscout.comboctl.comboandroid.App
-import info.nightscout.comboctl.comboandroid.persist.SharedPrefsStoreProvider
 
 class StartupViewModel : ViewModel() {
 
@@ -28,10 +27,6 @@ class StartupViewModel : ViewModel() {
             else
                 Status.PAIRED
         )
-    }
-
-    fun onPairClicked() {
-        // App.mainControl.startDiscovery()
     }
 
     fun onConnectClicked() {

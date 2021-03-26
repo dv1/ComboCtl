@@ -1,27 +1,19 @@
 package info.nightscout.comboctl.comboandroid.ui.pairing
 
 import android.os.Bundle
-import android.view.LayoutInflater
 import android.view.View
-import android.view.ViewGroup
-import android.widget.TextView
-import androidx.fragment.app.Fragment
-import androidx.lifecycle.ViewModelProvider
+import androidx.fragment.app.viewModels
 import info.nightscout.comboctl.comboandroid.R
+import info.nightscout.comboctl.comboandroid.databinding.FragmentPairingBinding
+import info.nightscout.comboctl.comboandroid.ui.base.BaseFragment
 
-class PairingFragment : Fragment() {
-    private lateinit var pairingViewModel: PairingViewModel
+class PairingFragment : BaseFragment<FragmentPairingBinding, PairingViewModel>() {
 
-    override fun onCreateView(
-        inflater: LayoutInflater,
-        container: ViewGroup?,
-        savedInstanceState: Bundle?
-    ): View? {
-        pairingViewModel =
-            ViewModelProvider(this).get(PairingViewModel::class.java)
-        val root = inflater.inflate(R.layout.fragment_gallery, container, false)
-        val textView: TextView = root.findViewById(R.id.text_gallery)
-        pairingViewModel.text.observe(viewLifecycleOwner) { textView.text = it }
-        return root
+    override val viewModel: PairingViewModel by viewModels()
+    override val layoutResId = R.layout.fragment_pairing
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        viewModel.startLifeCycle()
     }
 }
