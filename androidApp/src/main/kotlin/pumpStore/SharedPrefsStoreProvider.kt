@@ -34,9 +34,6 @@ class SharedPrefsStoreProvider(private val sharedPreferences: SharedPreferences)
         const val PC_CIPHER_KEY = "pc-cipher-key"
         const val KEY_RESPONSE_ADDRESS_KEY = "key-response-address-key"
         const val PUMP_ID_KEY = "pump-id-key"
-
-        val instance
-            get() = SharedPrefsStoreProvider(App.getSharedPreferences())
     }
 }
 
