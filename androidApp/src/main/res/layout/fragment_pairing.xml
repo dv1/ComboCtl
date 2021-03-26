@@ -20,21 +20,19 @@
 
 
         <androidx.appcompat.widget.AppCompatTextView
-            android:id="@+id/header"
+            android:id="@+id/pairing_header"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Pairing..."
             android:textSize="20sp"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintHorizontal_bias="0.5"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintVertical_bias="0.5"
-            app:visibility="@{vm.state == State.PAIRING}" />
-
+            app:layout_constraintVertical_bias="0.3"/>
 
         <ProgressBar
+            android:id="@+id/progess"
             style="?android:attr/progressBarStyle"
             android:layout_width="60dp"
             android:layout_height="60dp"
@@ -44,8 +42,54 @@
             app:layout_constraintHorizontal_bias="0.5"
             app:layout_constraintLeft_toLeftOf="parent"
             app:layout_constraintRight_toRightOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/header"
-            app:visibility="@{vm.state == State.PAIRING}" />
+            app:layout_constraintTop_toBottomOf="@id/pairing_header"
+            app:visibility="@{vm.state == State.PAIRING || vm.state == State.COMPLETE_PAIRING}" />
+
+        <EditText
+            android:id="@+id/pinEntryEditText"
+            android:layout_width="200dp"
+            android:layout_height="wrap_content"
+            android:maxLength="10"
+            android:inputType="number"
+            app:layout_constraintLeft_toLeftOf="parent"
+            app:layout_constraintRight_toRightOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/pairing_header"
+            android:text="@={vm.password}"
+            app:visibility="@{vm.state == State.PIN_ENTRY}"
+            />
+
+        <androidx.appcompat.widget.AppCompatButton
+            android:id="@+id/ok_button"
+            android:layout_marginTop="50dp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="OK"
+            app:layout_constraintHorizontal_bias="0.5"
+            app:layout_constraintLeft_toLeftOf="parent"
+            app:layout_constraintRight_toLeftOf="@id/cancel_button"
+            app:layout_constraintTop_toBottomOf="@id/pinEntryEditText"
+            android:onClick="@{() -> vm.onOkClicked()}"
+            app:visibility="@{vm.state == State.PIN_ENTRY}"
+            android:enabled="@{vm.pwValidatedLiveData}"
+            />
+
+        <androidx.appcompat.widget.AppCompatButton
+            android:id="@+id/cancel_button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="CANCEL"
+            android:layout_marginTop="50dp"
+            app:layout_constraintHorizontal_bias="0.5"
+            app:layout_constraintLeft_toRightOf="@id/ok_button"
+            app:layout_constraintRight_toRightOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/pinEntryEditText"
+            android:onClick="@{() -> vm.onCancelClicked()}"
+            app:visibility="@{vm.state == State.PIN_ENTRY}"
+
+            />
+
+
+
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 
