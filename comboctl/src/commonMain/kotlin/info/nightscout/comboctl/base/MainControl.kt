@@ -196,6 +196,14 @@ class MainControl(
     }
 
     /**
+     * Returns a set of Bluetooth addresses of the paired pumps.
+     *
+     * This equals the list of addresses of all the pump state stores in
+     * the [PumpStateStoreProvider] assigned to this MainControl instance.
+     */
+    fun getPairedPumpAddresses() = pumpStateStoreProvider.getAvailableStoreAddresses()
+
+    /**
      * Starts Bluetooth discovery to look for unpaired pumps.
      *
      * This manages the Bluetooth device discovery and the pairing

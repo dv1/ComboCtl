@@ -200,7 +200,7 @@ interface PumpStateStoreProvider {
     fun hasValidStore(pumpAddress: BluetoothAddress): Boolean
 
     /**
-     * Returns a list of Bluetooth addresses of the stores in this backend.
+     * Returns a set of Bluetooth addresses of the stores in this provider.
      */
     fun getAvailableStoreAddresses(): Set<BluetoothAddress>
 }
