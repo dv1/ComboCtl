@@ -159,30 +159,25 @@ struct bluez_interface_priv
 	}
 
 
-	void run_in_thread(bluez_interface::thread_func func)
+	std::future<std::exception_ptr> run_thread_func_in_gsource(GSource *gsource, bluez_interface::thread_func func)
 	{
 		// This runs the given function object in the GLib
 		// mainloop thread (m_thread). This makes things
 		// easier, since otherwise, many mutex locks would
-		// potentially be required.
+		// potentially be required. The function is assigned
+		// to the given GSource, which is then executed by
+		// the GLib mainloop in a manner depending on the
+		// particular type of the GSource.
 		//
-		// We use idle GSources for this purpose. This
-		// type of GSource is run when the mainloop has nothing
-		// else to do. In that GSource's callback, the function
-		// object is executed.
-		//
-		// We also block here until that function is executed.
-		// This simplifies bluez_interface's API considerably.
-		// In particular, passing exceptions is much easier.
-		//
-		// To that end, we make use of an std::future. An
-		// std::promise instance is created, the corresponding
-		// future is retrieved, and the promise is passed to
-		// the GSource along with the function object itself.
-		// Once the function object was executed, that promise's
-		// value is set to the default-constructed exception_ptr().
-		// Should an exception occur, that exception is captured
-		// using std::current_exception(), and used as the promise's
+		// In case callers want to wait until the function is
+		// executed, an std::future is used. An std::promise
+		// instance is created, the corresponding future is
+		// retrieved, and the promise is passed to the GSource
+		// along with the function object itself Once the function
+		// object was executed, that promise's value is set to
+		// the default-constructed exception_ptr(). Should an
+		// exception occur, that exception is captured using
+		// std::current_exception(), and used as the promise's
 		// value. Meanwhile, the future's get() function blocks
 		// until the promise's value is set.
 
@@ -195,8 +190,8 @@ struct bluez_interface_priv
 		// The supplied function must be valid.
 		assert(func);
 
-		// This is the callback that is executed when the
-		// idle GSsource is run by the GLib mainloop..
+		// This is the callback that is executed when
+		// the GSsource is run by the GLib mainloop.
 		static auto callback = [](gpointer data) -> gboolean {
 			function_data *func_data = reinterpret_cast<function_data*>(data);
 
@@ -229,9 +224,8 @@ struct bluez_interface_priv
 		// as context information.
 		function_data *func_data = new function_data{std::move(func), std::move(promise)};
 
-		GSource *idle_source = g_idle_source_new();
 		g_source_set_callback(
-			idle_source,
+			gsource,
 			GSourceFunc(callback),
 			gpointer(func_data),
 			[](gpointer data) {
@@ -248,7 +242,20 @@ struct bluez_interface_priv
 				delete func_data;
 			}
 		);
-		g_source_attach(idle_source, g_main_loop_get_context(m_mainloop));
+		g_source_attach(gsource, g_main_loop_get_context(m_mainloop));
+
+		return future;
+	}
+
+
+	void run_in_thread(bluez_interface::thread_func func)
+	{
+		// Run the function object in the GLib mainloop as soon
+		// as the loop has no other tasks to take care of.
+		// We use idle GSources for this purpose.
+
+		GSource *idle_source = g_idle_source_new();
+		auto future = run_thread_func_in_gsource(idle_source, func);
 		g_source_unref(idle_source);
 
 		// Wait for the GSource to run, and get any resulting
