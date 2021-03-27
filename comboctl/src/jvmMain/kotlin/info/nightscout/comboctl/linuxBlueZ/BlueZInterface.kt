@@ -16,6 +16,12 @@ private val logger = Logger.get("BlueZInterface")
 // literals directly, because there is no stable, known
 // way of accessing said function literals through JNI.
 
+private class IntArgumentNoReturnCallback(val func: (argument: Int) -> Unit) {
+    fun invoke(argument: Int) {
+        func(argument)
+    }
+}
+
 private class BluetoothDeviceNoReturnCallback(val func: (deviceAddress: BluetoothAddress) -> Unit) {
     fun invoke(deviceAddressBytes: ByteArray) {
         func(deviceAddressBytes.toBluetoothAddress())
@@ -75,6 +81,8 @@ class BlueZInterface : BluetoothInterface {
         sdpServiceProvider: String,
         sdpServiceDescription: String,
         btPairingPin: String,
+        discoveryDuration: Int,
+        discoveryStopped: (reason: BluetoothInterface.DiscoveryStoppedReason) -> Unit,
         foundNewPairedDevice: (deviceAddress: BluetoothAddress) -> Unit
     ) {
         startDiscoveryImpl(
@@ -82,6 +90,17 @@ class BlueZInterface : BluetoothInterface {
             sdpServiceProvider,
             sdpServiceDescription,
             btPairingPin,
+            discoveryDuration,
+            IntArgumentNoReturnCallback {
+                discoveryStopped(
+                    when (it) {
+                        0 -> BluetoothInterface.DiscoveryStoppedReason.MANUALLY_STOPPED
+                        1 -> BluetoothInterface.DiscoveryStoppedReason.DISCOVERY_ERROR
+                        2 -> BluetoothInterface.DiscoveryStoppedReason.DISCOVERY_TIMEOUT
+                        else -> throw Error("Invalid discovery stop reason")
+                    }
+                )
+            },
             BluetoothDeviceNoReturnCallback(foundNewPairedDevice)
         )
     }
@@ -133,6 +152,8 @@ class BlueZInterface : BluetoothInterface {
         sdpServiceProvider: String,
         sdpServiceDescription: String,
         btPairingPin: String,
+        discoveryDuration: Int,
+        discoveryStopped: IntArgumentNoReturnCallback,
         foundNewPairedDevice: BluetoothDeviceNoReturnCallback
     )
 

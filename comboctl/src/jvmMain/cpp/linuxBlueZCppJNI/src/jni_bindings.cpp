@@ -243,6 +243,13 @@ struct bluez_interface_global_class_wrapper
 	using jni_class = jni::Class<bluez_interface_global_tag>;
 };
 
+struct int_argument_no_return_callback_tag { static constexpr auto Name() { return "info/nightscout/comboctl/linuxBlueZ/IntArgumentNoReturnCallback"; } };
+struct int_argument_no_return_callback_wrapper
+{
+	using jni_object = jni::Object<int_argument_no_return_callback_tag>;
+	using jni_class = jni::Class<int_argument_no_return_callback_tag>;
+};
+
 struct bluetooth_device_no_return_callback_tag { static constexpr auto Name() { return "info/nightscout/comboctl/linuxBlueZ/BluetoothDeviceNoReturnCallback"; } };
 struct bluetooth_device_no_return_callback_wrapper
 {
@@ -278,8 +285,9 @@ public:
 
 		m_jni_bluez_interface_global_klass = jni::NewGlobal(env, bluez_interface_global_class_wrapper::jni_class::Find(env));
 
-		m_jni_no_return_klass = jni::NewGlobal(env, bluetooth_device_no_return_callback_wrapper::jni_class::Find(env));
-		m_jni_boolean_return_klass = jni::NewGlobal(env, bluetooth_device_boolean_return_callback_wrapper::jni_class::Find(env));
+		m_jni_int_argument_no_return_klass = jni::NewGlobal(env, int_argument_no_return_callback_wrapper::jni_class::Find(env));
+		m_jni_btdevice_no_return_klass = jni::NewGlobal(env, bluetooth_device_no_return_callback_wrapper::jni_class::Find(env));
+		m_jni_btdevice_boolean_return_klass = jni::NewGlobal(env, bluetooth_device_boolean_return_callback_wrapper::jni_class::Find(env));
 
 		comboctl::set_logging_function(log_to_kotlin);
 
@@ -331,6 +339,8 @@ public:
 		jni::String const &sdp_service_provider,
 		jni::String const &sdp_service_description,
 		jni::String const &bt_pairing_pin_code,
+		jint discovery_duration,
+		int_argument_no_return_callback_wrapper::jni_object &discovery_stopped,
 		bluetooth_device_no_return_callback_wrapper::jni_object &found_new_paired_device
 	)
 	{
@@ -340,17 +350,30 @@ public:
 				jni::Make<std::string>(env, sdp_service_provider),
 				jni::Make<std::string>(env, sdp_service_description),
 				jni::Make<std::string>(env, bt_pairing_pin_code),
+				discovery_duration,
+				// on_discovery_started callback
 				[&]() {
 					std::unique_lock<std::mutex> lock(m_thread_env_map_mutex);
 
 					jni::JNIEnv &env = get_jni_env_for_current_thread();
 
+					m_jni_discovery_stopped_object = jni::NewGlobal(env, discovery_stopped);
 					m_jni_found_new_paired_device_object = jni::NewGlobal(env, found_new_paired_device);
 				},
-				[this]() {
+				// on_discovery_stopped callback
+				[this](comboctl::discovery_stopped_reason reason) {
+					std::unique_lock<std::mutex> lock(m_thread_env_map_mutex);
+
+					jni::JNIEnv &env = get_jni_env_for_current_thread();
+
+					auto method = m_jni_int_argument_no_return_klass.GetMethod<void(int)>(env, "invoke");
+					m_jni_discovery_stopped_object.Call(env, method, int(reason));
+
 					m_jni_found_new_paired_device_object.reset();
+					m_jni_discovery_stopped_object.reset();
 					m_jni_filter_device_object.reset();
 				},
+				// on_found_new_device callback
 				[this](comboctl::bluetooth_address paired_device_address) {
 					std::unique_lock<std::mutex> lock(m_thread_env_map_mutex);
 
@@ -358,7 +381,7 @@ public:
 
 					auto jni_array = jni::Make<jni::Array<jni::jbyte>>(env, reinterpret_cast<jni::jbyte const *>(paired_device_address.data()), paired_device_address.size());
 
-					auto method = m_jni_no_return_klass.GetMethod<void(jni::Array<jni::jbyte>)>(env, "invoke");
+					auto method = m_jni_btdevice_no_return_klass.GetMethod<void(jni::Array<jni::jbyte>)>(env, "invoke");
 					m_jni_found_new_paired_device_object.Call(env, method, jni_array);
 				}
 			);
@@ -385,7 +408,7 @@ public:
 
 			auto jni_array = jni::Make<jni::Array<jni::jbyte>>(env, reinterpret_cast<jni::jbyte const *>(paired_device_address.data()), paired_device_address.size());
 
-			auto method = m_jni_no_return_klass.GetMethod<void(jni::Array<jni::jbyte>)>(env, "invoke");
+			auto method = m_jni_btdevice_no_return_klass.GetMethod<void(jni::Array<jni::jbyte>)>(env, "invoke");
 			m_jni_device_unpaired_callback_object.Call(env, method, jni_array);
 		});
 	}
@@ -400,7 +423,7 @@ public:
 
 			auto jni_array = jni::Make<jni::Array<jni::jbyte>>(env, reinterpret_cast<jni::jbyte const *>(device_address.data()), device_address.size());
 
-			auto method = m_jni_boolean_return_klass.GetMethod<jni::jboolean(jni::Array<jni::jbyte>)>(env, "invoke");
+			auto method = m_jni_btdevice_boolean_return_klass.GetMethod<jni::jboolean(jni::Array<jni::jbyte>)>(env, "invoke");
 			return m_jni_filter_device_object.Call(env, method, jni_array);
 		});
 	}
@@ -531,10 +554,13 @@ private:
 
 	jni::Global<bluez_interface_global_class_wrapper::jni_class> m_jni_bluez_interface_global_klass;
 
-	jni::Global<bluetooth_device_no_return_callback_wrapper::jni_class> m_jni_no_return_klass;
-	jni::Global<bluetooth_device_boolean_return_callback_wrapper::jni_class> m_jni_boolean_return_klass;
+	jni::Global<int_argument_no_return_callback_wrapper::jni_class> m_jni_int_argument_no_return_klass;
+	jni::Global<bluetooth_device_no_return_callback_wrapper::jni_class> m_jni_btdevice_no_return_klass;
+	jni::Global<bluetooth_device_boolean_return_callback_wrapper::jni_class> m_jni_btdevice_boolean_return_klass;
 
 	jni::Global<bluetooth_device_no_return_callback_wrapper::jni_object> m_jni_found_new_paired_device_object;
+
+	jni::Global<int_argument_no_return_callback_wrapper::jni_object> m_jni_discovery_stopped_object;
 
 	jni::Global<bluetooth_device_no_return_callback_wrapper::jni_object> m_jni_device_unpaired_callback_object;
 

@@ -78,12 +78,14 @@ struct bluez_interface_priv
 	adapter m_adapter;
 
 	found_new_paired_device_callback m_on_found_new_device;
-	bluez_interface::thread_func m_on_discovery_stopped;
+	bluez_interface::discovery_stopped_callback m_on_discovery_stopped;
 
 	bluez_interface::thread_func m_on_thread_starting;
 	bluez_interface::thread_func m_on_thread_stopping;
 
 	bool m_discovery_started = false;
+
+	GSource *m_discovery_timeout_gsource = nullptr;
 
 
 	bluez_interface_priv()
@@ -109,6 +111,12 @@ struct bluez_interface_priv
 
 	~bluez_interface_priv()
 	{
+		if (m_discovery_timeout_gsource != nullptr)
+		{
+			g_source_destroy(m_discovery_timeout_gsource);
+			g_source_unref(m_discovery_timeout_gsource);
+		}
+
 		g_main_loop_unref(m_mainloop);
 		g_main_context_unref(m_mainloop_context);
 	}
@@ -159,30 +167,25 @@ struct bluez_interface_priv
 	}
 
 
-	void run_in_thread(bluez_interface::thread_func func)
+	std::future<std::exception_ptr> run_thread_func_in_gsource(GSource *gsource, bluez_interface::thread_func func)
 	{
 		// This runs the given function object in the GLib
 		// mainloop thread (m_thread). This makes things
 		// easier, since otherwise, many mutex locks would
-		// potentially be required.
+		// potentially be required. The function is assigned
+		// to the given GSource, which is then executed by
+		// the GLib mainloop in a manner depending on the
+		// particular type of the GSource.
 		//
-		// We use idle GSources for this purpose. This
-		// type of GSource is run when the mainloop has nothing
-		// else to do. In that GSource's callback, the function
-		// object is executed.
-		//
-		// We also block here until that function is executed.
-		// This simplifies bluez_interface's API considerably.
-		// In particular, passing exceptions is much easier.
-		//
-		// To that end, we make use of an std::future. An
-		// std::promise instance is created, the corresponding
-		// future is retrieved, and the promise is passed to
-		// the GSource along with the function object itself.
-		// Once the function object was executed, that promise's
-		// value is set to the default-constructed exception_ptr().
-		// Should an exception occur, that exception is captured
-		// using std::current_exception(), and used as the promise's
+		// In case callers want to wait until the function is
+		// executed, an std::future is used. An std::promise
+		// instance is created, the corresponding future is
+		// retrieved, and the promise is passed to the GSource
+		// along with the function object itself Once the function
+		// object was executed, that promise's value is set to
+		// the default-constructed exception_ptr(). Should an
+		// exception occur, that exception is captured using
+		// std::current_exception(), and used as the promise's
 		// value. Meanwhile, the future's get() function blocks
 		// until the promise's value is set.
 
@@ -195,8 +198,8 @@ struct bluez_interface_priv
 		// The supplied function must be valid.
 		assert(func);
 
-		// This is the callback that is executed when the
-		// idle GSsource is run by the GLib mainloop..
+		// This is the callback that is executed when
+		// the GSsource is run by the GLib mainloop.
 		static auto callback = [](gpointer data) -> gboolean {
 			function_data *func_data = reinterpret_cast<function_data*>(data);
 
@@ -229,9 +232,8 @@ struct bluez_interface_priv
 		// as context information.
 		function_data *func_data = new function_data{std::move(func), std::move(promise)};
 
-		GSource *idle_source = g_idle_source_new();
 		g_source_set_callback(
-			idle_source,
+			gsource,
 			GSourceFunc(callback),
 			gpointer(func_data),
 			[](gpointer data) {
@@ -248,7 +250,20 @@ struct bluez_interface_priv
 				delete func_data;
 			}
 		);
-		g_source_attach(idle_source, g_main_loop_get_context(m_mainloop));
+		g_source_attach(gsource, g_main_loop_get_context(m_mainloop));
+
+		return future;
+	}
+
+
+	void run_in_thread(bluez_interface::thread_func func)
+	{
+		// Run the function object in the GLib mainloop as soon
+		// as the loop has no other tasks to take care of.
+		// We use idle GSources for this purpose.
+
+		GSource *idle_source = g_idle_source_new();
+		auto future = run_thread_func_in_gsource(idle_source, func);
 		g_source_unref(idle_source);
 
 		// Wait for the GSource to run, and get any resulting
@@ -261,13 +276,29 @@ struct bluez_interface_priv
 	}
 
 
+	GSource* run_in_thread(guint timeout, bluez_interface::thread_func func)
+	{
+		// Run the function object in a timeout GSource and
+		// run that GSource in the GLib mainloop. Unlike in
+		// the variant above, we do not care about the future
+		// object here, just about the GSource itself, so we
+		// can destroy and unref it in case we want to cancel
+		// that timeout.
+
+		GSource *timeout_source = g_timeout_source_new_seconds(timeout);
+		run_thread_func_in_gsource(timeout_source, func);
+		return timeout_source;
+	}
+
+
 	void start_discovery_impl(
 		std::string sdp_service_name,
 		std::string sdp_service_provider,
 		std::string sdp_service_description,
 		std::string bt_pairing_pin_code,
-		bluez_interface::thread_func on_discovery_started,
-		bluez_interface::thread_func on_discovery_stopped,
+		int discovery_duration,
+		bluez_interface::discovery_started_callback on_discovery_started,
+		bluez_interface::discovery_stopped_callback on_discovery_stopped,
 		found_new_paired_device_callback on_found_new_device
 	)
 	{
@@ -283,7 +314,12 @@ struct bluez_interface_priv
 		// on_discovery_started call earlier.
 		auto discovery_started_guard = make_scope_guard([&]() {
 			if (on_discovery_stopped)
-				on_discovery_stopped();
+				on_discovery_stopped(discovery_stopped_reason::discovery_error);
+		});
+
+		m_discovery_timeout_gsource = run_in_thread(discovery_duration, [&]() {
+			LOG(debug, "discovery timeout reached; stopping discovery");
+			stop_discovery_impl(discovery_stopped_reason::discovery_timeout);
 		});
 
 		// Store the callbacks for later use.
@@ -340,17 +376,24 @@ struct bluez_interface_priv
 	}
 
 
-	void stop_discovery_impl()
+	void stop_discovery_impl(discovery_stopped_reason reason)
 	{
 		if (!m_discovery_started)
 			return;
 
 		m_discovery_started = false;
 
-		m_on_discovery_stopped();
+		m_on_discovery_stopped(reason);
 
 		m_agent.teardown();
 		m_sdp_service.teardown();
+
+		if (m_discovery_timeout_gsource != nullptr)
+		{
+			g_source_destroy(m_discovery_timeout_gsource);
+			g_source_unref(m_discovery_timeout_gsource);
+			m_discovery_timeout_gsource = nullptr;
+		}
 	}
 
 
@@ -530,13 +573,15 @@ void bluez_interface::start_discovery(
 	std::string sdp_service_provider,
 	std::string sdp_service_description,
 	std::string bt_pairing_pin_code,
-	thread_func on_discovery_started,
-	thread_func on_discovery_stopped,
+	int discovery_duration,
+	discovery_started_callback on_discovery_started,
+	discovery_stopped_callback on_discovery_stopped,
 	found_new_paired_device_callback on_found_new_device
 )
 {
 	assert(on_found_new_device);
 	assert(m_priv->m_thread_started);
+	assert((discovery_duration >= 1) && (discovery_duration <= 300));
 
 	m_priv->run_in_thread([=]() mutable {
 		m_priv->start_discovery_impl(
@@ -544,6 +589,7 @@ void bluez_interface::start_discovery(
 			std::move(sdp_service_provider),
 			std::move(sdp_service_description),
 			std::move(bt_pairing_pin_code),
+			discovery_duration,
 			std::move(on_discovery_started),
 			std::move(on_discovery_stopped),
 			std::move(on_found_new_device)
@@ -557,7 +603,7 @@ void bluez_interface::stop_discovery()
 	if (!m_priv->m_thread_started)
 		return;
 
-	m_priv->run_in_thread([this]() { m_priv->stop_discovery_impl(); });
+	m_priv->run_in_thread([this]() { m_priv->stop_discovery_impl(discovery_stopped_reason::manually_stopped); });
 }
 
 
