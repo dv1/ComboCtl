@@ -54,6 +54,7 @@ class MainViewController {
         try {
             mainControl!!.startDiscovery(
                 mainScope!!,
+                false,
                 300,
                 { reason -> println("Discovery stopped due to reason: $reason") },
                 { newPumpAddress, _ ->

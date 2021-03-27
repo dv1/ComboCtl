@@ -24,6 +24,7 @@ class MainControl(
     // Device discovery related properties.
     private var discoveryRunning = false
     private var pumpPairingPINCallback: PumpPairingPINCallback = { _, _ -> nullPairingPIN() }
+    private var onlyDiscoverOneDevice = false
 
     // Coroutine mutex. This is used to prevent race conditions while
     // accessing acquiredPumps and the pumpStateStoreProvider. The
@@ -229,8 +230,16 @@ class MainControl(
      * returns false, the event handling (including any ongoing discovery)
      * is stopped as if [stopEventHandling] had been called.
      *
+     * Sometimes it might be undesirable to keep discovering pumps after
+     * a device was found. Either, the application only ever gets paired
+     * with one pump, or the Bluetooth stack does not work reliably when
+     * both scanning and connecting happen at the same time. In such cases,
+     * onlyDiscoverOneDevice can be set to true.
+     *
      * @param discoveryEventHandlingScope [CoroutineScope] to run the
      *        discovery-specific event handling in.
+     * @param onlyDiscoverOneDevice true if discovery shall stop after
+     *        one device was found, false otherwise.
      * @param discoveryDuration How long the discovery shall go on,
      *        in seconds. Must be a value between 1 and 300.
      * @param discoveryStopped: Callback that gets invoked when discovery
@@ -245,6 +254,7 @@ class MainControl(
      */
     fun startDiscovery(
         discoveryEventHandlingScope: CoroutineScope,
+        onlyDiscoverOneDevice: Boolean,
         discoveryDuration: Int,
         discoveryStoppedCallback: suspend (reason: BluetoothInterface.DiscoveryStoppedReason) -> Unit,
         pumpPairingPINCallback: PumpPairingPINCallback
@@ -281,7 +291,7 @@ class MainControl(
 
             discoveryRunning = true
 
-            logger(LogLevel.DEBUG) { "Discovery started" }
+            logger(LogLevel.DEBUG) { "Discovery started; onlyDiscoverOneDevice = $onlyDiscoverOneDevice" }
         } catch (e: Exception) {
             abortDiscovery(e)
             throw e
@@ -383,6 +393,14 @@ class MainControl(
                 if (pumpStateStoreProvider.hasValidStore(pumpAddress)) {
                     logger(LogLevel.DEBUG) { "Skipping added pump since it has already been paired" }
                 } else {
+                    // Important: FIRST stop discovery, THEN perform pairing.
+                    // Otherwise, some Bluetooth stacks may not work properly
+                    // if they have bugs related to simultaneous scanning and
+                    // connecting (seen commonly on Android devices).
+                    if (onlyDiscoverOneDevice) {
+                        logger(LogLevel.DEBUG) { "Stopping discovery after a newly paired pump was found" }
+                        stopDiscovery()
+                    }
                     performPairing(pumpAddress)
                     onNewPairedPump(pumpAddress)
                 }
