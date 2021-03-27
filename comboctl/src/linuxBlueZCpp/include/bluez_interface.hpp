@@ -127,6 +127,14 @@ private:
 typedef std::unique_ptr<bluez_bluetooth_device> bluez_bluetooth_device_uptr;
 
 
+enum class discovery_stopped_reason
+{
+	manually_stopped = 0,
+	discovery_error = 1,
+	discovery_timeout = 2
+};
+
+
 /**
  * Simple high level interface to BlueZ.
  *
@@ -168,6 +176,9 @@ public:
 	void teardown();
 
 	typedef std::function<void()> thread_func;
+
+	typedef std::function<void()> discovery_started_callback;
+	typedef std::function<void(discovery_stopped_reason reason)> discovery_stopped_callback;
 
 	/**
 	 * Runs the specified function in the internal thread.
@@ -239,8 +250,9 @@ public:
 		std::string sdp_service_provider,
 		std::string sdp_service_description,
 		std::string bt_pairing_pin_code,
-		thread_func on_discovery_started,
-		thread_func on_discovery_stopped,
+		int discovery_duration,
+		discovery_started_callback on_discovery_started,
+		discovery_stopped_callback on_discovery_stopped,
 		found_new_paired_device_callback on_found_new_device
 	);
 

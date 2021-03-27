@@ -52,11 +52,16 @@ class MainViewController {
         require(mainControl != null)
         require(mainScope != null)
         try {
-            mainControl!!.startDiscovery(mainScope!!) { newPumpAddress, _ ->
-                withContext(mainScope!!.coroutineContext) {
-                    askUserForPIN(newPumpAddress)
+            mainControl!!.startDiscovery(
+                mainScope!!,
+                300,
+                { reason -> println("Discovery stopped due to reason: $reason") },
+                { newPumpAddress, _ ->
+                    withContext(mainScope!!.coroutineContext) {
+                        askUserForPIN(newPumpAddress)
+                    }
                 }
-            }
+            )
         } catch (e: IllegalStateException) {
             println("Attempted to start discovery even though it is running already")
         } catch (e: BluetoothException) {

@@ -223,6 +223,11 @@ class MainControl(
      *
      * @param discoveryEventHandlingScope [CoroutineScope] to run the
      *        discovery-specific event handling in.
+     * @param discoveryDuration How long the discovery shall go on,
+     *        in seconds. Must be a value between 1 and 300.
+     * @param discoveryStopped: Callback that gets invoked when discovery
+     *        is stopped, either due to a manual stop, or due to an error or
+     *        because the timeout defined by discoveryDuration was reached.
      * @param pumpPairingPINCallback Callback to ask the user for
      *        the 10-digit pairing PIN during the pairing process.
      * @throws IllegalStateException if a discovery is already ongoing
@@ -232,6 +237,8 @@ class MainControl(
      */
     fun startDiscovery(
         discoveryEventHandlingScope: CoroutineScope,
+        discoveryDuration: Int,
+        discoveryStoppedCallback: suspend (reason: BluetoothInterface.DiscoveryStoppedReason) -> Unit,
         pumpPairingPINCallback: PumpPairingPINCallback
     ) {
         if (!eventHandlingStarted)
@@ -248,6 +255,13 @@ class MainControl(
                 "ComboCtl SDP service",
                 "ComboCtl",
                 Constants.BT_PAIRING_PIN,
+                discoveryDuration,
+                { reason ->
+                    discoveryEventHandlingScope.launch {
+                        discoveryRunning = false
+                        discoveryStoppedCallback(reason)
+                    }
+                },
                 { deviceAddress ->
                     discoveryEventHandlingScope.launch {
                         runEventHandler {

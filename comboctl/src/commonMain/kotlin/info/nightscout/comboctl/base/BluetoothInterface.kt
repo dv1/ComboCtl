@@ -13,6 +13,17 @@ package info.nightscout.comboctl.base
  */
 interface BluetoothInterface {
     /**
+     * Possible reasons for why discovery stopped.
+     *
+     * Used in the [startDiscovery] discoveryStopped callback.
+     */
+    enum class DiscoveryStoppedReason(val str: String) {
+        MANUALLY_STOPPED("manually stopped"),
+        DISCOVERY_ERROR("error during discovery"),
+        DISCOVERY_TIMEOUT("discovery timeout reached")
+    }
+
+    /**
      * Callback for when a previously paired device is unpaired.
      *
      * This is independent of the device discovery. That is, this callback
@@ -81,7 +92,7 @@ interface BluetoothInterface {
      * thread, so make sure that thread synchronization primitives like
      * mutexes are used.
      *
-     * Do not spend too much time in the [foundNewPairedDevice], since it
+     * Do not spend too much time in the callbacks, since this
      * may block internal threads.
      *
      * This function may only be called after creating the interface
@@ -97,6 +108,11 @@ interface BluetoothInterface {
      *        Not to be confused with the Combo's 10-digit pairing PIN.
      *        This PIN is a sequence of characters used by the Bluetooth
      *        stack for its pairing/authorization.
+     * @param discoveryDuration How long the discovery shall go on,
+     *        in seconds. Must be a value between 1 and 300.
+     * @param discoveryStopped: Callback that gets invoked when discovery
+     *        is stopped, either due to a manual stop, or due to an error or
+     *        because the timeout defined by discoveryDuration was reached.
      * @param foundNewPairedDevice Callback that gets invoked when
      *        a device was found that passed the filter (see [deviceFilter])
      *        and is paired. Exceptions thrown by this callback are logged,
@@ -113,6 +129,8 @@ interface BluetoothInterface {
         sdpServiceProvider: String,
         sdpServiceDescription: String,
         btPairingPin: String,
+        discoveryDuration: Int,
+        discoveryStopped: (reason: DiscoveryStoppedReason) -> Unit,
         foundNewPairedDevice: (deviceAddress: BluetoothAddress) -> Unit
     )
 

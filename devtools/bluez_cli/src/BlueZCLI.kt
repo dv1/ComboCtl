@@ -57,7 +57,7 @@ class MainApp(private val mainScope: CoroutineScope) {
         bluezInterface = BlueZInterface()
 
         bluezInterface.onDeviceUnpaired = {
-            deviceAddress -> println("Previously paired device with address $deviceAddress removed")
+            deviceAddress -> printLine("Previously paired device with address $deviceAddress removed")
         }
 
         bluezInterface.deviceFilter = {
@@ -109,7 +109,9 @@ class MainApp(private val mainScope: CoroutineScope) {
                     "Custom ComboCtl SDP service",
                     "ComboCtl",
                     Constants.BT_PAIRING_PIN,
-                    { deviceAddress -> println("Found paired device with address $deviceAddress") }
+                    300,
+                    { reason -> printLine("Discovery stopped due to reason: $reason") },
+                    { deviceAddress -> printLine("Found paired device with address $deviceAddress") }
                 )
                 printLine("BT friendly name: ${bluezInterface.getAdapterFriendlyName()}")
             } catch (e: IllegalStateException) {

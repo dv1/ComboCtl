@@ -78,12 +78,14 @@ struct bluez_interface_priv
 	adapter m_adapter;
 
 	found_new_paired_device_callback m_on_found_new_device;
-	bluez_interface::thread_func m_on_discovery_stopped;
+	bluez_interface::discovery_stopped_callback m_on_discovery_stopped;
 
 	bluez_interface::thread_func m_on_thread_starting;
 	bluez_interface::thread_func m_on_thread_stopping;
 
 	bool m_discovery_started = false;
+
+	GSource *m_discovery_timeout_gsource = nullptr;
 
 
 	bluez_interface_priv()
@@ -109,6 +111,12 @@ struct bluez_interface_priv
 
 	~bluez_interface_priv()
 	{
+		if (m_discovery_timeout_gsource != nullptr)
+		{
+			g_source_destroy(m_discovery_timeout_gsource);
+			g_source_unref(m_discovery_timeout_gsource);
+		}
+
 		g_main_loop_unref(m_mainloop);
 		g_main_context_unref(m_mainloop_context);
 	}
@@ -268,13 +276,29 @@ struct bluez_interface_priv
 	}
 
 
+	GSource* run_in_thread(guint timeout, bluez_interface::thread_func func)
+	{
+		// Run the function object in a timeout GSource and
+		// run that GSource in the GLib mainloop. Unlike in
+		// the variant above, we do not care about the future
+		// object here, just about the GSource itself, so we
+		// can destroy and unref it in case we want to cancel
+		// that timeout.
+
+		GSource *timeout_source = g_timeout_source_new_seconds(timeout);
+		run_thread_func_in_gsource(timeout_source, func);
+		return timeout_source;
+	}
+
+
 	void start_discovery_impl(
 		std::string sdp_service_name,
 		std::string sdp_service_provider,
 		std::string sdp_service_description,
 		std::string bt_pairing_pin_code,
-		bluez_interface::thread_func on_discovery_started,
-		bluez_interface::thread_func on_discovery_stopped,
+		int discovery_duration,
+		bluez_interface::discovery_started_callback on_discovery_started,
+		bluez_interface::discovery_stopped_callback on_discovery_stopped,
 		found_new_paired_device_callback on_found_new_device
 	)
 	{
@@ -290,7 +314,12 @@ struct bluez_interface_priv
 		// on_discovery_started call earlier.
 		auto discovery_started_guard = make_scope_guard([&]() {
 			if (on_discovery_stopped)
-				on_discovery_stopped();
+				on_discovery_stopped(discovery_stopped_reason::discovery_error);
+		});
+
+		m_discovery_timeout_gsource = run_in_thread(discovery_duration, [&]() {
+			LOG(debug, "discovery timeout reached; stopping discovery");
+			stop_discovery_impl(discovery_stopped_reason::discovery_timeout);
 		});
 
 		// Store the callbacks for later use.
@@ -347,17 +376,24 @@ struct bluez_interface_priv
 	}
 
 
-	void stop_discovery_impl()
+	void stop_discovery_impl(discovery_stopped_reason reason)
 	{
 		if (!m_discovery_started)
 			return;
 
 		m_discovery_started = false;
 
-		m_on_discovery_stopped();
+		m_on_discovery_stopped(reason);
 
 		m_agent.teardown();
 		m_sdp_service.teardown();
+
+		if (m_discovery_timeout_gsource != nullptr)
+		{
+			g_source_destroy(m_discovery_timeout_gsource);
+			g_source_unref(m_discovery_timeout_gsource);
+			m_discovery_timeout_gsource = nullptr;
+		}
 	}
 
 
@@ -537,13 +573,15 @@ void bluez_interface::start_discovery(
 	std::string sdp_service_provider,
 	std::string sdp_service_description,
 	std::string bt_pairing_pin_code,
-	thread_func on_discovery_started,
-	thread_func on_discovery_stopped,
+	int discovery_duration,
+	discovery_started_callback on_discovery_started,
+	discovery_stopped_callback on_discovery_stopped,
 	found_new_paired_device_callback on_found_new_device
 )
 {
 	assert(on_found_new_device);
 	assert(m_priv->m_thread_started);
+	assert((discovery_duration >= 1) && (discovery_duration <= 300));
 
 	m_priv->run_in_thread([=]() mutable {
 		m_priv->start_discovery_impl(
@@ -551,6 +589,7 @@ void bluez_interface::start_discovery(
 			std::move(sdp_service_provider),
 			std::move(sdp_service_description),
 			std::move(bt_pairing_pin_code),
+			discovery_duration,
 			std::move(on_discovery_started),
 			std::move(on_discovery_stopped),
 			std::move(on_found_new_device)
@@ -564,7 +603,7 @@ void bluez_interface::stop_discovery()
 	if (!m_priv->m_thread_started)
 		return;
 
-	m_priv->run_in_thread([this]() { m_priv->stop_discovery_impl(); });
+	m_priv->run_in_thread([this]() { m_priv->stop_discovery_impl(discovery_stopped_reason::manually_stopped); });
 }
 
 
