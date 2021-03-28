@@ -6,6 +6,8 @@ import java.io.IOException
 
 private val logger = Logger.get("RuffyDatadumpReader")
 
+internal fun Byte.toPosInt() = toInt() and 0xFF
+
 /**
  * Reads binary data dumps produced by the datadump Ruffy fork.
  *

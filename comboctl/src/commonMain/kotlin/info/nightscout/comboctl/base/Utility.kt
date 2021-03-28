@@ -37,7 +37,7 @@ data class DateTime(
  * @param ints Integers to convert to bytes for the new array.
  * @return The new ByteArray.
  */
-fun byteArrayOfInts(vararg ints: Int) = ByteArray(ints.size) { pos -> ints[pos].toByte() }
+internal fun byteArrayOfInts(vararg ints: Int) = ByteArray(ints.size) { pos -> ints[pos].toByte() }
 
 /**
  * Variant of [byteArrayOfInts] which produces an ArrayList instead of an array.
@@ -45,7 +45,7 @@ fun byteArrayOfInts(vararg ints: Int) = ByteArray(ints.size) { pos -> ints[pos].
  * @param ints Integers to convert to bytes for the new arraylist.
  * @return The new arraylist.
  */
-fun byteArrayListOfInts(vararg ints: Int) = ArrayList(ints.map { it.toByte() })
+internal fun byteArrayListOfInts(vararg ints: Int) = ArrayList(ints.map { it.toByte() })
 
 /**
  * Produces a hexadecimal string representation of the bytes in the array.
@@ -55,7 +55,7 @@ fun byteArrayListOfInts(vararg ints: Int) = ArrayList(ints.map { it.toByte() })
  *
  * @return The string representation.
  */
-fun ByteArray.toHexString(separator: String = " ") = this.joinToString(separator) { it.toHexString(width = 2, prependPrefix = false) }
+internal fun ByteArray.toHexString(separator: String = " ") = this.joinToString(separator) { it.toHexString(width = 2, prependPrefix = false) }
 
 /**
  * Produces a hexadecimal string representation of the bytes in the list.
@@ -65,7 +65,7 @@ fun ByteArray.toHexString(separator: String = " ") = this.joinToString(separator
  *
  * @return The string representation.
  */
-fun List<Byte>.toHexString(separator: String = " ") = this.joinToString(separator) { it.toHexString(width = 2, prependPrefix = false) }
+internal fun List<Byte>.toHexString(separator: String = " ") = this.joinToString(separator) { it.toHexString(width = 2, prependPrefix = false) }
 
 /**
  * Produces a hexadecimal string describing the "surroundings" of a byte in a list.
@@ -90,7 +90,7 @@ fun List<Byte>.toHexString(separator: String = " ") = this.joinToString(separato
  *        the beginning or end of the list).
  * @return The string representation.
  */
-fun List<Byte>.toHexStringWithContext(offset: Int, contextSize: Int = 10): String {
+internal fun List<Byte>.toHexStringWithContext(offset: Int, contextSize: Int = 10): String {
     val byte = this[offset]
     val beforeByteContext = this.subList(max(offset - contextSize, 0), offset)
     val beforeByteContextStr = if (beforeByteContext.isEmpty()) "" else beforeByteContext.toHexString() + " "
@@ -149,7 +149,7 @@ fun List<Byte>.toHexStringWithContext(offset: Int, contextSize: Int = 10): Strin
  *
  * toPosInt produces the correct results.
  */
-fun Byte.toPosInt() = toInt() and 0xFF
+internal fun Byte.toPosInt() = toInt() and 0xFF
 
 /**
  * Byte to Long conversion that treats all 8 bits of the byte as a positive value.
@@ -157,7 +157,7 @@ fun Byte.toPosInt() = toInt() and 0xFF
  * This behaves identically to [Byte.toPosInt], except it produces a Long instead
  * of an Int value.
  */
-fun Byte.toPosLong() = toLong() and 0xFF
+internal fun Byte.toPosLong() = toLong() and 0xFF
 
 /**
  * Int to Long conversion that treats all 32 bits of the Int as a positive value.
@@ -165,7 +165,7 @@ fun Byte.toPosLong() = toLong() and 0xFF
  * This behaves just like [Byte.toPosLong], except it is applied on Int values,
  * and extracts 32 bits instead of 8.
  */
-fun Int.toPosLong() = toLong() and 0xFFFFFFFFL
+internal fun Int.toPosLong() = toLong() and 0xFFFFFFFFL
 
 /**
  * Produces a hex string out of an Int.
@@ -182,7 +182,7 @@ fun Int.toPosLong() = toLong() and 0xFFFFFFFFL
  * @param prependPrefix If true, the "0x" prefix is prepended.
  * @return Hex string representation of the Int.
  */
-fun Int.toHexString(width: Int, prependPrefix: Boolean = true): String {
+internal fun Int.toHexString(width: Int, prependPrefix: Boolean = true): String {
 	val prefix = if (prependPrefix) "0x" else ""
 	val hexstring = this.toString(16)
 	val numLeadingChars = max(width - hexstring.length, 0)
@@ -204,7 +204,7 @@ fun Int.toHexString(width: Int, prependPrefix: Boolean = true): String {
  * @param prependPrefix If true, the "0x" prefix is prepended.
  * @return Hex string representation of the Byte.
  */
-fun Byte.toHexString(width: Int, prependPrefix: Boolean = true): String {
+internal fun Byte.toHexString(width: Int, prependPrefix: Boolean = true): String {
 	val intValue = this.toPosInt()
 	val prefix = if (prependPrefix) "0x" else ""
 	val hexstring = intValue.toString(16)
