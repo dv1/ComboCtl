@@ -203,10 +203,14 @@ can be closed. The Combo's Bluetooth address found during the
 discovery process must be placed in persistent storage to be able
 to establish BT connections to the Combo in the future.
 
-#TODO: It is currently unclear if the channel number that was used
-by the server socket needs to be reused for subsequent connections,
-or if the channel number doesn't matter, and connections can pick
-any channel number.#
+The channel number was shown to be relevant when establishing a
+client connection to the Combo from a Linux PC. There, the channel 1
+worked reliably. RFCOMM listener sockets worked with auto-assigned
+channels, though this may be because channel 1 was auto-assigned to
+the listener socket in >90% of all cases. This indicates that using
+channel 1 for both listening server sockets and for client sockets
+is the best option. On Android, the channel cannot be specified.
+Nevertheless, pairing and connections worked well there.
 
 Afterwards, insecure RFCOMM connections need to be established in
 order to communicate with the Combo.
@@ -690,7 +694,8 @@ deals with "PD" and "DP" keys instead of "PC" and "CP" ones.
 
 Each packet has two bits: the reliability bit and the sequence bit.
 They are relevant in packets sent both by the client and by the
-Combo.
+Combo. These implement a form of Alternating Bit Protocol to
+detect lost / corrupted packets.
 
 For packets coming from the Combo, the following applies: If the
 data reliability bit is 0, then so is the sequence bit (and the client
@@ -726,8 +731,8 @@ The following data has to be stored in a persistent manner:
 * PC key
 * CP key
 * Current tx nonce
-* Bluetooth MAC address (not to be confused with the MAC for
-  authentication) of the paired Combo
+* Bluetooth MAC address (not to be confused with the MAC inside
+  transport layer packets used for authentication) of the paired Combo
 * Address byte (not to be confused with the Bluetooth address);
   This is the combination of source and destination address from
   the `TL_KEY_RESPONSE` packet
@@ -787,6 +792,17 @@ pairing must be repeated.
 In these cases, the connection must be terminated, and the user must be
 informed about this, with the added recommendation that the user should
 consider re-pairing if these connection problems persist.
+
+
+=== Transport layer packet capacity in the Combo and limiting transfer rate
+
+The Combo has a limited buffer for incoming packets. It does seem
+to be structured as a ringbuffer. There is no backpressure mechanism,
+so if the buffer overflows, the oldest yet unread packets are overwritten
+inside the Combo. It is therefore strongly recommended to make sure that
+at least about 150-200ms pass between sent packets. In real-world tests,
+this yielded a stable communication and apparently guarantees that the
+Combo's ringbuffer does not overflow.
 
 
 
@@ -871,7 +887,10 @@ More on the modes follows below.
 
 RT and command mode specific commands can only be used after
 the corresponding service has been "activated". This is done with
-the `AL_CTRL_ACTIVATE_SERVICE` command.
+the `AL_CTRL_ACTIVATE_SERVICE` command. They can be deactivated
+with the `AL_CTRL_DEACTIVATE_SERVICE` command. Only one service
+can be active at the same time; to switch to a different service,
+the currently active one must be deactivated first.
 
 
 === Command and remote terminal (RT) modes
@@ -883,7 +902,9 @@ terminal (abbr. "RT").
 In the command mode, certain operations like administering
 a bolus are encoded directly as an application layer command.
 This is what the Combo's remote control uses when the user
-selects the option to administer a bolus.
+selects the option to administer a bolus. A ping command
+must also be sent regularly if required (see the section
+on "signs of life" below).
 
 In the remote terminal mode, the Combo behaves as if the user
 were pressing the physical buttons and looking at the display.
@@ -895,9 +916,90 @@ display and the physical display can show entirely different
 content at the same time.
 
 In the RT mode, communication from the client to the Combo
-is limited to regularly sending ping / keepalive commands,
-sending emulated button presses, and switching between the
-RT mode and the command mode.
+is limited to regularly sending keep-alive commands (see the
+section on "signs of life" below), sending emulated button
+presses, and switching between the RT mode and the command mode.
+
+
+
+=== Sending signs of life to the Combo
+
+It is necessary to regularly inform the Combo that the client
+is still alive, otherwise it will terminate the connection.
+Any command acts as a sign of life. However, sometimes, the
+client may not send a command after about 1000-1500ms (for
+example, because the user does not press any buttons). In such
+a case, the client must send either an `AL_RT_KEEP_ALIVE` command
+(when running in the RT mode) or an `AL_CMD_PING` command (when
+running in the command mode). It is recommend to install a
+timeout handler that gets triggered after 1000 ms to send such
+a packet, and to reset that handler in case any other packet
+is sent to the Combo. The `AL_CMD_PING` command has a corresponding
+`AL_CMD_PING_RESPONSE` response command that is sent by the Combo
+to the client. The client must wait for this responses to arrive
+before anything else can be done. `AL_RT_KEEP_ALIVE` does not
+seem to have any such respons though, so the client does not
+have to wait for anything after sending that one.
+
+
+
+=== Commands and responses
+
+Many application layer commands that are sent by the client have
+corresponding response commands sent by the Combo. If such a
+response command exists, the client _must_ wait for said response
+to arrive before sending any other packet, otherwise the order
+of packets cannot be guaranteed. One exception to this seem to
+be `AL_RT_KEEP_ALIVE` packets. It is recommended to filter those
+out right when they arrive.
+
+
+
+=== Error codes in reliable application layer command payloads
+
+If an application layer packet arrives with the reliability bit set,
+then the first 2 bytes of its payload contain a 16-bit little
+endian unsigned integer that specifies an error code. The value
+0 means "no error". If the value is nonzero, this needs to be
+interpreted as a non-recoverable error, and the client must
+disconnect (by sending the `AL_CTRL_DISCONNECT` command etc).
+
+List of known error codes:
+
+Generic application layer error codes:
+
+* 0xF003: Unknown service ID
+* 0xF005: Incompatible application layer packet version
+* 0xF006: Invalid payload length
+* 0xF056: Application layer not connected
+  This one seems to be related to `AL_CTRL_CONNECT`.
+* 0xF059: Incompatible service version
+* 0xF05A: Version, activate, deactivate request with unknown service ID
+* 0xF05C: Service activation not allowed
+* 0xF05F: Command not allowed (wrong mode)
+
+Remote terminal mode specific error codes:
+
+* 0xF503: RT payload wrong length
+* 0xF505: RT display with incorrect row index, update, or display index
+* 0xF506: RT display timeout
+* 0xF509: RT unknown audio sequence
+* 0xF50A: RT unknown vibration sequence
+* 0xF50C: RT command has incorrect sequence number
+* 0xF533: RT alive timeout expired
+
+Command mode specific error codes:
+
+* 0xF605: CMD values not within threshold
+* 0xF606: CMD wrong bolus type
+* 0xF60A: CMD bolus not delivering
+* 0xF60C: CMD history read EEPROM error
+* 0xF633: CMD history confirm FRAM not readable or writeable
+* 0xF635: CMD unknown bolus type
+* 0xF636: CMD bolus is not available at the moment
+* 0xF639: CMD incorrect CRC value
+* 0xF63A: CMD ch1 and ch2 values inconsistent
+* 0xF63C: CMD pump has internal error (RAM values changed)
 
 
 
@@ -1131,7 +1233,7 @@ This is the Combo's response to the client's `TL_REQUEST_ID` command.
 It contains two IDs:
 
 - One 32-bit little endian unsigned integer with the server's ID.
-  #TODO: It is unclear what "server" means here.#
+  The "server" here is the software on the pump.
 - 13 byte character sequence with the pump ID. Unused bytes are
   set to zero. So far, this has always been the Combo's serial number,
   with a "PUMP_" prefix. For example, if the Combo's serial number
@@ -1206,7 +1308,11 @@ of this command is the same as the sequence bit of the command that
 previously arrived. This is because this command is a response for
 the command that the Combo previously transmitted to the client.
 
-#TODO: Check what it means when the Combo sends this#
+If the Combo sends this to the client, it fulfills the same
+functionality - it is a response to reliable packet that was
+received by the Combo. Clients do not have to actually use those
+responses, but need to be prepared for receiving them, since they
+may arrive in between other packets.
 
 
 === `TL_DATA` :
@@ -1420,14 +1526,17 @@ can be used here.
 
 The next byte is the major version of the service to select. The
 byte after that is the minor version. The major version is set to
-1, the minor version is set to 0.
+1, the minor version is set to 0. No other service versions are
+known.
 
 The Combo responds to this with `AL_CTRL_ACTIVATE_SERVICE_RESPONSE`.
+The client must wait for that response before any other operation
+can be performed.
 
-#TODO: Can more than one service be active at the same time?#
-
-#TODO: Should these be set to the versions from
-`AL_CTRL_SERVICE_VERSION_RESPONSE` instead?#
+Only one service may be active at the same time. If a different
+service is to be used, `AL_CTRL_DEACTIVATE_SERVICE` must be sent
+first. Only then can a new `AL_CTRL_ACTIVATE_SERVICE` command be
+sent to activate the new service.
 
 
 === `AL_CTRL_ACTIVATE_SERVICE_RESPONSE` :
@@ -1440,8 +1549,49 @@ The Combo responds to this with `AL_CTRL_ACTIVATE_SERVICE_RESPONSE`.
 
 This is the Combo's response to `AL_CTRL_ACTIVATE_SERVICE`.
 
-#TODO: Currently, it is not known how to interpret the 3 payload bytes.
-They seem to be related to the payload byte from `AL_CTRL_BIND`.#
+Like all the other reliable packets coming from the Combo, its first
+2 bytes contain an error code. See the "Error codes in reliable
+application layer command payloads" section above for details.
+
+#TODO: Currently, it is not known how to interpret the other 3 payload bytes.
+They seem to be related to the payload from `AL_CTRL_ACTIVATE_SERVICE`.#
+
+
+=== `AL_AL_CTRL_DEACTIVATE_SERVICE` :
+
+* Sent by: Client
+* Service ID: 0x00 (control)
+* Command ID: 0x9069
+* Reliable: yes
+* Payload length: 1
+
+This deactivates the currently active service. If the user needs
+to switch to a different mode, then this command must be sent
+first, since only one service may be active at the same time.
+
+The payload is one single byte - the service ID.
+
+The Combo responds to this with `AL_CTRL_DEACTIVATE_SERVICE_RESPONSE`.
+The client must wait for that response before any other operation
+can be performed.
+
+
+=== `AL_CTRL_DEACTIVATE_SERVICE_RESPONSE` :
+
+* Sent by: Combo
+* Service ID: 0x00 (control)
+* Command ID: 0xA069
+* Reliable: yes
+* Payload length: 3
+
+This is the Combo's response to `AL_CTRL_DEACTIVATE_SERVICE`.
+
+Like all the other reliable packets coming from the Combo, its first
+2 bytes contain an error code. See the "Error codes in reliable
+application layer command payloads" section above for details.
+
+#TODO: Currently, it is not known how to interpret the last payload byte.
+It seems to be related to the payload byte from `AL_CTRL_DEACTIVATE_SERVICE`.#
 
 
 === `AL_CTRL_DEACTIVATE_ALL_SERVICES` :
@@ -1487,50 +1637,14 @@ in existing sources.#
 
 This informs the client that an error occurred at application level.
 One example would be an incorrect RT sequence number. Another would
-be an incorrect application layer packet size.
+be an incorrect application layer packet size. The error is specified
+via the error code that is present in all reliable application layer
+packets; these error codes are specified in the "Error codes in
+reliable application layer command payloads" section above.
 
-The first two bytes form a 16-bit little endian integer that contains
-the error code. The known codes are listed below. The next byte seems
-to describe a service ID, the next two bytes a command ID. These two
-IDs seem to identify the application layer command that caused this
-error.
-
-List of known error codes:
-
-Generic application layer error codes:
-
-* 0xF003: Unknown service ID
-* 0xF005: Incompatible application layer packet version
-* 0xF006: Invalid payload length
-* 0xF056: Application layer not connected
-  This one seems to be related to `AL_CTRL_CONNECT`.
-* 0xF059: Incompatible service version
-* 0xF05A: Version, activate, deactivate request with unknown service ID
-* 0xF05C: Service activation not allowed
-* 0xF05F: Command not allowed (wrong mode)
-
-Remote terminal mode specific error codes:
-
-* 0xF503: RT payload wrong length
-* 0xF505: RT display with incorrect row index, update, or display index
-* 0xF506: RT display timeout
-* 0xF509: RT unknown audio sequence
-* 0xF50A: RT unknown vibration sequence
-* 0xF50C: RT command has incorrect sequence number
-* 0xF533: RT alive timeout expired
-
-Command mode specific error codes:
-
-* 0xF605: CMD values not within threshold
-* 0xF606: CMD wrong bolus type
-* 0xF60A: CMD bolus not delivering
-* 0xF60C: CMD history read EEPROM error
-* 0xF633: CMD history confirm FRAM not readable or writeable
-* 0xF635: CMD unknown bolus type
-* 0xF636: CMD bolus is not available at the moment
-* 0xF639: CMD incorrect CRC value
-* 0xF63A: CMD ch1 and ch2 values inconsistent
-* 0xF63C: CMD pump has internal error (RAM values changed)
+The next byte seems to describe a service ID, the next two bytes
+a command ID. These two IDs seem to identify the application layer
+command that caused this error.
 
 
 === `AL_CMD_PING` :
@@ -1548,6 +1662,9 @@ command.
 Once the connection is established, and the command mode is enabled,
 the client must send a PING packet once every second.
 
+The Combo responds to this with `AL_CMD_PING_RESPONSE`. The client must
+wait for that response before any other operation can be performed.
+
 
 === `AL_CMD_PING_RESPONSE` :
 
@@ -1561,8 +1678,85 @@ This informs the Client that the Combo is still alive. It is the
 Combo -> Client command mode counterpart to the `AL_RT_KEEP_ALIVE`
 command.
 
-The 2 payload bytes seem to be an error code similar to the one
-from `AL_CTRL_SERVICE_ERROR`. #TODO: Clarify this.#
+Like all the other reliable packets coming from the Combo, its
+first (and in this case, only) 2 bytes contain an error code.
+See the "Error codes in reliable application layer command payloads"
+section above for details.
+
+
+=== `AL_CMD_READ_DATE_TIME` :
+
+* Sent by: Client
+* Service ID: 0xB7
+* Command ID: 0x9AA6
+* Reliable: yes
+* Payload length: 0
+
+This instructs the Combo to respond with an `AL_CMD_READ_DATE_TIME_RESPONSE`
+command that contains the current date and time from the Combo.
+The client must wait for that response command to arrive before
+doing anything else.
+
+
+=== `AL_CMD_READ_DATE_TIME_RESPONSE` :
+
+* Sent by: Combo
+* Service ID: 0xB7
+* Command ID: 0xAAA6
+* Reliable: yes
+* Payload length: 12
+
+This is the Combo's response to the client's `AL_CMD_READ_DATE_TIME` command.
+
+Like all the other reliable packets coming from the Combo, its
+first (and in this case, only) 2 bytes contain an error code.
+See the "Error codes in reliable application layer command payloads"
+section above for details.
+
+The remaining payload bytes contain the current date on the pump,
+encoded in this manner:
+
+Bytes 2 and 3 contain the year as a 16-bit little endian integer,
+using the year 2000 as the starting point. For example, the value
+"15" would mean 2015.
+
+Bytes 3, 4, 5, 6, 7, 8 contain the month, day, hour, minute, second,
+respectively.
+
+
+=== `AL_CMD_READ_PUMP_STATUS` :
+
+* Sent by: Client
+* Service ID: 0xB7
+* Command ID: 0x9A9A
+* Reliable: yes
+* Payload length: 0
+
+This instructs the Combo to respond with an `AL_CMD_READ_PUMP_STATUS_RESPONSE`
+command that contains the current pump status. The client must wait
+for that response command to arrive before doing anything else.
+
+
+=== `AL_CMD_READ_DATE_TIME_RESPONSE` :
+
+* Sent by: Combo
+* Service ID: 0xB7
+* Command ID: 0xAA9A
+* Reliable: yes
+* Payload length: 3
+
+This is the Combo's response to the client's `AL_CMD_READ_PUMP_STATUS` command.
+
+Like all the other reliable packets coming from the Combo, its
+first (and in this case, only) 2 bytes contain an error code.
+See the "Error codes in reliable application layer command payloads"
+section above for details.
+
+Its third payload byte contains the pump status. The following values
+were observed:
+
+* 0x48: Pump is stopped
+* 0xB7: Pump is running
 
 
 === `AL_RT_BUTTON_STATUS` :
@@ -1589,24 +1783,37 @@ The next byte is the button code, which can be one of:
 * Check: 0x0C
 * NoButton: 0x00
 
-The final byte is a status byte whose meaning is not yet entirely
-clear. Currently, it seems to indicate whether or not the button
-status changed. This could be used by the Combo to recognize
-whether or not the user is holding down the button. Current findings
-point towards this meaning:
+If multiple buttons are pressed, then these codes can be bitwise
+OR combined to inform the Combo that these multiple buttons are
+currently being pressed by the user.
+
+The final byte informs the Combo if the button status changed.
+This happens if for example the user was pressing down multiple
+buttons and now released one of them. The following status codes
+are defined:
 
 * Button status did change: 0xB7
 * Button status did not change: 0x48
 
-#TODO: Clarify the meaning of this final byte.#
+The Combo responds to this with `AL_RT_BUTTON_CONFIRMATION`.
+Alternatively a received `AL_RT_DISPLAY` packet also acts as a
+response. The one to arrive first is to be treated as the response.
+
+The client must not send any other `AL_RT_BUTTON_STATUS` command
+until it has received such a response. (However, even then, always
+keep in mind the recommended temporal distance between sending
+packets as specified in the "Transport layer packet capacity in the
+Combo and limiting transfer rate" section above).
 
 To simulate a singular button press with a button code that is not
 NoButton, the following sequence needs to be performed:
 
 1. Send the `AL_RT_BUTTON_STATUS` command with the status byte
    set to 0xB7 ("status did change") and the desired button code.
-2. Wait 100 ms.
-3. Send the `AL_RT_BUTTON_STATUS` command with the status byte
+2. Wait until `AL_RT_BUTTON_CONFIRMATION` or `AL_RT_DISPLAY` arrives.
+3. Wait any additional milliseconds until about 150-200ms have
+   passed since the last `AL_RT_BUTTON_STATUS` command.
+4. Send the `AL_RT_BUTTON_STATUS` command with the status byte
    set to 0xB7 ("status did change") and the button code NoButton.
 
 To simulate a button that is being held down, the following
@@ -1614,15 +1821,19 @@ sequence needs to be performed:
 
 1. Send the `AL_RT_BUTTON_STATUS` command with the status byte
    set to 0xB7 ("status did change") and the desired button code.
-2. Wait 200 ms.
-3. If the simulated button has been "released", skip to step 5.
-4. Send the same command as in step 1, but use the status byte
+2. Wait until `AL_RT_BUTTON_CONFIRMATION` or `AL_RT_DISPLAY` arrives.
+3. Wait any additional milliseconds until about 150-200ms have
+   passed since the last `AL_RT_BUTTON_STATUS` command.
+4. If the simulated button has been "released", skip to step 6.
+   If multiple buttons were pressed, skip to step 6 only if
+   _all_ buttons were released.
+5. Send the same command as in step 1, but use the status byte
    0x48 ("status did not change") instead. Then go back to step 2.
-5. Send the `AL_RT_BUTTON_STATUS` command with the status byte
+   If the user is now pressing additional buttons, or was pressing
+   multiple buttons but now released some of them, use the status
+   byte 0xB7 ("status did change") instead, and go back to step 2.
+6. Send the `AL_RT_BUTTON_STATUS` command with the status byte
    set to 0xB7 ("status did change") and the button code NoButton.
-
-#TODO: Can multiple buttons be held down at the same time?
-And can held down buttons and singular button pressed be mixed?#
 
 
 === `AL_RT_KEEP_ALIVE` :
@@ -1654,11 +1865,12 @@ this packet to the client, it will take care of the increment.
 * Payload length: 2
 
 This is a notification by the Combo that periodically comes in.
-It confirms a previous `AL_RT_BUTTON_STATUS` command. It does
-not always arrive after sending such a command to the Combo,
-however.
-
-No specific packet has to be sent to the Combo as a response.
+It is a response to a previous `AL_RT_BUTTON_STATUS` command. It
+does not always arrive after sending such a command to the Combo,
+however, since an `AL_RT_DISPLAY` command also acts as a response.
+So, if the Combo schedules a display transmission before an
+`AL_RT_BUTTON_CONFIRMATION` response command would be sent,
+it omits that command and just sends the `AL_RT_DISPLAY` command.
 
 The 2 payload bytes are the RT sequence, incremented by the Combo.
 
@@ -1804,14 +2016,3 @@ The remaining 4 bytes form a 32-bit little endian integer.
 This integer specifies the type of the vibration. Currently,
 there is no known defined list of different vibration types
 associated with certain codes.
-
-
-#TODO: Document these commands:#
-
-0x0569
-0x056a
-0x9069
-0xA069
-
-
-#TODO: Command mode commands#
