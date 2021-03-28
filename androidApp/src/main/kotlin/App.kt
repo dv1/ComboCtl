@@ -5,9 +5,12 @@ import android.content.Context
 import info.nightscout.comboctl.android.AndroidBluetoothInterface
 import info.nightscout.comboctl.base.MainControl
 import info.nightscout.comboctl.comboandroid.persist.SharedPrefsStoreProvider
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 
 class App : Application() {
     private val bluetoothInterface = AndroidBluetoothInterface(this)
+    private val eventHandlingScope = CoroutineScope(Dispatchers.Default)
 
     override fun onCreate() {
         _appContext = this
@@ -17,6 +20,9 @@ class App : Application() {
             appContext.getSharedPreferences("combo_sp", MODE_PRIVATE)
         )
         mainControl = MainControl(bluetoothInterface, pumpStateStoreProvider)
+        // Need to start event handling to get notified about discovered pumps etc.
+        // This must be called _before_ any device discovery begins.
+        mainControl.startEventHandling(eventHandlingScope)
     }
 
     companion object {

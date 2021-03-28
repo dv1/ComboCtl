@@ -4,6 +4,12 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import info.nightscout.comboctl.base.BluetoothAddress
+import info.nightscout.comboctl.base.PairingPIN
+import info.nightscout.comboctl.base.TransportLayerIO
+import info.nightscout.comboctl.comboandroid.App
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -16,6 +22,10 @@ class PairingViewModel : ViewModel() {
     private val _pwValidatedLiveData = MutableLiveData<Boolean>(false)
     val pwValidatedLiveData: LiveData<Boolean> = _pwValidatedLiveData
 
+    private val discoveryScope = CoroutineScope(Dispatchers.Default)
+
+    private var pairingPINDeferred: CompletableDeferred<PairingPIN>? = null
+
     var password: String = ""
         set(value) {
             field = value
@@ -25,21 +35,34 @@ class PairingViewModel : ViewModel() {
     fun startLifeCycle() {
         if (_state.value == State.CANCELLED) {
             _state.value = State.UNINITIALIZED
-        } else if (_state.value != State.UNINITIALIZED) return
-        viewModelScope.launch {
-            _state.value = State.PAIRING
-            withContext(Dispatchers.IO) {
-                delay(1000 * 2)
+        } else if (_state.value != State.UNINITIALIZED)
+            return
+
+        _state.value = State.PAIRING
+
+        pairingPINDeferred = CompletableDeferred<PairingPIN>()
+
+        App.mainControl.startDiscovery(
+            discoveryScope,
+            true,
+            300,
+            { },
+            { _, _ ->
+                withContext(viewModelScope.coroutineContext) {
+                    _state.value = State.PIN_ENTRY
+                    pairingPINDeferred!!.await()
+                }
             }
-            _state.value = State.PIN_ENTRY
-        }
+        )
     }
 
     fun onOkClicked() {
+        pairingPINDeferred!!.complete(PairingPIN(password.map { it - '0' }.toIntArray()))
         _state.value = State.COMPLETE_PAIRING
     }
 
     fun onCancelClicked() {
+        pairingPINDeferred!!.completeExceptionally(TransportLayerIO.PairingAbortedException())
         _state.postValue(State.CANCELLED)
     }
 
