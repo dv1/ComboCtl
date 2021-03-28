@@ -637,8 +637,8 @@ void bluez_interface::unpair_device(bluetooth_address device_address)
 
 bluez_bluetooth_device_uptr bluez_interface::get_device(bluetooth_address device_address)
 {
-	// TODO: Currently, the RFCOMM channel is hardcoded to be channel 1.
-	// See if this is OK.
+	// Connect to the Combo using RFCOMM channel #1. This is the
+	// channel that worked reliably during tests.
 
 	// NOTE: Not using make_unique() here because the constructor
 	// of bluez_bluetooth_device is private. bluez_interface is
