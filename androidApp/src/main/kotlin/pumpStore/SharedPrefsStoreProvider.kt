@@ -11,7 +11,6 @@ import info.nightscout.comboctl.base.PumpStateStoreProvider
 import info.nightscout.comboctl.base.toBluetoothAddress
 import info.nightscout.comboctl.base.toCipher
 import info.nightscout.comboctl.base.toNonce
-import info.nightscout.comboctl.base.toPosInt
 
 class SharedPrefsStoreProvider(private val sharedPreferences: SharedPreferences) :
     PumpStateStoreProvider {
@@ -56,7 +55,7 @@ class SharedPrefsPumpStateStore(private val sharedPreferences: SharedPreferences
     override fun storePumpPairingData(pumpPairingData: PumpPairingData) {
         cpCipherString = pumpPairingData.clientPumpCipher.toString()
         pcCipherString = pumpPairingData.pumpClientCipher.toString()
-        keyResponseAddressInt = pumpPairingData.keyResponseAddress.toPosInt()
+        keyResponseAddressInt = pumpPairingData.keyResponseAddress.toInt() and 0xFF
     }
 
     override fun isValid() = sharedPreferences.contains(SharedPrefsStoreProvider.NONCE_KEY)
