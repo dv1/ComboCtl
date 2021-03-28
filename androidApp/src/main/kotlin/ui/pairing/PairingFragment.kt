@@ -17,12 +17,12 @@ class PairingFragment : BaseFragment<FragmentPairingBinding, PairingViewModel>()
         super.onViewCreated(view, savedInstanceState)
         viewModel.startLifeCycle()
         viewModel.state.observe(viewLifecycleOwner) {
-            when(it) {
+            when (it) {
                 PairingViewModel.State.UNINITIALIZED -> ""
                 PairingViewModel.State.PAIRING -> "Scanning for device ..."
                 PairingViewModel.State.PIN_ENTRY -> "Please enter 10 digit pin"
                 PairingViewModel.State.COMPLETE_PAIRING -> "Wrapping up..."
-                PairingViewModel.State.CANCELLED -> {navigateBack(); ""}
+                PairingViewModel.State.CANCELLED -> { navigateBack(); "" }
             }.let { binding.pairingHeader.text = it }
         }
     }
