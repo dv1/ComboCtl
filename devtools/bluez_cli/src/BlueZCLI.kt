@@ -3,6 +3,7 @@ package devtools
 import devtools.common.*
 import info.nightscout.comboctl.base.*
 import info.nightscout.comboctl.linuxBlueZ.BlueZInterface
+import kotlin.math.max
 import kotlinx.coroutines.*
 
 // Tool for manually operating the BlueZ interface.
@@ -10,6 +11,18 @@ import kotlinx.coroutines.*
 // It can be run from the command line like this:
 //
 //     java -Djava.library.path="comboctl/src/jvmMain/cpp/linuxBlueZCppJNI/build/lib/main/debug" -jar devtools/bluez_cli/build/libs/bluez_cli-standalone.jar
+
+internal fun Byte.toPosInt() = toInt() and 0xFF
+
+internal fun Byte.toHexString(width: Int, prependPrefix: Boolean = true): String {
+    val intValue = this.toPosInt()
+    val prefix = if (prependPrefix) "0x" else ""
+    val hexstring = intValue.toString(16)
+    val numLeadingChars = max(width - hexstring.length, 0)
+    return prefix + "0".repeat(numLeadingChars) + hexstring
+}
+
+internal fun List<Byte>.toHexString(separator: String = " ") = this.joinToString(separator) { it.toHexString(width = 2, prependPrefix = false) }
 
 class MainApp(private val mainScope: CoroutineScope) {
     private val cli: CommandLineInterface
