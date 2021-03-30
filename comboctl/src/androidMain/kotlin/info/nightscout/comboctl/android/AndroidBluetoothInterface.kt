@@ -56,12 +56,12 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
     fun setup() {
         previouslyDiscoveredDevices.clear()
 
-        val bondedDevices = bluetoothAdapter.getBondedDevices()
+        val bondedDevices = bluetoothAdapter.bondedDevices
 
         logger(LogLevel.DEBUG) { "Found ${bondedDevices.size} bonded Bluetooth device(s)" }
 
         for (bondedDevice in bondedDevices) {
-            val androidBtAddressString = bondedDevice.getAddress()
+            val androidBtAddressString = bondedDevice.address
             logger(LogLevel.DEBUG) {
                 "... device $androidBtAddressString"
             }
@@ -79,9 +79,9 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
 
         unpairedDevicesBroadcastReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
-                logger(LogLevel.DEBUG) { "unpairedDevicesBroadcastReceiver received new action: ${intent.getAction()}" }
+                logger(LogLevel.DEBUG) { "unpairedDevicesBroadcastReceiver received new action: ${intent.action}" }
 
-                when (intent.getAction()) {
+                when (intent.action) {
                     SystemBluetoothDevice.ACTION_BOND_STATE_CHANGED -> onBondStateChanged(intent)
                     else -> Unit
                 }
@@ -139,9 +139,9 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
 
         discoveryBroadcastReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
-                logger(LogLevel.DEBUG) { "discoveryBroadcastReceiver received new action: ${intent.getAction()}" }
+                logger(LogLevel.DEBUG) { "discoveryBroadcastReceiver received new action: ${intent.action}" }
 
-                when (intent.getAction()) {
+                when (intent.action) {
                     SystemBluetoothDevice.ACTION_ACL_CONNECTED -> onAclConnected(intent, foundNewPairedDevice)
                     SystemBluetoothDevice.ACTION_PAIRING_REQUEST -> onPairingRequest(intent, btPairingPin)
                     BluetoothAdapter.ACTION_DISCOVERY_FINISHED -> onDiscoveryFinished()
@@ -185,7 +185,7 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
             rfcommServerSocket = null
         }
 
-        if (bluetoothAdapter.isDiscovering()) {
+        if (bluetoothAdapter.isDiscovering) {
             logger(LogLevel.DEBUG) { "Stopping discovery" }
             bluetoothAdapter.cancelDiscovery()
         }
@@ -205,7 +205,7 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
         AndroidBluetoothDevice(this, bluetoothAdapter, deviceAddress)
 
     override fun getAdapterFriendlyName() =
-        bluetoothAdapter.getName()
+        bluetoothAdapter.name ?: throw BluetoothException("Could not get Bluetooth adapter friendly name")
 
     override fun getPairedDeviceAddresses(): Set<BluetoothAddress> =
         try {
@@ -230,7 +230,7 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
             return
         }
 
-        val androidBtAddressString = androidBtDevice.getAddress()
+        val androidBtAddressString = androidBtDevice.address
         // This effectively marks the device as "already processed"
         // (see the getStringExtra() call above).
         intent.putExtra("address", androidBtAddressString)

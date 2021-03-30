@@ -212,14 +212,9 @@ class MainApp(private val mainScope: CoroutineScope) {
         }
     }
 
-    private fun getBluetoothDevice(deviceAddress: BluetoothAddress): BluetoothDevice {
-        val device = connectedBluetoothDevices.get(deviceAddress)
-
-        if (device == null)
-            throw CommandLineException("Device $deviceAddress is not connected")
-
-        return device
-    }
+    private fun getBluetoothDevice(deviceAddress: BluetoothAddress) =
+        connectedBluetoothDevices[deviceAddress]
+            ?: throw CommandLineException("Device $deviceAddress is not connected")
 }
 
 fun main(vararg args: String) {

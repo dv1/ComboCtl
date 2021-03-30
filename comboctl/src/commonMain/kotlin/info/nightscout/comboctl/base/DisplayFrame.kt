@@ -49,6 +49,20 @@ data class DisplayFrame(val displayFramePixels: BooleanArray) : Iterable<Boolean
     operator fun get(index: Int) = displayFramePixels[index]
 
     override operator fun iterator() = displayFramePixels.iterator()
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other == null || this::class != other::class) return false
+
+        other as DisplayFrame
+
+        if (!displayFramePixels.contentEquals(other.displayFramePixels)) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        return displayFramePixels.contentHashCode()
+    }
 }
 
 /**

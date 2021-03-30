@@ -52,10 +52,10 @@ tasks {
 }
 
 android {
-    compileSdkVersion(29)
+    compileSdkVersion(28)
     defaultConfig {
-        minSdkVersion(24)
-        targetSdkVersion(29)
+        minSdkVersion(26)
+        targetSdkVersion(28)
     }
     sourceSets {
         getByName("main") {

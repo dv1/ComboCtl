@@ -501,10 +501,10 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, private val comboI
 
             fun fromInt(value: Int): ErrorCode {
                 val foundCode = knownCodes.firstOrNull { (it.value == value) }
-                if (foundCode != null)
-                    return Known(foundCode)
+                return if (foundCode != null)
+                    Known(foundCode)
                 else
-                    return Unknown(value)
+                    Unknown(value)
             }
         }
     }
@@ -618,6 +618,13 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, private val comboI
                 return false
 
             return true
+        }
+
+        override fun hashCode(): Int {
+            var result = timestamp.hashCode()
+            result = 31 * result + eventCounter.hashCode()
+            result = 31 * result + detail.hashCode()
+            return result
         }
     }
 
@@ -1453,16 +1460,14 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, private val comboI
 
             val bolusTypeInt = payload[2].toPosInt()
             val bolusType = CMDBolusType.fromInt(bolusTypeInt)
-            if (bolusType == null)
-                throw PayloadDataCorruptionException(
+                ?: throw PayloadDataCorruptionException(
                     packet,
                     "Invalid bolus type ${bolusTypeInt.toHexString(2, true)}"
                 )
 
             val deliveryStateInt = payload[3].toPosInt()
             val deliveryState = CMDBolusDeliveryState.fromInt(deliveryStateInt)
-            if (deliveryState == null)
-                throw PayloadDataCorruptionException(
+                ?: throw PayloadDataCorruptionException(
                     packet,
                     "Invalid delivery state ${deliveryStateInt.toHexString(2, true)}"
                 )
