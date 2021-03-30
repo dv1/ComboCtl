@@ -210,7 +210,7 @@ fun findPatternMatches(displayFrame: DisplayFrame): PatternMatches {
     }
 
     // The actual match removal.
-    if (!(matchesToRemove.isEmpty()))
+    if (matchesToRemove.isNotEmpty())
         matches.removeAll(matchesToRemove)
 
     return matches

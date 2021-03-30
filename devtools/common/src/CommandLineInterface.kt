@@ -273,7 +273,7 @@ class CommandLineInterface(private val commands: CommandsMap, private val onStop
             }
 
             // Retrieve the corresponding command entry.
-            val commandEntry = commands.get(command)
+            val commandEntry = commands[command]
             if (commandEntry == null) {
                 printLine("Invalid command \"$command\"")
                 continue

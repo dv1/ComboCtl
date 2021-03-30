@@ -189,7 +189,7 @@ private fun tryParseMenuScreen(matches: PatternMatches): ParseResult? {
     // and is thus ignored here.
 
     // Need at least the menu icon.
-    if (matches.size < 1)
+    if (matches.isEmpty())
         return null
 
     val lastGlyph = matches.last().glyph
@@ -293,9 +293,7 @@ private fun tryParseWarningOrMenuScreen(matches: PatternMatches, numTitlePattern
 
     // Past the large character, we can find the number
     // of the warning / error.
-    val warningOrErrorNumberParseResult = parseInteger(matches, curMatchesOffset)
-    if (warningOrErrorNumberParseResult == null)
-        return null
+    val warningOrErrorNumberParseResult = parseInteger(matches, curMatchesOffset) ?: return null
     curMatchesOffset += warningOrErrorNumberParseResult.numParsedPatternMatches
 
     // In the warning / error screens, there are some
@@ -328,9 +326,7 @@ private fun tryParseBasalRateTotalScreen(matches: PatternMatches, numTitlePatter
 
     // Following the icon, we can find the total number
     // of IUs in the basal rate.
-    val totalNumUnitsParseResult = parseDecimal(matches, curMatchesOffset)
-    if (totalNumUnitsParseResult == null)
-        return null
+    val totalNumUnitsParseResult = parseDecimal(matches, curMatchesOffset) ?: return null
     curMatchesOffset += totalNumUnitsParseResult.numParsedPatternMatches
 
     // Past the total amount of IUs, there's a small check
@@ -351,9 +347,7 @@ private fun tryParseBasalRateFactorSettingScreen(matches: PatternMatches): Parse
     var curMatchesOffset = 1
 
     // Parse the begin time of the basal rate factor.
-    val beginTimeParseResult = parseTime(matches, curMatchesOffset)
-    if (beginTimeParseResult == null)
-        return null
+    val beginTimeParseResult = parseTime(matches, curMatchesOffset) ?: return null
     curMatchesOffset += beginTimeParseResult.numParsedPatternMatches
 
     // There is a minus symbol between the begin and end times
@@ -363,9 +357,7 @@ private fun tryParseBasalRateFactorSettingScreen(matches: PatternMatches): Parse
     curMatchesOffset++
 
     // Parse the end time of the basal rate factor.
-    val endTimeParseResult = parseTime(matches, curMatchesOffset)
-    if (endTimeParseResult == null)
-        return null
+    val endTimeParseResult = parseTime(matches, curMatchesOffset) ?: return null
     curMatchesOffset += endTimeParseResult.numParsedPatternMatches
 
     // Next, wee expect a LARGE_BASAL symbol.
@@ -374,9 +366,7 @@ private fun tryParseBasalRateFactorSettingScreen(matches: PatternMatches): Parse
     curMatchesOffset++
 
     // The number of IUs per hour for the current factor follow.
-    val numUnitsParseResult = parseDecimal(matches, curMatchesOffset)
-    if (numUnitsParseResult == null)
-        return null
+    val numUnitsParseResult = parseDecimal(matches, curMatchesOffset) ?: return null
     curMatchesOffset += numUnitsParseResult.numParsedPatternMatches
 
     // Finallly, there is an U/h symbol.
@@ -400,9 +390,7 @@ private fun tryParseMainScreen(displayFrame: DisplayFrame, matches: PatternMatch
 
     // Right after the clock symbol, the main screen shows
     // the current time. Parse that one and move past it.
-    val currentTimeParseResult = parseTime(matches, curMatchesOffset)
-    if (currentTimeParseResult == null)
-        return null
+    val currentTimeParseResult = parseTime(matches, curMatchesOffset) ?: return null
     curMatchesOffset += currentTimeParseResult.numParsedPatternMatches
     if (curMatchesOffset >= matches.size)
         return null
@@ -419,26 +407,30 @@ private fun tryParseMainScreen(displayFrame: DisplayFrame, matches: PatternMatch
     // a main screen that shows the LARGE_STOP symbol. That one is
     // active when the pump is stopped. Another variant is when a
     // TBR is active. The main screen shows additional info then.
-    if (matches.last().glyph == Glyph.LargeSymbol(Symbol.LARGE_STOP)) {
-        // If there is a stop symbol at the center, this is the
-        // stopped variant of the main screen.
+    when {
+        matches.last().glyph == Glyph.LargeSymbol(Symbol.LARGE_STOP) -> {
+            // If there is a stop symbol at the center, this is the
+            // stopped variant of the main screen.
 
-        return ParseResult.StoppedMainScreen(
-            currentTimeHours = hours,
-            currentTimeMinutes = minutes
-        )
-    } else if (matches[curMatchesOffset].glyph == Glyph.SmallSymbol(Symbol.SMALL_ARROW)) {
-        // Another variant is the TBR main screen. In that one,
-        // there is a SMALL_ARROW to the right of the time, followed
-        // by the remaining TBR duration. If that SMALL_ARROW symbol
-        // is there, parse this as a main screen with extra TBR info.
+            return ParseResult.StoppedMainScreen(
+                currentTimeHours = hours,
+                currentTimeMinutes = minutes
+            )
+        }
+        matches[curMatchesOffset].glyph == Glyph.SmallSymbol(Symbol.SMALL_ARROW) -> {
+            // Another variant is the TBR main screen. In that one,
+            // there is a SMALL_ARROW to the right of the time, followed
+            // by the remaining TBR duration. If that SMALL_ARROW symbol
+            // is there, parse this as a main screen with extra TBR info.
 
-        curMatchesOffset++ // Move past the arrow icon.
+            curMatchesOffset++ // Move past the arrow icon.
 
-        return tryParseMainScreenWithTbrInfo(displayFrame, matches, curMatchesOffset, hours, minutes)
-    } else {
-        // This is a default, normal main screen.
-        return tryParseNormalMainScreen(displayFrame, matches, curMatchesOffset, hours, minutes)
+            return tryParseMainScreenWithTbrInfo(displayFrame, matches, curMatchesOffset, hours, minutes)
+        }
+        else -> {
+            // This is a default, normal main screen.
+            return tryParseNormalMainScreen(displayFrame, matches, curMatchesOffset, hours, minutes)
+        }
     }
 }
 
@@ -460,9 +452,7 @@ private fun tryParseNormalMainScreen(
     curMatchesOffset++
 
     // The current basal rate factor follows.
-    val currentBasalRateFactorParseResult = parseDecimal(matches, curMatchesOffset)
-    if (currentBasalRateFactorParseResult == null)
-        return null
+    val currentBasalRateFactorParseResult = parseDecimal(matches, curMatchesOffset) ?: return null
     curMatchesOffset += currentBasalRateFactorParseResult.numParsedPatternMatches
 
     // Next comes an U/h symbol.
@@ -472,7 +462,7 @@ private fun tryParseNormalMainScreen(
 
     // Next comes a small digit that indicates which one of the basal rates
     // is currently active. This is a value from 1 to 5.
-    if ((curMatchesOffset >= matches.size) || !(matches[curMatchesOffset].glyph is Glyph.SmallDigit))
+    if ((curMatchesOffset >= matches.size) || (matches[curMatchesOffset].glyph !is Glyph.SmallDigit))
         return null
     val activeBasalRateNumber = (matches[curMatchesOffset].glyph as Glyph.SmallDigit).digit
     if ((activeBasalRateNumber < 1) || (activeBasalRateNumber > 5))
@@ -501,9 +491,7 @@ private fun tryParseMainScreenWithTbrInfo(
     var curMatchesOffset = matchesOffset
 
     // Directly past the SMALL_ARROW symbol there is the remaining TBR duration.
-    val remainingTbrDurationParseResult = parseTime(matches, curMatchesOffset)
-    if (remainingTbrDurationParseResult == null)
-        return null
+    val remainingTbrDurationParseResult = parseTime(matches, curMatchesOffset) ?: return null
     curMatchesOffset += remainingTbrDurationParseResult.numParsedPatternMatches
 
     // After the TBR duration the next match should be the LARGE_BASAL symbol.
@@ -526,9 +514,7 @@ private fun tryParseMainScreenWithTbrInfo(
     curMatchesOffset++
 
     // The TBR percentage follows.
-    val tbrPercentageParseResult = parseInteger(matches, curMatchesOffset)
-    if (tbrPercentageParseResult == null)
-        return null
+    val tbrPercentageParseResult = parseInteger(matches, curMatchesOffset) ?: return null
     curMatchesOffset += tbrPercentageParseResult.numParsedPatternMatches
 
     // After the percentage integere, there must be a large percent symbol.
@@ -538,7 +524,7 @@ private fun tryParseMainScreenWithTbrInfo(
 
     // Next comes a small digit that indicates which one of the basal rates
     // is currently active. This is a value from 1 to 5.
-    if ((curMatchesOffset >= matches.size) || !(matches[curMatchesOffset].glyph is Glyph.SmallDigit))
+    if ((curMatchesOffset >= matches.size) || (matches[curMatchesOffset].glyph !is Glyph.SmallDigit))
         return null
     val activeBasalRateNumber = (matches[curMatchesOffset].glyph as Glyph.SmallDigit).digit
     if ((activeBasalRateNumber < 1) || (activeBasalRateNumber > 5))
@@ -549,9 +535,7 @@ private fun tryParseMainScreenWithTbrInfo(
     curMatchesOffset++
 
     // The current basal rate factor follows.
-    val currentBasalRateFactorParseResult = parseDecimal(matches, curMatchesOffset)
-    if (currentBasalRateFactorParseResult == null)
-        return null
+    val currentBasalRateFactorParseResult = parseDecimal(matches, curMatchesOffset) ?: return null
 
     return ParseResult.TbrMainScreen(
         currentTimeHours = hours,
@@ -589,7 +573,7 @@ private fun parseQuickinfoScreen(
     }
 
     // Next, parse the number of IUs available in the reservoir.
-    var availableUnitsParseResult = parseInteger(matches, curMatchesOffset + 1)
+    val availableUnitsParseResult = parseInteger(matches, curMatchesOffset + 1)
     if (availableUnitsParseResult == null)
         return null
 
@@ -620,7 +604,7 @@ private fun parseTemporaryBasalRatePercentageScreen(matches: PatternMatches, num
     curMatchesOffset++
 
     // The currently picked TBR percentage follows.
-    var percentageParseResult = parseInteger(matches, curMatchesOffset)
+    val percentageParseResult = parseInteger(matches, curMatchesOffset)
     if (percentageParseResult == null)
         return null
     curMatchesOffset += percentageParseResult.numParsedPatternMatches
@@ -643,9 +627,7 @@ private fun parseTemporaryBasalRateDurationScreen(matches: PatternMatches, numTi
     curMatchesOffset++
 
     // Next comes the currently picked TBR duration.
-    val durationParseResult = parseTime(matches, curMatchesOffset)
-    if (durationParseResult == null)
-        return null
+    val durationParseResult = parseTime(matches, curMatchesOffset) ?: return null
 
     return ParseResult.TemporaryBasalRateDurationScreen(
         hours = durationParseResult.value.hours,
@@ -688,8 +670,7 @@ private fun parseTimeAndDateSettingsScreen(
     // do not need to care about that one). The partcular
     // meaning of this integer depends on the sub-screen.
     val integerParseResult = parseInteger(matches, curMatchesOffset, ParseIntegerMode.LARGE_DIGITS_ONLY)
-    if (integerParseResult == null)
-        return null
+        ?: return null
     curMatchesOffset += integerParseResult.numParsedPatternMatches
 
     // The parsed integer may need adjustment if this is the
@@ -732,7 +713,7 @@ private fun parseTimeAndDateSettingsScreen(
 /************* Utility code for the parsers above *************/
 
 private val timeRegex = "(\\d\\d):?(\\d\\d)(AM|PM)?|(\\d\\d)(AM|PM)".toRegex()
-private val asciiDigitOffset = '0'.toInt()
+private const val asciiDigitOffset = '0'.toInt()
 
 private fun amPmTo24Hours(hours: Int, amPm: String) =
     if ((hours == 12) && (amPm == "AM"))
@@ -783,14 +764,14 @@ private fun parseTime(matches: PatternMatches, matchesOffset: Int): ParsedValue<
     for (i in 0 until min(matches.size - matchesOffset, 7)) {
         val glyph = matches[i + matchesOffset].glyph
 
-        when (glyph) {
+        matchesAsString += when (glyph) {
             // Valid glyphs are converted to characters and added to the string.
-            is Glyph.SmallDigit -> matchesAsString += (glyph.digit + asciiDigitOffset).toChar()
-            is Glyph.LargeDigit -> matchesAsString += (glyph.digit + asciiDigitOffset).toChar()
-            is Glyph.SmallCharacter -> matchesAsString += glyph.character
-            is Glyph.LargeCharacter -> matchesAsString += glyph.character
-            Glyph.SmallSymbol(Symbol.SMALL_SEPARATOR) -> matchesAsString += ':'
-            Glyph.LargeSymbol(Symbol.LARGE_SEPARATOR) -> matchesAsString += ':'
+            is Glyph.SmallDigit -> (glyph.digit + asciiDigitOffset).toChar()
+            is Glyph.LargeDigit -> (glyph.digit + asciiDigitOffset).toChar()
+            is Glyph.SmallCharacter -> glyph.character
+            is Glyph.LargeCharacter -> glyph.character
+            Glyph.SmallSymbol(Symbol.SMALL_SEPARATOR) -> ':'
+            Glyph.LargeSymbol(Symbol.LARGE_SEPARATOR) -> ':'
 
             // Invalid glyph -> the time string ended, stop scan.
             else -> break
@@ -801,9 +782,7 @@ private fun parseTime(matches: PatternMatches, matchesOffset: Int): ParsedValue<
     }
 
     // Now apply the regex. Exit if the string does not match.
-    val regexResult = timeRegex.find(matchesAsString)
-    if (regexResult == null)
-        return null
+    val regexResult = timeRegex.find(matchesAsString) ?: return null
 
     // Analyze the regex find result.
     // The Regex result groups are:

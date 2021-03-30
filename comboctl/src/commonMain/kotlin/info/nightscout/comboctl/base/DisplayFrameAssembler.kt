@@ -144,7 +144,7 @@ class DisplayFrameAssembler {
                 // We invert the index by subtracting it from
                 // 95, since, as described above, the first
                 // byte actually contains the rightmost column.
-                val byteWithColumnPixels = rtDisplayFrameRow.get(95 - column).toPosInt()
+                val byteWithColumnPixels = rtDisplayFrameRow[95 - column].toPosInt()
                 // Scan the 8 pixels in the selected column.
                 for (y in 0 until 8) {
                     // Isolate the current pixel.
