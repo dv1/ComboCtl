@@ -72,7 +72,9 @@ class AndroidBluetoothDevice(
         // https://stackoverflow.com/questions/24267671/inputstream-read-causes-nullpointerexception-after-having-checked-inputstream#comment37491136_24267671
         // and: https://stackoverflow.com/a/24269255/560774
         try {
-            systemBluetoothSocket!!.connect()
+            retryBlocking(5) {
+                systemBluetoothSocket!!.connect()
+            }
         } catch (e: IOException) {
             throw BluetoothException("Could not connect RFCOMM socket to device with address $address", e)
         }
