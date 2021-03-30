@@ -53,7 +53,7 @@ class AndroidBluetoothDevice(
         // We use an insecure socket, which means that it lacks an authenticated
         // link key. This is done because the Combo does not use this feature.
         try {
-            retryBlocking(numberOfRetries = 4, delayBetweenRetries = 100) {
+            retryBlocking(numberOfRetries = 4, delayBetweenRetries = 100) { // TODO check why it fails at first exception
                 systemBluetoothSocket = device.createInsecureRfcommSocketToServiceRecord(Constants.sdpSerialPortUUID)
             }
         } catch (e: IOException) {

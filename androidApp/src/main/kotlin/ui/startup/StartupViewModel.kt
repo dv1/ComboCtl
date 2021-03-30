@@ -29,9 +29,6 @@ class StartupViewModel : ViewModel() {
         )
     }
 
-    fun onConnectClicked() {
-    }
-
     fun onUnpairClicked() {
         // TODO: unpair
         _statusLiveData.postValue(Status.UNPAIRED)
