@@ -6,10 +6,7 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import info.nightscout.comboctl.base.DISPLAY_FRAME_HEIGHT
-import info.nightscout.comboctl.base.DISPLAY_FRAME_WIDTH
-import info.nightscout.comboctl.base.Pump
-import info.nightscout.comboctl.base.PumpIO
+import info.nightscout.comboctl.base.*
 import info.nightscout.comboctl.comboandroid.App
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -78,22 +75,11 @@ class SessionViewModel : ViewModel() {
 
             pumpLocal.displayFrameFlow.collect {
                 val bitmap = Bitmap.createBitmap(DISPLAY_FRAME_WIDTH, DISPLAY_FRAME_HEIGHT, Bitmap.Config.ARGB_8888)
-/*                val pixels = IntArray(NUM_DISPLAY_FRAME_PIXELS * 4)
+                val pixels = IntArray(NUM_DISPLAY_FRAME_PIXELS)
                 for (i in 0 until NUM_DISPLAY_FRAME_PIXELS) {
-                    val pixel = if (it[i]) 0x00 else 0xff
-                    pixels[i * 4 + 0] = 0xff
-                    pixels[i * 4 + 1] = pixel
-                    pixels[i * 4 + 2] = pixel
-                    pixels[i * 4 + 3] = pixel
+                    pixels[i] = if (it[i]) Color.GREEN else Color.DKGRAY
                 }
-                bitmap.setPixels(pixels, 0, DISPLAY_FRAME_WIDTH, 0, 0, DISPLAY_FRAME_WIDTH, DISPLAY_FRAME_HEIGHT)*/
-                for (x in 0 until DISPLAY_FRAME_WIDTH) {
-                    for (y in 0 until DISPLAY_FRAME_HEIGHT) {
-                        val pixelSet = it.getPixelAt(x, y)
-                        bitmap.setPixel(x, y, if (pixelSet) Color.BLACK else Color.WHITE)
-                    }
-                }
-
+                bitmap.setPixels(pixels, 0, DISPLAY_FRAME_WIDTH, 0, 0, DISPLAY_FRAME_WIDTH, DISPLAY_FRAME_HEIGHT)
                 _screenLiveData.postValue(bitmap)
             }
         }
