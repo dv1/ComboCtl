@@ -41,10 +41,12 @@ class PairingViewModel : ViewModel() {
 
         App.mainControl.startDiscovery(
             discoveryScope,
-            true,
-            300,
-            { },
-            { _, _ ->
+            onlyDiscoverOneDevice = true,
+            discoveryDuration = 300,
+            discoveryStoppedCallback = {
+                _state.postValue(State.DISCOVERY_STOPPED)
+            },
+            pumpPairingPINCallback = { _, _ ->
                 withContext(viewModelScope.coroutineContext) {
                     _state.value = State.PIN_ENTRY
                     pairingPINDeferred!!.await()
@@ -64,10 +66,16 @@ class PairingViewModel : ViewModel() {
     }
 
     fun stopLifeCycle() {
-        // TODO
+        pairingPINDeferred!!.completeExceptionally(TransportLayerIO.PairingAbortedException())
+        App.mainControl.stopDiscovery()
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        stopLifeCycle()
     }
 
     enum class State {
-        UNINITIALIZED, PAIRING, PIN_ENTRY, COMPLETE_PAIRING, CANCELLED
+        UNINITIALIZED, PAIRING, PIN_ENTRY, COMPLETE_PAIRING, CANCELLED, DISCOVERY_STOPPED
     }
 }

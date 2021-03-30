@@ -7,12 +7,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import info.nightscout.comboctl.base.BluetoothAddress
-import info.nightscout.comboctl.base.BluetoothDevice
-import info.nightscout.comboctl.base.BluetoothInterface
-import info.nightscout.comboctl.base.LogLevel
-import info.nightscout.comboctl.base.Logger
-import info.nightscout.comboctl.base.toBluetoothAddress
+import info.nightscout.comboctl.base.*
 import java.io.IOException
 import java.util.concurrent.locks.ReentrantLock
 
@@ -77,7 +72,7 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
             } catch (e: Exception) {
                 logger(LogLevel.ERROR) {
                     "Could not convert Android bluetooth device address " +
-                    "\"$androidBtAddressString\" to a valid BluetoothAddress instance; skipping device"
+                            "\"$androidBtAddressString\" to a valid BluetoothAddress instance; skipping device"
                 }
             }
         }
@@ -247,7 +242,7 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
         } catch (e: Exception) {
             logger(LogLevel.ERROR) {
                 "Could not convert Android bluetooth device address " +
-                "\"$androidBtAddressString\" to a valid BluetoothAddress instance; skipping device"
+                        "\"$androidBtAddressString\" to a valid BluetoothAddress instance; skipping device"
             }
             return
         }
@@ -280,13 +275,13 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
             previouslyDiscoveredDevices.add(comboctlBtAddress)
             logger(LogLevel.DEBUG) {
                 "Device with address $comboctlBtAddress discovered for the first time; " +
-                "need to \"discover\" it again to be able to announce its discovery"
+                        "need to \"discover\" it again to be able to announce its discovery"
             }
             return
         } else {
             logger(LogLevel.DEBUG) {
                 "Device with address $comboctlBtAddress discovered for the second time; " +
-                "announcing it as discovered"
+                        "announcing it as discovered"
             }
         }
 
@@ -327,7 +322,7 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
             return
         }
 
-        val androidBtAddressString = androidBtDevice.getAddress()
+        val androidBtAddressString = androidBtDevice.address
 
         logger(LogLevel.DEBUG) { "PAIRING_REQUEST intent has Bluetooth device with address $androidBtAddressString" }
 
@@ -336,7 +331,7 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
         } catch (e: Exception) {
             logger(LogLevel.ERROR) {
                 "Could not convert Android bluetooth device address " +
-                "\"$androidBtAddressString\" to a valid BluetoothAddress instance; ignoring device"
+                        "\"$androidBtAddressString\" to a valid BluetoothAddress instance; ignoring device"
             }
             return
         }
@@ -346,8 +341,9 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
 
         // An unpaired device is characterized by a state change
         // from non-NONE to NONE. Filter out all other state changes.
-        if (!((currentBondState == SystemBluetoothDevice.BOND_NONE) && (previousBondState != SystemBluetoothDevice.BOND_NONE)))
+        if (!((currentBondState == SystemBluetoothDevice.BOND_NONE) && (previousBondState != SystemBluetoothDevice.BOND_NONE))) {
             return
+        }
 
         previouslyDiscoveredDevices.remove(comboctlBtAddress)
 
@@ -367,8 +363,9 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
         // BluetoothInterface.startDiscovery()
         // documentation requires.
         try {
-            if (deviceFilter(comboctlBtAddress))
+            if (deviceFilter(comboctlBtAddress)) {
                 onDeviceUnpaired(comboctlBtAddress)
+            }
         } catch (e: Exception) {
             logger(LogLevel.ERROR) { "Caught exception while invoking onDeviceUnpaired callback: $e" }
         }
@@ -381,7 +378,7 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
             return
         }
 
-        val androidBtAddressString = androidBtDevice.getAddress()
+        val androidBtAddressString = androidBtDevice.address
 
         logger(LogLevel.DEBUG) { "PAIRING_REQUEST intent has Bluetooth device with address $androidBtAddressString" }
 
@@ -390,7 +387,7 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
         } catch (e: Exception) {
             logger(LogLevel.ERROR) {
                 "Could not convert Android bluetooth device address " +
-                "\"$androidBtAddressString\" to a valid BluetoothAddress instance; ignoring device"
+                        "\"$androidBtAddressString\" to a valid BluetoothAddress instance; ignoring device"
             }
             return
         }

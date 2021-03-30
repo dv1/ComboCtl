@@ -3,17 +3,12 @@ package info.nightscout.comboctl.android
 import android.bluetooth.BluetoothAdapter as SystemBluetoothAdapter
 import android.bluetooth.BluetoothDevice as SystemBluetoothDevice
 import android.bluetooth.BluetoothSocket as SystemBluetoothSocket
-import info.nightscout.comboctl.base.BluetoothAddress
-import info.nightscout.comboctl.base.BluetoothDevice
-import info.nightscout.comboctl.base.BluetoothException
-import info.nightscout.comboctl.base.BluetoothInterface
-import info.nightscout.comboctl.base.ComboIOException
-import info.nightscout.comboctl.base.LogLevel
-import info.nightscout.comboctl.base.Logger
+import info.nightscout.comboctl.base.*
+import info.nightscout.comboctl.utils.retryBlocking
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
-import java.util.Locale
+import java.util.*
 
 private val logger = Logger.get("AndroidBluetoothDevice")
 
@@ -58,7 +53,9 @@ class AndroidBluetoothDevice(
         // We use an insecure socket, which means that it lacks an authenticated
         // link key. This is done because the Combo does not use this feature.
         try {
-            systemBluetoothSocket = device.createInsecureRfcommSocketToServiceRecord(Constants.sdpSerialPortUUID)
+            retryBlocking(numberOfRetries = 4, delayBetweenRetries = 100) {
+                systemBluetoothSocket = device.createInsecureRfcommSocketToServiceRecord(Constants.sdpSerialPortUUID)
+            }
         } catch (e: IOException) {
             throw BluetoothException("Could not connect RFCOMM socket to device with address $address", e)
         }
