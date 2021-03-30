@@ -60,8 +60,8 @@ class AndroidBluetoothDevice(
             throw BluetoothException("Could not connect RFCOMM socket to device with address $address", e)
         }
 
-        // connect() must be explicitely called. Just creating the socket via
-        // createInsecureRfcommSocketToServiceRecord() does not implicitely
+        // connect() must be explicitly called. Just creating the socket via
+        // createInsecureRfcommSocketToServiceRecord() does not implicitly
         // establish the connection. This is important to keep in mind, since
         // otherwise, the calls below get input and output streams that seem
         // to be OK until their read/write functions are actually used. At
