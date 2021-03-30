@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import info.nightscout.comboctl.base.DISPLAY_FRAME_HEIGHT
 import info.nightscout.comboctl.base.DISPLAY_FRAME_WIDTH
 import info.nightscout.comboctl.base.Pump
+import info.nightscout.comboctl.base.PumpIO
 import info.nightscout.comboctl.comboandroid.App
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -23,12 +24,36 @@ class SessionViewModel : ViewModel() {
 
     private var pump: Pump? = null
 
-    fun onMenuClicked() {}
-    fun onCheckClicked() {}
-    fun onUpClicked() {}
-    fun onDownClicked() {}
-    fun onBackClicked() {}
-    fun onUpDownClicked() {}
+    fun onMenuClicked() {
+        viewModelScope.launch {
+            pump?.sendShortRTButtonPress(PumpIO.Button.MENU)
+        }
+    }
+    fun onCheckClicked() {
+        viewModelScope.launch {
+            pump?.sendShortRTButtonPress(PumpIO.Button.CHECK)
+        }
+    }
+    fun onUpClicked() {
+        viewModelScope.launch {
+            pump?.sendShortRTButtonPress(PumpIO.Button.UP)
+        }
+    }
+    fun onDownClicked() {
+        viewModelScope.launch {
+            pump?.sendShortRTButtonPress(PumpIO.Button.DOWN)
+        }
+    }
+    fun onBackClicked() {
+        viewModelScope.launch {
+            pump?.sendShortRTButtonPress(listOf(PumpIO.Button.UP, PumpIO.Button.MENU))
+        }
+    }
+    fun onUpDownClicked() {
+        viewModelScope.launch {
+            pump?.sendShortRTButtonPress(listOf(PumpIO.Button.UP, PumpIO.Button.DOWN))
+        }
+    }
 
     fun startLifeCycle() {
         if (_state.value != State.UNINITIALIZED) return
