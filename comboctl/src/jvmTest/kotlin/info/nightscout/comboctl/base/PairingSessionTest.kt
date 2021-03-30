@@ -31,7 +31,7 @@ class PairingSessionTest {
                 if (curSequenceIndex >= pairingTestSequence.size)
                     throw ComboException("Test sequence ended")
 
-                val sequenceEntry = pairingTestSequence.get(curSequenceIndex)
+                val sequenceEntry = pairingTestSequence[curSequenceIndex]
                 if (sequenceEntry.direction != expectedPacketDirection) {
                     delay(10)
                     continue
