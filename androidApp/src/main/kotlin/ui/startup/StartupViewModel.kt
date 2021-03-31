@@ -10,8 +10,6 @@ class StartupViewModel : ViewModel() {
     private val _statusLiveData = MutableLiveData<Status>(Status.UNDEFINED)
     val statusLiveData: LiveData<Status> = _statusLiveData
 
-    private val storeProvider = App.pumpStateStoreProvider
-
     enum class Status {
         UNPAIRED, PAIRED, UNDEFINED
     }
@@ -22,7 +20,7 @@ class StartupViewModel : ViewModel() {
 
     private fun determineStatus() {
         _statusLiveData.postValue(
-            if (storeProvider.getAvailableStoreAddresses().isEmpty())
+            if (App.mainControl.getPairedPumpAddresses().isEmpty())
                 Status.UNPAIRED
             else
                 Status.PAIRED
