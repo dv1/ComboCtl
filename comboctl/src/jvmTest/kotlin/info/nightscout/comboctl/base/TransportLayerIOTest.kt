@@ -41,7 +41,7 @@ class TransportLayerIOTest {
 
         assertEquals(0xF0.toByte(), packet.address)
 
-        assertEquals(NullNonce, packet.nonce)
+        assertEquals(Nonce.nullNonce(), packet.nonce)
 
         assertEquals(byteArrayListOfInts(0x99, 0x44), packet.payload)
 

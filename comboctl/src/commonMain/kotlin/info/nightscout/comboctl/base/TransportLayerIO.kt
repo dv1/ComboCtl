@@ -303,7 +303,7 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val pumpAddr
         val sequenceBit: Boolean = false,
         val reliabilityBit: Boolean = false,
         val address: Byte = 0,
-        val nonce: Nonce = NullNonce,
+        val nonce: Nonce = Nonce.nullNonce(),
         var payload: ArrayList<Byte> = ArrayList(0),
         var machineAuthenticationCode: MachineAuthCode = NullMachineAuthCode
     ) {
@@ -1325,7 +1325,7 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val pumpAddr
             // to stick with the null nonce.
             Command.REQUEST_PAIRING_CONNECTION,
             Command.REQUEST_KEYS,
-            Command.GET_AVAILABLE_KEYS -> NullNonce
+            Command.GET_AVAILABLE_KEYS -> Nonce.nullNonce()
 
             // This is the first command that uses a non-null
             // nonce. All packets after this one increment
