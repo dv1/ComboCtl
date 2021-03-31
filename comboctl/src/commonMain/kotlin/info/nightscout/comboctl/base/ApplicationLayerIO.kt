@@ -88,9 +88,11 @@ const val MAX_VALID_AL_PAYLOAD_SIZE = 65535 - PACKET_HEADER_SIZE
  * though.
  *
  * @param pumpStateStore Pump state store to use.
+ * @param pumpAddress Bluetooth address of the pump. Used for
+ *        accessing the pump state store.
  * @param comboIO Combo IO object to use for sending/receiving data.
  */
-open class ApplicationLayerIO(pumpStateStore: PumpStateStore, private val comboIO: ComboIO) {
+open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: BluetoothAddress, private val comboIO: ComboIO) {
     // RT sequence number. Used in outgoing RT packets.
     private var currentRTSequence: Int = 0
 
@@ -137,7 +139,7 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, private val comboI
         CTRL_CONNECT(ServiceID.CONTROL, 0x9055, true),
         CTRL_CONNECT_RESPONSE(ServiceID.CONTROL, 0xA055, true),
         CTRL_GET_SERVICE_VERSION(ServiceID.CONTROL, 0x9065, true),
-        CTRL_SERVICE_VERSION_RESPONSE(ServiceID.CONTROL, 0xA065, true),
+        CTRL_GET_SERVICE_VERSION_RESPONSE(ServiceID.CONTROL, 0xA065, true),
         CTRL_BIND(ServiceID.CONTROL, 0x9095, true),
         CTRL_BIND_RESPONSE(ServiceID.CONTROL, 0xA095, true),
         CTRL_DISCONNECT(ServiceID.CONTROL, 0x005A, true),
@@ -146,7 +148,7 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, private val comboI
         CTRL_DEACTIVATE_SERVICE(ServiceID.CONTROL, 0x9069, true),
         CTRL_DEACTIVATE_SERVICE_RESPONSE(ServiceID.CONTROL, 0xA069, true),
         CTRL_DEACTIVATE_ALL_SERVICES(ServiceID.CONTROL, 0x906A, true),
-        CTRL_ALL_SERVICES_DEACTIVATED(ServiceID.CONTROL, 0xA06A, true),
+        CTRL_DEACTIVATE_ALL_SERVICES_RESPONSE(ServiceID.CONTROL, 0xA06A, true),
         CTRL_SERVICE_ERROR(ServiceID.CONTROL, 0x00AA, true),
 
         CMD_PING(ServiceID.COMMAND_MODE, 0x9AAA, true),
@@ -155,6 +157,8 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, private val comboI
         CMD_READ_DATE_TIME_RESPONSE(ServiceID.COMMAND_MODE, 0xAAA6, true),
         CMD_READ_PUMP_STATUS(ServiceID.COMMAND_MODE, 0x9A9A, true),
         CMD_READ_PUMP_STATUS_RESPONSE(ServiceID.COMMAND_MODE, 0xAA9A, true),
+        CMD_READ_ERROR_WARNING_STATUS(ServiceID.COMMAND_MODE, 0x9AA5, true),
+        CMD_READ_ERROR_WARNING_STATUS_RESPONSE(ServiceID.COMMAND_MODE, 0xAAA5, true),
         CMD_READ_HISTORY_BLOCK(ServiceID.COMMAND_MODE, 0x9996, true),
         CMD_READ_HISTORY_BLOCK_RESPONSE(ServiceID.COMMAND_MODE, 0xA996, true),
         CMD_CONFIRM_HISTORY_BLOCK(ServiceID.COMMAND_MODE, 0x9999, true),
@@ -238,7 +242,7 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, private val comboI
         // RT_DISPLAY only ever need to be handled inside the
         // processIncomingPacket callback (it makes no sense to pass those
         // packets to waiting receivePacket calls).
-        transportLayerIO = object : TransportLayerIO(pumpStateStore, comboIO) {
+        transportLayerIO = object : TransportLayerIO(pumpStateStore, pumpAddress, comboIO) {
             override fun applyAdditionalIncomingPacketProcessing(tpLayerPacket: TransportLayerIO.Packet) =
                 if (tpLayerPacket.command == TransportLayerIO.Command.DATA) {
                     val appLayerPacket = checkAndParseTransportLayerDataPacket(tpLayerPacket)
@@ -554,6 +558,8 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, private val comboI
 
         override fun toString() = str
     }
+
+    data class CMDErrorWarningStatus(val errorOccurred: Boolean, val warningOccurred: Boolean)
 
     /**
      * Command mode history event details.
@@ -974,6 +980,19 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, private val comboI
         )
 
         /**
+         * Creates a CMD_READ_ERROR_WARNING_STATUS packet.
+         *
+         * The command mode must have been activated before this can be sent to the Combo.
+         *
+         * See the combo-comm-spec.adoc file for details about this packet.
+         *
+         * @return The produced packet.
+         */
+        fun createCMDReadErrorWarningStatusPacket() = Packet(
+            command = Command.CMD_READ_ERROR_WARNING_STATUS
+        )
+
+        /**
          * Creates a CMD_READ_HISTORY_BLOCK packet.
          *
          * The command mode must have been activated before this can be sent to the Combo.
@@ -1151,6 +1170,36 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, private val comboI
             logger(LogLevel.VERBOSE) { "Pump status information: $status" }
 
             return status
+        }
+
+        /**
+         * Parses a CMD_READ_ERROR_WARNING_STATUS_RESPONSE packet and extracts its payload.
+         *
+         * @param packet Application layer CMD_READ_ERROR_WARNING_STATUS_RESPONSE packet to parse.
+         * @return The packet's parsed payload (the error/warning status).
+         * @throws InvalidPayloadException if the payload size is not the expected size.
+         */
+        fun parseCMDReadErrorWarningStatusResponsePacket(packet: Packet): CMDErrorWarningStatus {
+            logger(LogLevel.VERBOSE) { "Parsing CMD_READ_ERROR_WARNING_STATUS_RESPONSE packet" }
+
+            // Payload size sanity check.
+            if (packet.payload.size != 4) {
+                throw InvalidPayloadException(
+                    packet,
+                    "Incorrect payload size in ${packet.command} packet; expected exactly 4 bytes, got ${packet.payload.size}"
+                )
+            }
+
+            val payload = packet.payload
+
+            val errorWarningStatus = CMDErrorWarningStatus(
+                errorOccurred = (payload[2].toPosInt() == 0xB7),
+                warningOccurred = (payload[3].toPosInt() == 0xB7)
+            )
+
+            logger(LogLevel.VERBOSE) { "Error/warning status: $errorWarningStatus" }
+
+            return errorWarningStatus
         }
 
         /**
@@ -1765,6 +1814,9 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, private val comboI
      * @throws IllegalStateException if the background IO worker is not
      *         running or if it has failed.
      * @throws ComboIOException if sending fails due to an underlying IO error.
+     * @throws PumpStateStoreAccessException if accessing the current Tx
+     *         nonce in the pump state store failed while preparing the packet
+     *         for sending.
      * @throws InvalidPayloadException if appLayerPacket is an RT packet
      *         and its payload is not big enough to contain the RT sequence
      *         number, indicating that this is an invalid / malformed packet.
@@ -1836,6 +1888,9 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, private val comboI
      * @throws IllegalStateException if the background IO worker is not
      *         running or if it has failed.
      * @throws ComboIOException if sending fails due to an underlying IO error.
+     * @throws PumpStateStoreAccessException if accessing the current Tx
+     *         nonce in the pump state store failed while preparing the packet
+     *         for sending.
      * @throws InvalidPayloadException if appLayerPacket is an RT packet
      *         and its payload is not big enough to contain the RT sequence
      *         number, indicating that this is an invalid / malformed packet.
@@ -1877,6 +1932,9 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, private val comboI
      * @throws IllegalStateException if the background IO worker is not
      *         running or if it has failed.
      * @throws ComboIOException if sending fails due to an underlying IO error.
+     * @throws PumpStateStoreAccessException if accessing the current Tx
+     *         nonce in the pump state store failed while preparing the packet
+     *         for sending.
      * @throws TransportLayerIO.BackgroundIOException if an exception is thrown
      *         inside the worker while this call is waiting for a response.
      * @throws IncorrectPacketException if expectedCommand is non-null and

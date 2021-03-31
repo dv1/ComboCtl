@@ -65,6 +65,7 @@ class Pump(
         // and [List<Byte>.toComboFrame] for details).
         pumpIO = PumpIO(
             pumpStateStore,
+            bluetoothDevice.address,
             framedComboIO
         )
     }
@@ -99,7 +100,7 @@ class Pump(
      *
      * @return true if the pump is paired.
      */
-    fun isPaired() = pumpStateStore.isValid()
+    fun isPaired() = pumpStateStore.hasPumpState(address)
 
     /**
      * Performs a pairing procedure with the pump.
@@ -195,7 +196,7 @@ class Pump(
                 withContext(ioDispatcher()) {
                     bluetoothDevice.unpair()
                 }
-                pumpStateStore.reset()
+                pumpStateStore.deletePumpState(address)
             }
         }
     }
@@ -217,12 +218,12 @@ class Pump(
         // makes sense? And if so, what should the caller do?
         // Try to unpair again?
 
-        if (!pumpStateStore.isValid())
+        if (!pumpStateStore.hasPumpState(address))
             return
 
         disconnect()
 
-        pumpStateStore.reset()
+        pumpStateStore.deletePumpState(address)
 
         // Unpairing in a coroutine with an IO dispatcher
         // in case unpairing blocks.
@@ -415,6 +416,26 @@ class Pump(
 
         return runChecked {
             pumpIO.readCMDPumpStatus()
+        }
+    }
+
+    /**
+     * Reads the current error/warning status of the pump in COMMAND (CMD) mode.
+     *
+     * @return The current status.
+     * @throws IllegalStateException if the pump is not in the comand
+     *         mode, the worker has failed (see [connect]), or the
+     *         pump is not connected.
+     * @throws ApplicationLayerIO.InvalidPayloadException if the size
+     *         of a packet's payload does not match the expected size.
+     * @throws ComboIOException if IO with the pump fails.
+     */
+    suspend fun readCMDErrorWarningStatus(): ApplicationLayerIO.CMDErrorWarningStatus {
+        if (!pumpIO.isConnected())
+            throw IllegalStateException("Not connected to Combo")
+
+        return runChecked {
+            pumpIO.readCMDErrorWarningStatus()
         }
     }
 

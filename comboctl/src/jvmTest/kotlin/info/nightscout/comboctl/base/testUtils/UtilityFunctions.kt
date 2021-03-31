@@ -85,7 +85,7 @@ fun produceTpLayerPacket(outgoingPacketInfo: TransportLayerIO.OutgoingPacketInfo
         sequenceBit = false,
         reliabilityBit = false,
         address = 0x01,
-        nonce = NullNonce,
+        nonce = Nonce.nullNonce(),
         payload = outgoingPacketInfo.payload
     )
 

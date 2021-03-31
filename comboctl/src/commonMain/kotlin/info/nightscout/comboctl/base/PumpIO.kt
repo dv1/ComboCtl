@@ -62,9 +62,11 @@ private val logger = Logger.get("PumpIO")
  * packets with the Combo.
  *
  * @param pumpStateStore Pump state store to use.
+ * @param pumpAddress Bluetooth address of the pump. Used for
+ *        accessing the pump state store.
  * @param comboIO Combo IO object to use for sending/receiving data.
  */
-class PumpIO(private val pumpStateStore: PumpStateStore, private val comboIO: ComboIO) {
+class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress: BluetoothAddress, private val comboIO: ComboIO) {
     private val applicationLayerIO: ApplicationLayerIO
 
     // The coroutine scope passed to connect() as an argument.
@@ -158,7 +160,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val comboIO: Co
     init {
         // Set up ApplicationLayerIO subclass that processes incoming
         // packets in order to handle notifications from the Combo.
-        applicationLayerIO = object : ApplicationLayerIO(pumpStateStore, comboIO) {
+        applicationLayerIO = object : ApplicationLayerIO(pumpStateStore, pumpAddress, comboIO) {
             override fun processIncomingPacket(appLayerPacket: Packet): Boolean {
                 // RT_DISPLAY packets regularly come from the Combo (when running in RT mode),
                 // and contains new display frame updates.
@@ -323,14 +325,14 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val comboIO: Co
                 logger(LogLevel.DEBUG) { "Requesting command mode service version" }
                 sendPacketWithResponse(
                     ApplicationLayerIO.createCTRLGetServiceVersionPacket(ApplicationLayerIO.ServiceID.COMMAND_MODE),
-                    ApplicationLayerIO.Command.CTRL_SERVICE_VERSION_RESPONSE
+                    ApplicationLayerIO.Command.CTRL_GET_SERVICE_VERSION_RESPONSE
                 )
                 // NOTE: These two steps may not be necessary. See the
                 // "Application layer pairing" section in the spec.
                 /*
                 sendPacketWithResponse(
                     ApplicationLayerIO.ApplicationLayerIO.createCTRLGetServiceVersionPacket(ApplicationLayerIO.ServiceID.RT_MODE),
-                    ApplicationLayerIO.Command.CTRL_SERVICE_VERSION_RESPONSE
+                    ApplicationLayerIO.Command.CTRL_GET_SERVICE_VERSION_RESPONSE
                 )
                 */
 
@@ -434,7 +436,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val comboIO: Co
     ): Job {
         // Prerequisites.
 
-        if (!pumpStateStore.isValid()) {
+        if (!pumpStateStore.hasPumpState(pumpAddress)) {
             throw IllegalStateException(
                 "Attempted to connect without a valid persistent state; pairing may not have been done"
             )
@@ -567,16 +569,41 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val comboIO: Co
      */
     suspend fun readCMDPumpStatus(): ApplicationLayerIO.CMDPumpStatus {
         if (!isConnected())
-            throw IllegalStateException("Cannot get history delta because the background worker is not running")
+            throw IllegalStateException("Cannot get pump status because the background worker is not running")
 
         if (currentMode != Mode.COMMAND)
-            throw IllegalStateException("Cannot get history delta while being in $currentMode mode")
+            throw IllegalStateException("Cannot get pump status while being in $currentMode mode")
 
         val packet = sendPacketWithResponse(
             ApplicationLayerIO.createCMDReadPumpStatusPacket(),
             ApplicationLayerIO.Command.CMD_READ_PUMP_STATUS_RESPONSE
         )
         return ApplicationLayerIO.parseCMDReadPumpStatusResponsePacket(packet)
+    }
+
+    /**
+     * Reads the current error/warning status of the pump in COMMAND (CMD) mode.
+     *
+     * @return The current status.
+     * @throws IllegalStateException if the pump is not in the comand
+     *         mode, the worker has failed (see [connect]), or the
+     *         pump is not connected.
+     * @throws ApplicationLayerIO.InvalidPayloadException if the size
+     *         of a packet's payload does not match the expected size.
+     * @throws ComboIOException if IO with the pump fails.
+     */
+    suspend fun readCMDErrorWarningStatus(): ApplicationLayerIO.CMDErrorWarningStatus {
+        if (!isConnected())
+            throw IllegalStateException("Cannot get error/warning status because the background worker is not running")
+
+        if (currentMode != Mode.COMMAND)
+            throw IllegalStateException("Cannot get error/warning status while being in $currentMode mode")
+
+        val packet = sendPacketWithResponse(
+            ApplicationLayerIO.createCMDReadErrorWarningStatusPacket(),
+            ApplicationLayerIO.Command.CMD_READ_ERROR_WARNING_STATUS_RESPONSE
+        )
+        return ApplicationLayerIO.parseCMDReadErrorWarningStatusResponsePacket(packet)
     }
 
     /**

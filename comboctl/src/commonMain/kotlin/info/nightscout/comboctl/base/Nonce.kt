@@ -64,11 +64,15 @@ data class Nonce(private val nonceBytes: List<Byte>) : Iterable<Byte> {
 
         return Nonce(outputNonceBytes)
     }
+
+    companion object {
+        /**
+         * Convenience function to create a nonce with 13 nullbytes.
+         *
+         * Useful for initializations.
+         */
+        fun nullNonce() = Nonce(List(NUM_NONCE_BYTES) { 0x00 })
+    }
 }
 
 fun String.toNonce() = Nonce(this.split(" ").map { it.toInt(radix = 16).toByte() })
-
-/**
- * Nonce consisting of 13 nullbytes. Useful for initializations.
- */
-val NullNonce = Nonce(List(NUM_NONCE_BYTES) { 0x00 })

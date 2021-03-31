@@ -59,8 +59,8 @@ const val MAX_VALID_TL_PAYLOAD_SIZE = 65535
  * This implements IO functionality with the Combo at the transport layer.
  * It takes care of creating, sending, receiving, parsing TL packets.
  * To this end, this class uses the supplied [comboIO] for the low-level
- * IO, and the [pumpStateStore] for packet authentication,
- * verification, and generation (the store's tx nonce is used for the latter).
+ * IO, and the [pumpStateStore] for packet authentication, verification,
+ * and generation (the store's tx nonce is used for the latter).
  *
  * Users must call [startIO] before using the IO functionality of this
  * class. Once no more IO operations are to be executed, [stopIO] must
@@ -99,9 +99,11 @@ const val MAX_VALID_TL_PAYLOAD_SIZE = 65535
  * end, the subclass must override [applyAdditionalIncomingPacketProcessing].
  *
  * @param pumpStateStore Pump state store to use.
+ * @param pumpAddress Bluetooth address of the pump. Used for
+ *        accessing the pump state store.
  * @param comboIO Combo IO object to use for sending/receiving data.
  */
-open class TransportLayerIO(pumpStateStore: PumpStateStore, private val comboIO: ComboIO) {
+open class TransportLayerIO(pumpStateStore: PumpStateStore, private val pumpAddress: BluetoothAddress, private val comboIO: ComboIO) {
     // Job for keeping track of the toplevel background worker coroutine
     // that runs the incoming packet loop (see runIncomingPacketLoop()).
     // The worker is marked as "failed" if backgroundIOWorkerJob
@@ -127,7 +129,7 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val comboIO:
 
     // Packet state object. Will be touched by functions that run inside
     // the background worker (and by startIO before said worker is launched).
-    private val packetState = PacketState(pumpStateStore)
+    private val packetState = PacketState(pumpStateStore, pumpAddress)
 
     // Timestamp (in ms) of the last time a packet was sent.
     // Used for throttling the output.
@@ -301,7 +303,7 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val comboIO:
         val sequenceBit: Boolean = false,
         val reliabilityBit: Boolean = false,
         val address: Byte = 0,
-        val nonce: Nonce = NullNonce,
+        val nonce: Nonce = Nonce.nullNonce(),
         var payload: ArrayList<Byte> = ArrayList(0),
         var machineAuthenticationCode: MachineAuthCode = NullMachineAuthCode
     ) {
@@ -806,6 +808,9 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val comboIO:
      * @throws IllegalStateException if the background IO worker is not
      *         running or if it has failed.
      * @throws ComboIOException if sending fails due to an underlying IO error.
+     * @throws PumpStateStoreAccessException if accessing the current Tx
+     *         nonce in the pump state store failed while preparing the packet
+     *         for sending.
      */
     suspend fun sendPacket(packetInfo: OutgoingPacketInfo) {
         if (backgroundIOWorkerJob == null) {
@@ -1089,7 +1094,7 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val comboIO:
      * The weak key cipher (used during pairing) is _not_ included,
      * since it does not need to exist after pairing.
      *
-     * It also contains a cached PumpPairingData copy. If the pump
+     * It also contains a cached InvariantPumpData copy. If the pump
      * is not paired yet, this copy will be set to a default value
      * in reset(), otherwise that call will retrieve the pairing data
      * from the pump store and make a copy of it (which is then the
@@ -1110,15 +1115,13 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val comboIO:
      *
      * @property pumpStateStore Pump pump state store to
      *           use and update during IO.
+     * @property pumpAddress Bluetooth address of the pump. Used for
+     *           accessing the pump state store.
      */
-    private class PacketState(val pumpStateStore: PumpStateStore) {
+    private class PacketState(val pumpStateStore: PumpStateStore, val pumpAddress: BluetoothAddress) {
         var currentSequenceFlag = false
 
-        var cachedPumpPairingData = PumpPairingData(
-            Cipher(ByteArray(CIPHER_KEY_SIZE)),
-            Cipher(ByteArray(CIPHER_KEY_SIZE)),
-            0x00.toByte()
-        )
+        var cachedInvariantPumpData = InvariantPumpData.nullData()
 
         /**
          * Resets the internal states.
@@ -1137,14 +1140,10 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val comboIO:
         fun reset() {
             currentSequenceFlag = false
 
-            cachedPumpPairingData = if (pumpStateStore.isValid())
-                pumpStateStore.retrievePumpPairingData()
+            cachedInvariantPumpData = if (pumpStateStore.hasPumpState(pumpAddress))
+                pumpStateStore.getInvariantPumpData(pumpAddress)
             else
-                PumpPairingData(
-                    Cipher(ByteArray(CIPHER_KEY_SIZE)),
-                    Cipher(ByteArray(CIPHER_KEY_SIZE)),
-                    0x00.toByte()
-                )
+                InvariantPumpData.nullData()
         }
     }
 
@@ -1210,8 +1209,15 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val comboIO:
                 }
             }
 
-            // Authenticate the packet. (KEY_RESPONSE packet authentication
-            // is done above separately.)
+            // Authenticate the packet. Special cases:
+            //
+            // - KEY_RESPONSE packet authentication is done above separately.
+            // - When receiving ID_RESPONSE packets, the hasPumpState() check
+            //   is omitted, since the pump state is not set up *until* this
+            //   very packet arrives (the state is initialized in the
+            //   processIDResponsePacket() function), so that check would
+            //   always fail with this packet. (The packetState conents are
+            //   valid at this point though, so authentication still succeeds.)
 
             val packetIsValid = when (packet.command) {
                 Command.ID_RESPONSE,
@@ -1220,9 +1226,9 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val comboIO:
                 Command.DATA,
                 Command.ERROR_RESPONSE -> {
                     logger(LogLevel.VERBOSE) { "Verifying incoming packet with pump-client cipher" }
-                    if (!packetState.pumpStateStore.isValid())
+                    if ((packet.command != Command.ID_RESPONSE) && !packetState.pumpStateStore.hasPumpState(pumpAddress))
                         throw IllegalStateException("Cannot verify incoming ${packet.command} packet without a pump-client cipher")
-                    packet.verifyAuthentication(packetState.cachedPumpPairingData.pumpClientCipher)
+                    packet.verifyAuthentication(packetState.cachedInvariantPumpData.pumpClientCipher)
                 }
 
                 else -> true
@@ -1322,18 +1328,20 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val comboIO:
             // to stick with the null nonce.
             Command.REQUEST_PAIRING_CONNECTION,
             Command.REQUEST_KEYS,
-            Command.GET_AVAILABLE_KEYS -> NullNonce
+            Command.GET_AVAILABLE_KEYS -> Nonce.nullNonce()
 
             // This is the first command that uses a non-null
             // nonce. All packets after this one increment
             // the nonce. See combo-comm-spec.adoc for details.
-            Command.REQUEST_ID -> {
-                val currentTxNonce = Nonce(byteArrayListOfInts(
-                    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-                ))
-                packetState.pumpStateStore.currentTxNonce = currentTxNonce
-                packetState.pumpStateStore.currentTxNonce
-            }
+            // That first nonce always has value 1. We return
+            // a hard-coded nonce here, since at this point,
+            // we cannot call getCurrentTxNonce() yet - the
+            // pump state is not yet set up. It will be once
+            // the ID_RESPONSE packet (which is the response
+            // to REQUEST_ID) arrives.
+            Command.REQUEST_ID -> Nonce(byteArrayListOfInts(
+                0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+            ))
 
             // These are the commands that are used in regular
             // (= non-pairing) connections. They all increment
@@ -1341,9 +1349,9 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val comboIO:
             Command.REQUEST_REGULAR_CONNECTION,
             Command.ACK_RESPONSE,
             Command.DATA -> {
-                val currentTxNonce = packetState.pumpStateStore.currentTxNonce
-                packetState.pumpStateStore.currentTxNonce = currentTxNonce.getIncrementedNonce()
-                packetState.pumpStateStore.currentTxNonce
+                val currentTxNonce = packetState.pumpStateStore.getCurrentTxNonce(pumpAddress).getIncrementedNonce()
+                packetState.pumpStateStore.setCurrentTxNonce(pumpAddress, currentTxNonce)
+                currentTxNonce
             }
 
             else -> throw Error("This is not a valid outgoing packet")
@@ -1358,7 +1366,7 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val comboIO:
             Command.REQUEST_ID,
             Command.REQUEST_REGULAR_CONNECTION,
             Command.ACK_RESPONSE,
-            Command.DATA -> packetState.cachedPumpPairingData.keyResponseAddress
+            Command.DATA -> packetState.cachedInvariantPumpData.keyResponseAddress
 
             else -> throw Error("This is not a valid outgoing packet")
         }
@@ -1422,7 +1430,7 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val comboIO:
             Command.REQUEST_ID,
             Command.REQUEST_REGULAR_CONNECTION,
             Command.ACK_RESPONSE,
-            Command.DATA -> packetState.cachedPumpPairingData.clientPumpCipher
+            Command.DATA -> packetState.cachedInvariantPumpData.clientPumpCipher
 
             else -> throw Error("This is not a valid outgoing packet")
         }
@@ -1441,13 +1449,16 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val comboIO:
     //
     // This is run in the background worker, and nowhere else,
     // to avoid internal state related data races.
+    //
+    // This is also where the pump state initialization which
+    // started in processKeyResponsePacket is finished, and
+    // state created in the store, and the contents of
+    // cachedInvariantPumpData written persistently in the store.
     private fun processIDResponsePacket(packet: Packet) {
         if (packet.command != Command.ID_RESPONSE)
             throw IncorrectPacketException(packet, Command.ID_RESPONSE)
         if (packet.payload.size != 17)
             throw InvalidPayloadException(packet, "Expected 17 bytes, got ${packet.payload.size}")
-        if (!packetState.pumpStateStore.isValid())
-            throw IllegalStateException("Expected a valid pump state store by the time an ID_RESPONSE packet arrives")
 
         val serverID = ((packet.payload[0].toPosLong() shl 0) or
             (packet.payload[1].toPosLong() shl 8) or
@@ -1468,7 +1479,28 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val comboIO:
             "Received IDs: server ID: $serverID pump ID: $pumpID"
         }
 
-        packetState.pumpStateStore.pumpID = pumpID
+        // Now that we have the pump ID we can complete the pump
+        // store initialization for this pump that was started in
+        // processKeyResponsePacket(). Initialization requires *all*
+        // invariant data to be known (including the pump ID), which
+        // is why it could not be done earlier.
+
+        val oldInvariantPumpData = packetState.cachedInvariantPumpData
+
+        packetState.cachedInvariantPumpData = InvariantPumpData(
+            clientPumpCipher = oldInvariantPumpData.clientPumpCipher,
+            pumpClientCipher = oldInvariantPumpData.pumpClientCipher,
+            keyResponseAddress = oldInvariantPumpData.keyResponseAddress,
+            pumpID = pumpID
+        )
+
+        packetState.pumpStateStore.createPumpState(pumpAddress, packetState.cachedInvariantPumpData)
+
+        val firstTxNonce = Nonce(byteArrayListOfInts(
+            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+        ))
+
+        packetState.pumpStateStore.setCurrentTxNonce(pumpAddress, firstTxNonce)
     }
 
     // Reads the error ID out of the packet and throws an exception.
@@ -1479,8 +1511,6 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val comboIO:
             throw IncorrectPacketException(packet, Command.ERROR_RESPONSE)
         if (packet.payload.size != 1)
             throw InvalidPayloadException(packet, "Expected 1 byte, got ${packet.payload.size}")
-        if (!packetState.pumpStateStore.isValid())
-            throw IllegalStateException("Expected a valid pump state store by the time an ID_RESPONSE packet arrives")
 
         val errorID = packet.payload[0].toInt()
 
@@ -1516,8 +1546,9 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val comboIO:
     // using generateWeakCipher() before this is called.
     //
     // This will store the keys and addresses in the internal
-    // cached pump pairing data, and will also write that
-    // data into the persistent pump state store.
+    // cached pump pairing data. This begins the pump state
+    // initialization process. It is finished in the
+    // processIDResponsePacket() function.
     //
     // This function is called during pairing, not when
     // establishing regular connections.
@@ -1546,19 +1577,25 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val comboIO:
         val destinationAddress = (addressInt shr 4) and 0xF
         val keyResponseAddress = ((sourceAddress shl 4) or destinationAddress).toByte()
 
-        packetState.cachedPumpPairingData = PumpPairingData(
+        // We begin setting up the invariant pump data here. However,
+        // the pump state store cannot be initialized yet, because
+        // we do not yet know the pump ID. This initialization continues
+        // in processIDResponsePacket(). We fill cachedInvariantPumpData
+        // with the data we currently know. Later, it is filled again,
+        // and the remaining unknown data is also added.
+
+        packetState.cachedInvariantPumpData = InvariantPumpData(
             pumpClientCipher = pumpClientCipher,
             clientPumpCipher = clientPumpCipher,
-            keyResponseAddress = keyResponseAddress
+            keyResponseAddress = keyResponseAddress,
+            pumpID = "" // This gets filled later in processIDResponsePacket().
         )
 
         logger(LogLevel.DEBUG) {
-            "Address: ${packetState.cachedPumpPairingData.keyResponseAddress.toHexString(2)}" +
-            "  decrypted client->pump key: ${packetState.cachedPumpPairingData.clientPumpCipher.key.toHexString()}" +
-            "  decrypted pump->client key: ${packetState.cachedPumpPairingData.pumpClientCipher.key.toHexString()}"
+            "Address: ${packetState.cachedInvariantPumpData.keyResponseAddress.toHexString(2)}" +
+            "  decrypted client->pump key: ${packetState.cachedInvariantPumpData.clientPumpCipher.key.toHexString()}" +
+            "  decrypted pump->client key: ${packetState.cachedInvariantPumpData.pumpClientCipher.key.toHexString()}"
         }
-
-        packetState.pumpStateStore.storePumpPairingData(packetState.cachedPumpPairingData)
     }
 }
 

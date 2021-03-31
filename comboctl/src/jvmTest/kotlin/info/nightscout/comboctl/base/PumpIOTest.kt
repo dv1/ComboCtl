@@ -10,31 +10,34 @@ import kotlinx.coroutines.launch
 
 class PumpIOTest {
     // Common test code.
-    class TestStates(setupPumpPairingData: Boolean) {
+    class TestStates(setupInvariantPumpData: Boolean) {
         var testPumpStateStore: TestPumpStateStore
+        val testBluetoothAddress: BluetoothAddress
         var testIO: TestComboIO
         var pumpIO: PumpIO
 
         init {
-            // Set up the "pairing data" to be able to test regular connections.
+            // Set up the invariant pump data to be able to test regular connections.
 
             testPumpStateStore = TestPumpStateStore()
+            testBluetoothAddress = BluetoothAddress(byteArrayListOfInts(1, 2, 3, 4, 5, 6))
 
-            if (setupPumpPairingData) {
-                val pumpPairingData = PumpPairingData(
+            if (setupInvariantPumpData) {
+                val invariantPumpData = InvariantPumpData(
                     keyResponseAddress = 0x10,
                     clientPumpCipher = Cipher(byteArrayOfInts(
                         0x5a, 0x25, 0x0b, 0x75, 0xa9, 0x02, 0x21, 0xfa,
                         0xab, 0xbd, 0x36, 0x4d, 0x5c, 0xb8, 0x37, 0xd7)),
                     pumpClientCipher = Cipher(byteArrayOfInts(
                         0x2a, 0xb0, 0xf2, 0x67, 0xc2, 0x7d, 0xcf, 0xaa,
-                        0x32, 0xb2, 0x48, 0x94, 0xe1, 0x6d, 0xe9, 0x5c))
+                        0x32, 0xb2, 0x48, 0x94, 0xe1, 0x6d, 0xe9, 0x5c)),
+                    pumpID = "testPump"
                 )
-                testPumpStateStore.storePumpPairingData(pumpPairingData)
+                testPumpStateStore.createPumpState(testBluetoothAddress, invariantPumpData)
             }
 
             testIO = TestComboIO()
-            pumpIO = PumpIO(testPumpStateStore, testIO)
+            pumpIO = PumpIO(testPumpStateStore, testBluetoothAddress, testIO)
         }
 
         // Tests that a long button press is handled correctly.
@@ -81,12 +84,14 @@ class PumpIOTest {
         // the RT mode, so this also feeds a CTRL_ACTIVATE_SERVICE_RESPONSE
         // packet into the IO.
         suspend fun feedInitialPackets() {
+            val invariantPumpData = testPumpStateStore.getInvariantPumpData(testBluetoothAddress)
+
             testIO.feedIncomingData(
                 produceTpLayerPacket(
                     TransportLayerIO.OutgoingPacketInfo(
                         command = TransportLayerIO.Command.REGULAR_CONNECTION_REQUEST_ACCEPTED
                     ),
-                    testPumpStateStore.pairingData!!.pumpClientCipher
+                    invariantPumpData.pumpClientCipher
                 ).toByteList()
             )
 
@@ -95,7 +100,7 @@ class PumpIOTest {
                     ApplicationLayerIO.Packet(
                         command = ApplicationLayerIO.Command.CTRL_CONNECT_RESPONSE
                     ).toTransportLayerPacketInfo(),
-                    testPumpStateStore.pairingData!!.pumpClientCipher
+                    invariantPumpData.pumpClientCipher
                 ).toByteList()
             )
 
@@ -105,7 +110,7 @@ class PumpIOTest {
                         command = ApplicationLayerIO.Command.CTRL_ACTIVATE_SERVICE_RESPONSE,
                         payload = byteArrayListOfInts(1, 2, 3, 4, 5)
                     ).toTransportLayerPacketInfo(),
-                    testPumpStateStore.pairingData!!.pumpClientCipher
+                    invariantPumpData.pumpClientCipher
                 ).toByteList()
             )
         }
@@ -293,13 +298,14 @@ class PumpIOTest {
 
             launch {
                 delay(300L)
+                val invariantPumpData = testStates.testPumpStateStore.getInvariantPumpData(testStates.testBluetoothAddress)
                 testIO.feedIncomingData(
                     produceTpLayerPacket(
                         ApplicationLayerIO.Packet(
                             command = ApplicationLayerIO.Command.RT_BUTTON_CONFIRMATION,
                             payload = byteArrayListOfInts(0, 0)
                         ).toTransportLayerPacketInfo(),
-                        testStates.testPumpStateStore.pairingData!!.pumpClientCipher
+                        invariantPumpData.pumpClientCipher
                     ).toByteList()
                 )
             }
@@ -328,6 +334,60 @@ class PumpIOTest {
     }
 
     @Test
+    fun cmdCMDReadErrorWarningStatus() {
+        runBlockingWithWatchdog(6000) {
+            // Check that a simulated CMD error/warning status retrieval is performed successfully.
+            // Feed in raw data bytes into the test IO. These raw bytes are packets that contain
+            // error/warning status data. Check that these packets are correctly parsed and that
+            // the retrieved status is correct.
+
+            val testStates = TestStates(setupInvariantPumpData = false)
+            val mainScope = this
+            val pumpIO = testStates.pumpIO
+            val testIO = testStates.testIO
+
+            // Need to set up custom keys since the test data was
+            // created with those instead of the default test keys.
+            val invariantPumpData = InvariantPumpData(
+                keyResponseAddress = 0x10,
+                clientPumpCipher = Cipher(byteArrayOfInts(
+                    0x12, 0xe2, 0x4a, 0xb6, 0x67, 0x50, 0xe5, 0xb4,
+                    0xc4, 0xea, 0x10, 0xa7, 0x55, 0x11, 0x61, 0xd4)),
+                pumpClientCipher = Cipher(byteArrayOfInts(
+                    0x8e, 0x0d, 0x35, 0xe3, 0x7c, 0xd7, 0x20, 0x55,
+                    0x57, 0x2b, 0x05, 0x50, 0x34, 0x43, 0xc9, 0x8d)),
+                pumpID = "testPump"
+            )
+            testStates.testPumpStateStore.createPumpState(testStates.testBluetoothAddress, invariantPumpData)
+
+            testStates.feedInitialPackets()
+
+            pumpIO.connect(
+                backgroundIOScope = mainScope,
+                onBackgroundIOException = { e -> fail("Exception thrown in background worker: $e") },
+                initialMode = PumpIO.Mode.COMMAND,
+                runKeepAliveLoop = false
+            ).join()
+
+            val errorWarningStatusData = byteArrayListOfInts(
+                0x10, 0x23, 0x08, 0x00, 0x01, 0x39, 0x01, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0xb7, 0xa5, 0xaa,
+                0x00, 0x00, 0x48, 0xb7, 0xa0, 0xea, 0x70, 0xc3, 0xd4, 0x42, 0x61, 0xd7
+            )
+            testIO.feedIncomingData(errorWarningStatusData)
+
+            val errorWarningStatus = pumpIO.readCMDErrorWarningStatus()
+
+            pumpIO.disconnect()
+
+            assertEquals(
+                ApplicationLayerIO.CMDErrorWarningStatus(errorOccurred = false, warningOccurred = true),
+                errorWarningStatus
+            )
+        }
+    }
+
+    @Test
     fun checkCMDHistoryDeltaRetrieval() {
         runBlockingWithWatchdog(6000) {
             // Check that a simulated CMD history delta retrieval is performed successfully.
@@ -335,23 +395,24 @@ class PumpIOTest {
             // contain history data with a series of events inside. Check that these packets
             // are correctly parsed and that the retrieved history is correct.
 
-            val testStates = TestStates(true)
+            val testStates = TestStates(setupInvariantPumpData = false)
             val mainScope = this
             val pumpIO = testStates.pumpIO
             val testIO = testStates.testIO
 
             // Need to set up custom keys since the test data was
             // created with those instead of the default test keys.
-            val pumpPairingData = PumpPairingData(
+            val invariantPumpData = InvariantPumpData(
                 keyResponseAddress = 0x10,
                 clientPumpCipher = Cipher(byteArrayOfInts(
                     0x75, 0xb8, 0x88, 0xa8, 0xe7, 0x68, 0xc9, 0x25,
                     0x66, 0xc9, 0x3c, 0x4b, 0xd8, 0x09, 0x27, 0xd8)),
                 pumpClientCipher = Cipher(byteArrayOfInts(
                     0xb8, 0x75, 0x8c, 0x54, 0x88, 0x71, 0x78, 0xed,
-                    0xad, 0xb7, 0xb7, 0xc1, 0x48, 0x37, 0xf3, 0x07))
+                    0xad, 0xb7, 0xb7, 0xc1, 0x48, 0x37, 0xf3, 0x07)),
+                pumpID = "testPump"
             )
-            testStates.testPumpStateStore.storePumpPairingData(pumpPairingData)
+            testStates.testPumpStateStore.createPumpState(testStates.testBluetoothAddress, invariantPumpData)
 
             val historyBlockPacketData = listOf(
                 // CMD_READ_HISTORY_BLOCK_RESPONSE

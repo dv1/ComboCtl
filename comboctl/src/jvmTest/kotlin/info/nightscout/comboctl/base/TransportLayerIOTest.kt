@@ -41,7 +41,7 @@ class TransportLayerIOTest {
 
         assertEquals(0xF0.toByte(), packet.address)
 
-        assertEquals(NullNonce, packet.nonce)
+        assertEquals(Nonce.nullNonce(), packet.nonce)
 
         assertEquals(byteArrayListOfInts(0x99, 0x44), packet.payload)
 
@@ -150,7 +150,8 @@ class TransportLayerIOTest {
         runBlockingWithWatchdog(5000) {
             val testPumpStateStore = TestPumpStateStore()
             val testComboIO = TestComboIO()
-            val tpLayerIO = TransportLayerIO(testPumpStateStore, testComboIO)
+            val testBluetoothAddress = BluetoothAddress(byteArrayListOfInts(1, 2, 3, 4, 5, 6))
+            val tpLayerIO = TransportLayerIO(testPumpStateStore, testBluetoothAddress, testComboIO)
 
             // We'll simulate sending a REQUEST_PAIRING_CONNECTION packet and
             // receiving a PAIRING_CONNECTION_REQUEST_ACCEPTED packet.
@@ -212,7 +213,8 @@ class TransportLayerIOTest {
         runBlockingWithWatchdog(5000) {
             val testPumpStateStore = TestPumpStateStore()
             val testComboIO = TestComboIO()
-            val tpLayerIO = TransportLayerIO(testPumpStateStore, testComboIO)
+            val testBluetoothAddress = BluetoothAddress(byteArrayListOfInts(1, 2, 3, 4, 5, 6))
+            val tpLayerIO = TransportLayerIO(testPumpStateStore, testBluetoothAddress, testComboIO)
 
             val testPumpID = "PUMP_10230947"
             val testPIN = PairingPIN(intArrayOf(2, 6, 0, 6, 8, 1, 9, 2, 7, 3))
@@ -265,15 +267,17 @@ class TransportLayerIOTest {
 
             // IO done. Check that the pump state store was properly updated.
 
-            assertNotNull(testPumpStateStore.pairingData)
+            assertNotNull(testPumpStateStore.hasPumpState(testBluetoothAddress))
+
+            val invariantPumpData = testPumpStateStore.getInvariantPumpData(testBluetoothAddress)
 
             assertEquals(keyResponsePacket.toByteList(), receivedKeyResponsePacket.toByteList())
-            assertEquals(testDecryptedCPKey, testPumpStateStore.pairingData!!.clientPumpCipher.key.toList())
-            assertEquals(testDecryptedPCKey, testPumpStateStore.pairingData!!.pumpClientCipher.key.toList())
-            assertEquals(testAddress, testPumpStateStore.pairingData!!.keyResponseAddress)
+            assertEquals(testDecryptedCPKey, invariantPumpData.clientPumpCipher.key.toList())
+            assertEquals(testDecryptedPCKey, invariantPumpData.pumpClientCipher.key.toList())
+            assertEquals(testAddress, invariantPumpData.keyResponseAddress)
 
             assertEquals(idResponsePacket.toByteList(), receivedIDResponsePacket.toByteList())
-            assertEquals(testPumpID, testPumpStateStore.pumpID)
+            assertEquals(testPumpID, invariantPumpData.pumpID)
         }
     }
 
@@ -288,7 +292,8 @@ class TransportLayerIOTest {
         runBlockingWithWatchdog(5000) {
             val testPumpStateStore = TestPumpStateStore()
             val testComboIO = TestComboIO()
-            val tpLayerIO = TransportLayerIO(testPumpStateStore, testComboIO)
+            val testBluetoothAddress = BluetoothAddress(byteArrayListOfInts(1, 2, 3, 4, 5, 6))
+            val tpLayerIO = TransportLayerIO(testPumpStateStore, testBluetoothAddress, testComboIO)
 
             val testDecryptedCPKey =
                 byteArrayListOfInts(0x5a, 0x25, 0x0b, 0x75, 0xa9, 0x02, 0x21, 0xfa, 0xab, 0xbd, 0x36, 0x4d, 0x5c, 0xb8, 0x37, 0xd7)
@@ -296,11 +301,15 @@ class TransportLayerIOTest {
                 byteArrayListOfInts(0x2a, 0xb0, 0xf2, 0x67, 0xc2, 0x7d, 0xcf, 0xaa, 0x32, 0xb2, 0x48, 0x94, 0xe1, 0x6d, 0xe9, 0x5c)
             val testAddress = 0x10.toByte()
 
-            testPumpStateStore.storePumpPairingData(PumpPairingData(
-                clientPumpCipher = Cipher(testDecryptedCPKey.toByteArray()),
-                pumpClientCipher = Cipher(testDecryptedPCKey.toByteArray()),
-                keyResponseAddress = testAddress
-            ))
+            testPumpStateStore.createPumpState(
+                testBluetoothAddress,
+                InvariantPumpData(
+                    clientPumpCipher = Cipher(testDecryptedCPKey.toByteArray()),
+                    pumpClientCipher = Cipher(testDecryptedPCKey.toByteArray()),
+                    keyResponseAddress = testAddress,
+                    pumpID = "testPump"
+                )
+            )
 
             val errorResponsePacket = TransportLayerIO.Packet(
                 command = TransportLayerIO.Command.ERROR_RESPONSE,
@@ -398,7 +407,8 @@ class TransportLayerIOTest {
         runBlockingWithWatchdog(5000) {
             val testPumpStateStore = TestPumpStateStore()
             val testComboIO = TestComboIO()
-            val tpLayerIO = TransportLayerIO(testPumpStateStore, testComboIO)
+            val testBluetoothAddress = BluetoothAddress(byteArrayListOfInts(1, 2, 3, 4, 5, 6))
+            val tpLayerIO = TransportLayerIO(testPumpStateStore, testBluetoothAddress, testComboIO)
 
             val keyResponsePacket = TransportLayerIO.Packet(
                 command = TransportLayerIO.Command.KEY_RESPONSE,

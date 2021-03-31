@@ -19,8 +19,9 @@ class ApplicationLayerIOTest {
         // (in case the tested code hangs).
         runBlockingWithWatchdog(5000) {
             val testPumpStateStore = TestPumpStateStore()
+            val testBluetoothAddress = BluetoothAddress(byteArrayListOfInts(1, 2, 3, 4, 5, 6))
             val testComboIO = TestComboIO()
-            val appLayerIO = ApplicationLayerIO(testPumpStateStore, testComboIO)
+            val appLayerIO = ApplicationLayerIO(testPumpStateStore, testBluetoothAddress, testComboIO)
 
             val testDecryptedCPKey =
                 byteArrayListOfInts(0x5a, 0x25, 0x0b, 0x75, 0xa9, 0x02, 0x21, 0xfa, 0xab, 0xbd, 0x36, 0x4d, 0x5c, 0xb8, 0x37, 0xd7)
@@ -28,11 +29,15 @@ class ApplicationLayerIOTest {
                 byteArrayListOfInts(0x2a, 0xb0, 0xf2, 0x67, 0xc2, 0x7d, 0xcf, 0xaa, 0x32, 0xb2, 0x48, 0x94, 0xe1, 0x6d, 0xe9, 0x5c)
             val testAddress = 0x10.toByte()
 
-            testPumpStateStore.storePumpPairingData(PumpPairingData(
-                clientPumpCipher = Cipher(testDecryptedCPKey.toByteArray()),
-                pumpClientCipher = Cipher(testDecryptedPCKey.toByteArray()),
-                keyResponseAddress = testAddress
-            ))
+            testPumpStateStore.createPumpState(
+                testBluetoothAddress,
+                InvariantPumpData(
+                    clientPumpCipher = Cipher(testDecryptedCPKey.toByteArray()),
+                    pumpClientCipher = Cipher(testDecryptedPCKey.toByteArray()),
+                    keyResponseAddress = testAddress,
+                    pumpID = "testPump"
+                )
+            )
 
             val ctrlConnectPacket = ApplicationLayerIO.createCTRLConnectPacket()
             val ctrlConnectResponsePacket = ApplicationLayerIO.Packet(
@@ -85,8 +90,9 @@ class ApplicationLayerIOTest {
 
         runBlockingWithWatchdog(5000) {
             val testPumpStateStore = TestPumpStateStore()
+            val testBluetoothAddress = BluetoothAddress(byteArrayListOfInts(1, 2, 3, 4, 5, 6))
             val testComboIO = TestComboIO()
-            val appLayerIO = ApplicationLayerIO(testPumpStateStore, testComboIO)
+            val appLayerIO = ApplicationLayerIO(testPumpStateStore, testBluetoothAddress, testComboIO)
 
             val testDecryptedCPKey =
                 byteArrayListOfInts(0x5a, 0x25, 0x0b, 0x75, 0xa9, 0x02, 0x21, 0xfa, 0xab, 0xbd, 0x36, 0x4d, 0x5c, 0xb8, 0x37, 0xd7)
@@ -94,11 +100,15 @@ class ApplicationLayerIOTest {
                 byteArrayListOfInts(0x2a, 0xb0, 0xf2, 0x67, 0xc2, 0x7d, 0xcf, 0xaa, 0x32, 0xb2, 0x48, 0x94, 0xe1, 0x6d, 0xe9, 0x5c)
             val testAddress = 0x10.toByte()
 
-            testPumpStateStore.storePumpPairingData(PumpPairingData(
-                clientPumpCipher = Cipher(testDecryptedCPKey.toByteArray()),
-                pumpClientCipher = Cipher(testDecryptedPCKey.toByteArray()),
-                keyResponseAddress = testAddress
-            ))
+            testPumpStateStore.createPumpState(
+                testBluetoothAddress,
+                InvariantPumpData(
+                    clientPumpCipher = Cipher(testDecryptedCPKey.toByteArray()),
+                    pumpClientCipher = Cipher(testDecryptedPCKey.toByteArray()),
+                    keyResponseAddress = testAddress,
+                    pumpID = "testPump"
+                )
+            )
 
             appLayerIO.startIO(
                 backgroundIOScope = this,
@@ -151,8 +161,9 @@ class ApplicationLayerIOTest {
 
         runBlockingWithWatchdog(6000) {
             val testPumpStateStore = TestPumpStateStore()
+            val testBluetoothAddress = BluetoothAddress(byteArrayListOfInts(1, 2, 3, 4, 5, 6))
             val testComboIO = TestComboIO()
-            val appLayerIO = object : ApplicationLayerIO(testPumpStateStore, testComboIO) {
+            val appLayerIO = object : ApplicationLayerIO(testPumpStateStore, testBluetoothAddress, testComboIO) {
                 var keepAliveCounter = 0
                 override fun processIncomingPacket(appLayerPacket: Packet): Boolean {
                     return if (appLayerPacket.command == ApplicationLayerIO.Command.RT_KEEP_ALIVE) {
@@ -169,11 +180,15 @@ class ApplicationLayerIOTest {
                 byteArrayListOfInts(0x2a, 0xb0, 0xf2, 0x67, 0xc2, 0x7d, 0xcf, 0xaa, 0x32, 0xb2, 0x48, 0x94, 0xe1, 0x6d, 0xe9, 0x5c)
             val testAddress = 0x10.toByte()
 
-            testPumpStateStore.storePumpPairingData(PumpPairingData(
-                clientPumpCipher = Cipher(testDecryptedCPKey.toByteArray()),
-                pumpClientCipher = Cipher(testDecryptedPCKey.toByteArray()),
-                keyResponseAddress = testAddress
-            ))
+            testPumpStateStore.createPumpState(
+                testBluetoothAddress,
+                InvariantPumpData(
+                    clientPumpCipher = Cipher(testDecryptedCPKey.toByteArray()),
+                    pumpClientCipher = Cipher(testDecryptedPCKey.toByteArray()),
+                    keyResponseAddress = testAddress,
+                    pumpID = "testPump"
+                )
+            )
 
             val ctrlConnectResponsePacket = ApplicationLayerIO.Packet(
                 command = ApplicationLayerIO.Command.CTRL_CONNECT_RESPONSE

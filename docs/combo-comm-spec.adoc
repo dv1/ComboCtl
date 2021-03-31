@@ -289,12 +289,12 @@ that establish an application layer binding between client and Combo.
 3. The client sends `AL_CTRL_GET_SERVICE_VERSION`, the payload being
    0xB7 (that's the command mode service ID; more on that later).
 
-4. The Combo responds with `AL_CTRL_SERVICE_VERSION_RESPONSE`.
+4. The Combo responds with `AL_CTRL_GET_SERVICE_VERSION_RESPONSE`.
 
 5. The client sends `AL_CTRL_GET_SERVICE_VERSION` again, the payload being
    0x48 this time (that's the RT mode service ID; more on that later).
 
-6. The Combo responds with `AL_CTRL_SERVICE_VERSION_RESPONSE`.
+6. The Combo responds with `AL_CTRL_GET_SERVICE_VERSION_RESPONSE`.
 
 7. The client sends `AL_CTRL_BIND`.
 
@@ -1430,10 +1430,10 @@ The single payload byte is the ID of the service to select. See the
 "Services" section above for more. Only RT and command service IDs
 can be used here.
 
-The Combo responds to this with `AL_CTRL_SERVICE_VERSION_RESPONSE`.
+The Combo responds to this with `AL_CTRL_GET_SERVICE_VERSION_RESPONSE`.
 
 
-=== `AL_CTRL_SERVICE_VERSION_RESPONSE`:
+=== `AL_CTRL_GET_SERVICE_VERSION_RESPONSE`:
 
 * Sent by: Combo
 * Service ID: 0x00 (control)
@@ -1605,17 +1605,17 @@ It seems to be related to the payload byte from `AL_CTRL_DEACTIVATE_SERVICE`.#
 This deactivates any currently active service. To use a service
 again, `AL_CTRL_ACTIVATE_SERVICE` has to be sent first.
 
-#TODO: It may be possible that `AL_CTRL_ALL_SERVICES_DEACTIVATED`
+#TODO: It may be possible that `AL_CTRL_DEACTIVATE_ALL_SERVICES_RESPONSE`
 has to be waited for before sending anything to the Combo again
 after having sent `AL_CTRL_DEACTIVATE_ALL_SERVICES`.#
 
 The client must send this before sending `AL_CTRL_DISCONNECT`
 to ensure a correct shutdown.
 
-The Combo responds to this with `AL_CTRL_ALL_SERVICES_DEACTIVATED`.
+The Combo responds to this with `AL_CTRL_DEACTIVATE_ALL_SERVICES_RESPONSE`.
 
 
-=== `AL_CTRL_ALL_SERVICES_DEACTIVATED` :
+=== `AL_CTRL_DEACTIVATE_ALL_SERVICES_RESPONSE` :
 
 * Sent by: Combo
 * Service ID: 0x00 (control)
@@ -1737,7 +1737,7 @@ command that contains the current pump status. The client must wait
 for that response command to arrive before doing anything else.
 
 
-=== `AL_CMD_READ_DATE_TIME_RESPONSE` :
+=== `AL_CMD_READ_PUMP_STATUS_RESPONSE` :
 
 * Sent by: Combo
 * Service ID: 0xB7
@@ -1757,6 +1757,41 @@ were observed:
 
 * 0x48: Pump is stopped
 * 0xB7: Pump is running
+
+
+=== `AL_CMD_READ_ERROR_WARNING_STATUS` :
+
+* Sent by: Client
+* Service ID: 0xB7
+* Command ID: 0x9AA5
+* Reliable: yes
+* Payload length: 0
+
+This instructs the Combo to respond with an `AL_CMD_READ_ERROR_WARNING_STATUS_RESPONSE`
+command that contains the current error/warning status. The client must
+wait for that response command to arrive before doing anything else.
+
+
+=== `AL_CMD_READ_ERROR_WARNING_STATUS_RESPONSE` :
+
+* Sent by: Combo
+* Service ID: 0xB7
+* Command ID: 0xAAA5
+* Reliable: yes
+* Payload length: 4
+
+This is the Combo's response to the client's `AL_CMD_READ_ERROR_WARNING_STATUS` command.
+
+Like all the other reliable packets coming from the Combo, its
+first (and in this case, only) 2 bytes contain an error code.
+See the "Error codes in reliable application layer command payloads"
+section above for details.
+
+The next byte contains the error status, and the last byte contains
+the warning status. In both of these bytes, a value of 0xB7 means
+"occurred", and 0x48 means "not occurred". So, for example, if these
+two bytes are set to 0x48 0xB7, it means that no error occurred, but
+a warning did occur.
 
 
 === `AL_RT_BUTTON_STATUS` :
