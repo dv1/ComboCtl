@@ -37,9 +37,9 @@ class App : Application(), CoroutineScope {
         mainControl = MainControl(bluezInterface, pumpStateStore)
         mainControl.startEventHandling(
             scope,
-            { pumpAddress ->
+            { pumpAddress, pumpID ->
                 if (mainViewController != null)
-                    mainViewController!!.onNewPairedPump(pumpAddress)
+                    mainViewController!!.onNewPairedPump(pumpAddress, pumpID)
             },
             { pumpAddress ->
                 if (mainViewController != null)

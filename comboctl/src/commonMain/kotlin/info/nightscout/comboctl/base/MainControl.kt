@@ -16,7 +16,7 @@ class MainControl(
 ) {
     // Event handling related properties.
     private var eventHandlingStarted = false
-    private var onNewPairedPump: suspend (pumpAddress: BluetoothAddress) -> Unit = { }
+    private var onNewPairedPump: suspend (pumpAddress: BluetoothAddress, pumpID: String) -> Unit = { _, _ -> Unit }
     private var onPumpUnpaired: suspend (pumpAddress: BluetoothAddress) -> Unit = { }
     private var onEventHandlingException: (e: Exception) -> Boolean = { true }
     private val eventHandlingMutex = Mutex()
@@ -104,7 +104,7 @@ class MainControl(
      */
     fun startEventHandling(
         miscEventHandlingScope: CoroutineScope,
-        onNewPairedPump: suspend (pumpAddress: BluetoothAddress) -> Unit = { },
+        onNewPairedPump: suspend (pumpAddress: BluetoothAddress, pumpID: String) -> Unit = { _, _ -> Unit },
         onPumpUnpaired: suspend (pumpAddress: BluetoothAddress) -> Unit = { },
         onEventHandlingException: (e: Exception) -> Boolean = { true }
     ) {
@@ -182,7 +182,7 @@ class MainControl(
         // this cannot happen.
         bluetoothInterface.onDeviceUnpaired = { }
 
-        onNewPairedPump = { }
+        onNewPairedPump = { _, _ -> Unit }
         onPumpUnpaired = { }
         onEventHandlingException = { true }
 
@@ -196,6 +196,18 @@ class MainControl(
      * [PumpStateStore] assigned to this MainControl instance.
      */
     fun getPairedPumpAddresses() = pumpStateStore.getAvailablePumpStateAddresses()
+
+    /**
+     * Returns the ID of the paired pump with the given address.
+     *
+     * @return String with the pump ID.
+     * @throws PumpStateDoesNotExistException if no pump state associated with
+     *         the given address exists in the store.
+     * @throws PumpStateStoreAccessException if accessing the data fails
+     *         due to an error that occurred in the underlying implementation.
+     */
+    fun getPumpID(pumpAddress: BluetoothAddress) =
+        pumpStateStore.getInvariantPumpData(pumpAddress).pumpID
 
     /**
      * Starts Bluetooth discovery to look for unpaired pumps.
@@ -392,8 +404,13 @@ class MainControl(
                         logger(LogLevel.DEBUG) { "Stopping discovery after a newly paired pump was found" }
                         stopDiscovery()
                     }
+
                     performPairing(pumpAddress)
-                    onNewPairedPump(pumpAddress)
+
+                    val pumpID = pumpStateStore.getInvariantPumpData(pumpAddress).pumpID
+                    logger(LogLevel.DEBUG) { "Paired pump with address $pumpAddress ; pump ID = $pumpID" }
+
+                    onNewPairedPump(pumpAddress, pumpID)
                 }
             } catch (e: Exception) {
                 logger(LogLevel.ERROR) { "Caught exception while pairing to pump with address $pumpAddress: $e" }

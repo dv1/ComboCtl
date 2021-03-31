@@ -132,7 +132,7 @@ class MainViewController {
         pumpViewStage.show()
     }
 
-    fun onNewPairedPump(pumpAddress: BluetoothAddress) {
+    fun onNewPairedPump(pumpAddress: BluetoothAddress, pumpID: String) {
         resetPumpList()
     }
 
@@ -144,8 +144,9 @@ class MainViewController {
         require(pumpStateStore != null)
 
         pumpList.clear()
-        for (stateBluetoothAddress in pumpStateStore!!.getAvailablePumpStateAddresses())
+        for (stateBluetoothAddress in pumpStateStore!!.getAvailablePumpStateAddresses()) {
             pumpList.add(stateBluetoothAddress.toString())
+        }
     }
 
     private suspend fun askUserForPIN(pumpAddress: BluetoothAddress): PairingPIN {
