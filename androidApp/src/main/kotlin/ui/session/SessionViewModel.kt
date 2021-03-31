@@ -12,7 +12,6 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 class SessionViewModel : ViewModel() {
-
     private val _screenLiveData = MutableLiveData<Bitmap>()
     val screenLiveData: LiveData<Bitmap> = _screenLiveData
 
@@ -83,10 +82,7 @@ class SessionViewModel : ViewModel() {
                 _screenLiveData.postValue(bitmap)
             }
         }
-
-
     }
-
 
     enum class State {
         UNINITIALIZED, CONNECTING, CONNECTED, NO_PUMP_FOUND

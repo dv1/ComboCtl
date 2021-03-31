@@ -1,7 +1,6 @@
 package info.nightscout.comboctl.comboandroid.utils
 
 import android.graphics.Bitmap
-import android.graphics.drawable.BitmapDrawable
 import android.view.View
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.databinding.BindingAdapter
