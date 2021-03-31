@@ -88,9 +88,11 @@ const val MAX_VALID_AL_PAYLOAD_SIZE = 65535 - PACKET_HEADER_SIZE
  * though.
  *
  * @param pumpStateStore Pump state store to use.
+ * @param pumpAddress Bluetooth address of the pump. Used for
+ *        accessing the pump state store.
  * @param comboIO Combo IO object to use for sending/receiving data.
  */
-open class ApplicationLayerIO(pumpStateStore: PumpStateStore, private val comboIO: ComboIO) {
+open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: BluetoothAddress, private val comboIO: ComboIO) {
     // RT sequence number. Used in outgoing RT packets.
     private var currentRTSequence: Int = 0
 
@@ -238,7 +240,7 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, private val comboI
         // RT_DISPLAY only ever need to be handled inside the
         // processIncomingPacket callback (it makes no sense to pass those
         // packets to waiting receivePacket calls).
-        transportLayerIO = object : TransportLayerIO(pumpStateStore, comboIO) {
+        transportLayerIO = object : TransportLayerIO(pumpStateStore, pumpAddress, comboIO) {
             override fun applyAdditionalIncomingPacketProcessing(tpLayerPacket: TransportLayerIO.Packet) =
                 if (tpLayerPacket.command == TransportLayerIO.Command.DATA) {
                     val appLayerPacket = checkAndParseTransportLayerDataPacket(tpLayerPacket)

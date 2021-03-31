@@ -3,31 +3,46 @@ package info.nightscout.comboctl.base.testUtils
 import info.nightscout.comboctl.base.*
 
 class TestPumpStateStore : PumpStateStore {
-    var pairingData: PumpPairingData? = null
+    data class Entry(val invariantPumpData: InvariantPumpData, var currentTxNonce: Nonce)
+
+    var states = mutableMapOf<BluetoothAddress, Entry>()
         private set
 
-    private var valid = false
+    override fun createPumpState(pumpAddress: BluetoothAddress, invariantPumpData: InvariantPumpData) {
+        if (states.contains(pumpAddress))
+            throw PumpStateAlreadyExistsException(pumpAddress)
 
-    override fun retrievePumpPairingData(): PumpPairingData {
-        if (!valid)
-            throw IllegalStateException("Pump state store is not valid")
-        return pairingData!!
+        states[pumpAddress] = Entry(invariantPumpData, Nonce(List(NUM_NONCE_BYTES) { 0x00 }))
     }
 
-    override fun storePumpPairingData(pumpPairingData: PumpPairingData) {
-        pairingData = pumpPairingData
-        valid = true
+    override fun deletePumpState(pumpAddress: BluetoothAddress) =
+        if (states.contains(pumpAddress)) {
+            states.remove(pumpAddress)
+            true
+        } else {
+            false
+        }
+
+    override fun hasPumpState(pumpAddress: BluetoothAddress): Boolean =
+        states.contains(pumpAddress)
+
+    override fun getAvailablePumpStateAddresses(): Set<BluetoothAddress> = states.keys
+
+    override fun getInvariantPumpData(pumpAddress: BluetoothAddress): InvariantPumpData {
+        if (!states.contains(pumpAddress))
+            throw PumpStateDoesNotExistException(pumpAddress)
+        return states[pumpAddress]!!.invariantPumpData
     }
 
-    override fun isValid() = valid
-
-    override fun reset() {
-        pairingData = null
-        currentTxNonce = NullNonce
-        valid = false
+    override fun getCurrentTxNonce(pumpAddress: BluetoothAddress): Nonce {
+        if (!states.contains(pumpAddress))
+            throw PumpStateDoesNotExistException(pumpAddress)
+        return states[pumpAddress]!!.currentTxNonce
     }
 
-    override var pumpID = ""
-
-    override var currentTxNonce = NullNonce
+    override fun setCurrentTxNonce(pumpAddress: BluetoothAddress, currentTxNonce: Nonce) {
+        if (!states.contains(pumpAddress))
+            throw PumpStateDoesNotExistException(pumpAddress)
+        states[pumpAddress]!!.currentTxNonce = currentTxNonce
+    }
 }

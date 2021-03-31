@@ -65,6 +65,7 @@ class Pump(
         // and [List<Byte>.toComboFrame] for details).
         pumpIO = PumpIO(
             pumpStateStore,
+            bluetoothDevice.address,
             framedComboIO
         )
     }
@@ -99,7 +100,7 @@ class Pump(
      *
      * @return true if the pump is paired.
      */
-    fun isPaired() = pumpStateStore.isValid()
+    fun isPaired() = pumpStateStore.hasPumpState(address)
 
     /**
      * Performs a pairing procedure with the pump.
@@ -195,7 +196,7 @@ class Pump(
                 withContext(ioDispatcher()) {
                     bluetoothDevice.unpair()
                 }
-                pumpStateStore.reset()
+                pumpStateStore.deletePumpState(address)
             }
         }
     }
@@ -217,12 +218,12 @@ class Pump(
         // makes sense? And if so, what should the caller do?
         // Try to unpair again?
 
-        if (!pumpStateStore.isValid())
+        if (!pumpStateStore.hasPumpState(address))
             return
 
         disconnect()
 
-        pumpStateStore.reset()
+        pumpStateStore.deletePumpState(address)
 
         // Unpairing in a coroutine with an IO dispatcher
         // in case unpairing blocks.

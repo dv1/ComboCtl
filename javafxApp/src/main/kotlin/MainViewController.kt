@@ -26,7 +26,7 @@ import kotlinx.coroutines.withContext
 class MainViewController {
     private var mainControl: MainControl? = null
     private var mainScope: CoroutineScope? = null
-    private var storeProvider: JsonPumpStateStoreProvider? = null
+    private var pumpStateStore: JsonPumpStateStore? = null
     private var listView: ListView<String>? = null
 
     private val pumpList: ObservableList<String> = FXCollections.observableArrayList()
@@ -36,12 +36,12 @@ class MainViewController {
     fun setup(
         mainControl: MainControl,
         mainScope: CoroutineScope,
-        storeProvider: JsonPumpStateStoreProvider,
+        pumpStateStore: JsonPumpStateStore,
         listView: ListView<String>
     ) {
         this.mainControl = mainControl
         this.mainScope = mainScope
-        this.storeProvider = storeProvider
+        this.pumpStateStore = pumpStateStore
         this.listView = listView
 
         listView.items = pumpList
@@ -141,11 +141,11 @@ class MainViewController {
     }
 
     private fun resetPumpList() {
-        require(storeProvider != null)
+        require(pumpStateStore != null)
 
         pumpList.clear()
-        for (storeBluetoothAddress in storeProvider!!.getAvailableStoreAddresses())
-            pumpList.add(storeBluetoothAddress.toString())
+        for (stateBluetoothAddress in pumpStateStore!!.getAvailablePumpStateAddresses())
+            pumpList.add(stateBluetoothAddress.toString())
     }
 
     private suspend fun askUserForPIN(pumpAddress: BluetoothAddress): PairingPIN {

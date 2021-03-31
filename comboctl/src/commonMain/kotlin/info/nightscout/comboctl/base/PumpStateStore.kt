@@ -1,11 +1,11 @@
 package info.nightscout.comboctl.base
 
 /**
- * Pairing data for a pump.
+ * Pump related data that is set during pairing and not changed afterwards.
  *
- * This data is created by [PumpIO.performPairing]. Once
- * it is created, it does not change until the pump is unpaired,
- * at which point it is erased. This data is managed by the
+ * This data is created by [PumpIO.performPairing]. Once it is
+ * created, it does not change until the pump is unpaired, at
+ * which point it is erased. This data is managed by the
  * [PumpStateStore] class, which stores / retrieves it.
  *
  * @property clientPumpCipher This cipher is used for authenticating
@@ -20,34 +20,68 @@ package info.nightscout.comboctl.base
  *           address in the lower 4 bit of the byte. (In incoming
  *           packets - and KEY_RESPONSE is an incoming packet - these
  *           two are ordered the other way round.)
+ * @property pumpID The pump ID from the ID_RESPONSE packet.
+ *           This is useful for displaying the pump in a UI, since the
+ *           Bluetooth address itself may not be very clear to the user.
  */
-data class PumpPairingData(
+data class InvariantPumpData(
     val clientPumpCipher: Cipher,
     val pumpClientCipher: Cipher,
-    val keyResponseAddress: Byte
-)
+    val keyResponseAddress: Byte,
+    val pumpID: String
+) {
+    companion object {
+        /**
+         * Convenience function to create an instance with default "null" values.
+         *
+         * Useful for an initial state.
+         */
+        fun nullData() =
+            InvariantPumpData(
+                clientPumpCipher = Cipher(ByteArray(CIPHER_KEY_SIZE)),
+                pumpClientCipher = Cipher(ByteArray(CIPHER_KEY_SIZE)),
+                keyResponseAddress = 0x00.toByte(),
+                pumpID = ""
+            )
+    }
+}
 
 /**
- * Exception thrown when a request to get a store for a specific pump fails.
+ * Exception thrown when accessing the stored state of a specific pump fails.
  *
+ * @param pumpAddress Bluetooth address of the pump whose
+ *        state could not be accessed or created.
+ * @param message The detail message.
  * @param cause The exception that was thrown in the loop specifying
  *        want went wrong there.
  */
-class PumpStateStoreRequestException(cause: Exception) : ComboException(cause)
+class PumpStateStoreAccessException(val pumpAddress: BluetoothAddress, message: String?, cause: Throwable?) :
+    ComboException(message, cause) {
+    constructor(pumpAddress: BluetoothAddress, message: String) : this(pumpAddress, message, null)
+    constructor(pumpAddress: BluetoothAddress, cause: Throwable) : this(pumpAddress, null, cause)
+}
 
 /**
- * Exception thrown when accessing data from a store fails.
+ * Exception thrown when trying to create a new pump state even though one already exists.
  *
- * @param cause The exception that was thrown in the loop specifying
- *        want went wrong there.
+ * @param pumpAddress Bluetooth address of the pump.
  */
-class PumpStateStoreAccessException(cause: Exception) : ComboException(cause)
+class PumpStateAlreadyExistsException(val pumpAddress: BluetoothAddress) :
+    ComboException("Pump state for pump with address $pumpAddress already exists")
+
+/**
+ * Exception thrown when trying to access new pump state that does not exist.
+ *
+ * @param pumpAddress Bluetooth address of the pump.
+ */
+class PumpStateDoesNotExistException(val pumpAddress: BluetoothAddress) :
+    ComboException("Pump state for pump with address $pumpAddress does not exist")
 
 /**
  * State store interface for a specific pump.
  *
  * This interface provides access to a store that persistently
- * records the data of [PumpPairingData] instances along with
+ * records the data of [InvariantPumpData] instances along with
  * the current Tx nonce.
  *
  * As the name suggests, these states are recorded persistently,
@@ -57,150 +91,105 @@ class PumpStateStoreAccessException(cause: Exception) : ComboException(cause)
  * if the device running ComboCtl crashes or freezes while the data is
  * being written into the store, the data may not be written completely.)
  *
- * There is one [PumpStateStore] instance for each paired
- * pump. Each store contains the pairing data, which does not change
- * after the pump was paired, and the Tx nonce, which does change
- * after each packet sent to the Combo. These two parts of the store
- * are kept separate due to this difference in access, since this allows
- * for optimizations in implementations.
+ * There is one state for each paired pump. Each instance contains the
+ * [InvariantPumpData], which does not change after the pump was paired,
+ * and the Tx nonce, which does change after each packet that is sent to
+ * the Combo. These two parts of a pump's state are kept separate due to
+ * this difference in access, since this allows for optimizations in
+ * implementations.
  *
- * [PumpStateStore] instances also know an "initial state".
- * In this state, [isValid] returns false, and [retrievePumpPairingData]
- * throws an IllegalStateException. There is no actual data stored in
- * this state. Only when pump pairing data is set by calling
- * [storePumpPairingData] does the store become properly initialized.
- * [isValid] returns true then. This "initial state" should only ever
- * exist while pairing a pump (since at that point, no store for that
- * pump actually exists yet); the pairing process will fill the store
- * with valid [PumpPairingData]. Regular connections must always get
- * a valid store.
- *
- * Instances of [PumpStateStore] subclasses are requested
- * via [PumpStateStoreProvider.requestStore].
+ * Each state is associate with a pump via the pump's Bluetooth address.
  *
  * If a function or property access throws [PumpStateStoreAccessException],
- * then the store is to be considered invalid, any existing connections
- * to a pump that use this store must be terminated, and the pump must
+ * then the state is to be considered invalid, any existing connections
+ * to a pump associated with the state must be terminated, and the pump must
  * be unpaired. This is because such an exception indicates an error in
  * the underlying pump state store implementation that said implementation
- * could not recover from. And this also implies that the data inside the
- * store is in an undefined state - it cannot be relied upon anymore.
- * Internally, the implementation must delete any remaining store data when
- * such an error occurs, invalidating said store immediately. Callers must
- * then also unpair the pump at the Bluetooth level. The user must be told
- * about this error, and instructed that the pump must be paired again.
+ * could not recover from. And this also implies that this pump's state inside
+ * the store is in an undefined state - it cannot be relied upon anymore.
+ * Internally, the implementation must delete any remaining state data when
+ * such an error occurs. Callers must then also unpair the pump at the Bluetooth
+ * level. The user must be told about this error, and instructed that the pump
+ * must be paired again.
  */
 interface PumpStateStore {
     /**
-     * Retrieves pairing data from the store.
-     *
-     * @throws IllegalStateException if [isValid] returns false,
-     *         since then, there is no such data in the store.
-     * @throws PumpStateStoreAccessException if retrieving the data
-     *         fails due to an error that occurred in the underlying
-     *         implementation.
-     */
-    fun retrievePumpPairingData(): PumpPairingData
-
-    /**
-     * Persistently stores the given pairing data.
+     * Creates a new pump state and fills the state's invariant data.
      *
      * This is called during the pairing process. In regular
-     * connections, this is not used.
+     * connections, this is not used. It initializes a state for the pump
+     * with the given ID in the store. Before this call, trying to access
+     * the state with [getInvariantPumpData], [getCurrentTxNonce], or
+     * [setCurrentTxNonce] fails with an exception. The new state's nonce
+     * is set to a null nonce (= all of its bytes set to zero).
      *
-     * @throws PumpStateStoreAccessException if storing the data
-     *         fails due to an error that occurred in the underlying
-     *         implementation.
+     * The state is removed by calling [deletePumpState].
+     *
+     * Subclasses must store the invariant pump data immediately and persistently.
+     *
+     * @param pumpAddress Bluetooth address of the pump to create a state for.
+     * @param invariantPumpData Invariant pump data to use in the new state.
+     * @throws PumpStateAlreadyExistsException if there is already a state
+     *         with the given Bluetooth address.
+     * @throws PumpStateStoreAccessException if writing the new state fails
+     *         due to an error that occurred in the underlying implementation.
      */
-    fun storePumpPairingData(pumpPairingData: PumpPairingData)
+    fun createPumpState(pumpAddress: BluetoothAddress, invariantPumpData: InvariantPumpData)
 
     /**
-     * Returns true if the store is in a valid state.
+     * Deletes a pump state that is associated with the given address.
+     *
+     * If there is no such state, this returns false.
+     *
+     * NOTE: This does not throw.
+     *
+     * @param pumpAddress Bluetooth address of the pump whose corresponding
+     *        state in the store shall be deleted.
+     * @return true if there was such a state, false otherwise.
      */
-    fun isValid(): Boolean
+    fun deletePumpState(pumpAddress: BluetoothAddress): Boolean
 
     /**
-     * Resets the store back to its initial state.
-     *
-     * The [PumpPairingData] in the store is erased. The
-     * [currentTxNonce] returns a null nonce and [isValid]
-     * returns false after this call.
-     *
-     * Implementations are encouraged to completely wipe any data
-     * associated with this pump state store when this is called.
-     *
-     * @throws PumpStateStoreAccessException if resetting the data
-     *         fails due to an error that occurred in the underlying
-     *         implementation.
-     */
-    fun reset()
-
-    /*
-     * The pump ID from the ID_RESPONSE packet.
-     * This is useful for displaying the pump in a UI, since the
-     * Bluetooth address itself may not be very clear to the user.
-     * @throws IllegalStateException if an attempt is made to
-     *         read this property while [isValid] returns false.
-     * @throws PumpStateStoreAccessException if accessing the pump
-     *         ID fails due to an error that occurred in the
-     *         underlying implementation.
-     */
-    var pumpID: String
-
-    /**
-     * Current Tx nonce.
-     *
-     * This is set to an initial value during pairing, and
-     * incremented after every sent packet afterwards. Both
-     * of these steps are performed by [TransportLayerIO].
-     * Every time a new value is set, said value must be stored
-     * persistently and immediately by subclasses.
-     *
-     * @throws IllegalStateException if an attempt is made to
-     *         read this property while [isValid] returns false.
-     * @throws PumpStateStoreAccessException if accessing the pump
-     *         ID fails due to an error that occurred in the
-     *         underlying implementation.
-     */
-    var currentTxNonce: Nonce
-}
-
-/**
- * Backend for retrieving and querying [PumpStateStore] instances.
- *
- * This is used by [MainControl] to fetch a [PumpStateStore]
- * when creating a new [Pump] instance.
- */
-interface PumpStateStoreProvider {
-    /**
-     * Requests a [PumpStateStore] instance for a pump with the given address.
-     *
-     * If no such store exists, this returns an instance which is set to the
-     * initial state (see the [PumpStateStore] store for details).
-     * It throws only if a non-recoverable error happens while fetching the
-     * pump state store data. In such a case, implementations must wipe any
-     * stored data associated with [pumpAddress], and callers must unpair the
-     * pump at the Bluetooth level. This is because failure to retrieve the
-     * store data may be caused by data corruption, so even if a subsequent
-     * attempt to retrieve the store suceeds, the data may no longer be valid.
-     *
-     * pumpAddress Bluetooth address of the pump this call shall fetch a
-     *             [PumpStateStore] for.
-     * @return [PumpStateStore] instance for the given address.
-     * @throws PumpStateStoreRequestException in case of an error while
-     *         retrieving the store.
-     */
-    fun requestStore(pumpAddress: BluetoothAddress): PumpStateStore
-
-    /**
-     * Checks if there is a valid store associated with the given address.
+     * Checks if there is a valid state associated with the given address.
      *
      * @return true if there is one, false otherwise.
      */
-    fun hasValidStore(pumpAddress: BluetoothAddress): Boolean
+    fun hasPumpState(pumpAddress: BluetoothAddress): Boolean
 
     /**
-     * Returns a set of Bluetooth addresses of the stores in this provider.
+     * Returns a set of Bluetooth addresses of the states in this store.
      */
-    fun getAvailableStoreAddresses(): Set<BluetoothAddress>
+    fun getAvailablePumpStateAddresses(): Set<BluetoothAddress>
+
+    /**
+     * Returns the [InvariantPumpData] from the state associated with the given address.
+     *
+     * @throws PumpStateDoesNotExistException if no pump state associated with
+     *         the given address exists in the store.
+     * @throws PumpStateStoreAccessException if accessing the data fails
+     *         due to an error that occurred in the underlying implementation.
+     */
+    fun getInvariantPumpData(pumpAddress: BluetoothAddress): InvariantPumpData
+
+    /**
+     * Returns the current Tx [Nonce] from the state associated with the given address.
+     *
+     * @throws PumpStateDoesNotExistException if no pump state associated with
+     *         the given address exists in the store.
+     * @throws PumpStateStoreAccessException if accessing the nonce fails
+     *         due to an error that occurred in the underlying implementation.
+     */
+    fun getCurrentTxNonce(pumpAddress: BluetoothAddress): Nonce
+
+    /**
+     * Sets the current Tx [Nonce] in the state associated with the given address.
+     *
+     * Subclasses must store the new Tx nonce immediately and persistently.
+     *
+     * @throws PumpStateDoesNotExistException if no pump state associated with
+     *         the given address exists in the store.
+     * @throws PumpStateStoreAccessException if accessing the nonce fails
+     *         due to an error that occurred in the underlying implementation.
+     */
+    fun setCurrentTxNonce(pumpAddress: BluetoothAddress, currentTxNonce: Nonce)
 }

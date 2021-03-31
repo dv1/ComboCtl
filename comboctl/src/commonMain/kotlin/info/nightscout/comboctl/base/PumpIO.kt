@@ -62,9 +62,11 @@ private val logger = Logger.get("PumpIO")
  * packets with the Combo.
  *
  * @param pumpStateStore Pump state store to use.
+ * @param pumpAddress Bluetooth address of the pump. Used for
+ *        accessing the pump state store.
  * @param comboIO Combo IO object to use for sending/receiving data.
  */
-class PumpIO(private val pumpStateStore: PumpStateStore, private val comboIO: ComboIO) {
+class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress: BluetoothAddress, private val comboIO: ComboIO) {
     private val applicationLayerIO: ApplicationLayerIO
 
     // The coroutine scope passed to connect() as an argument.
@@ -158,7 +160,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val comboIO: Co
     init {
         // Set up ApplicationLayerIO subclass that processes incoming
         // packets in order to handle notifications from the Combo.
-        applicationLayerIO = object : ApplicationLayerIO(pumpStateStore, comboIO) {
+        applicationLayerIO = object : ApplicationLayerIO(pumpStateStore, pumpAddress, comboIO) {
             override fun processIncomingPacket(appLayerPacket: Packet): Boolean {
                 // RT_DISPLAY packets regularly come from the Combo (when running in RT mode),
                 // and contains new display frame updates.
@@ -434,7 +436,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val comboIO: Co
     ): Job {
         // Prerequisites.
 
-        if (!pumpStateStore.isValid()) {
+        if (!pumpStateStore.hasPumpState(pumpAddress)) {
             throw IllegalStateException(
                 "Attempted to connect without a valid persistent state; pairing may not have been done"
             )

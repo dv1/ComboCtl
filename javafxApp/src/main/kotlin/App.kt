@@ -27,17 +27,14 @@ fun main() {
 // avoiding multithreading issues.
 class App : Application(), CoroutineScope {
     private val bluezInterface: BlueZInterface
-    private val storeProvider = JsonPumpStateStoreProvider()
+    private val pumpStateStore = JsonPumpStateStore()
     private val mainControl: MainControl
     private var mainViewController: MainViewController? = null
 
     init {
         val scope = this
         bluezInterface = BlueZInterface()
-        mainControl = MainControl(
-            bluezInterface,
-            storeProvider
-        )
+        mainControl = MainControl(bluezInterface, pumpStateStore)
         mainControl.startEventHandling(
             scope,
             { pumpAddress ->
@@ -78,7 +75,7 @@ class App : Application(), CoroutineScope {
         mainViewController!!.setup(
             mainControl,
             this,
-            storeProvider,
+            pumpStateStore,
             scene.lookup("#pairedPumpListView") as ListView<String>
         )
 

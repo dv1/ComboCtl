@@ -4,13 +4,14 @@ import com.beust.klaxon.JsonObject
 import com.beust.klaxon.Klaxon
 import com.beust.klaxon.json
 import info.nightscout.comboctl.base.BluetoothAddress
+import info.nightscout.comboctl.base.InvariantPumpData
 import info.nightscout.comboctl.base.LogLevel
 import info.nightscout.comboctl.base.Logger
+import info.nightscout.comboctl.base.NUM_NONCE_BYTES
 import info.nightscout.comboctl.base.Nonce
-import info.nightscout.comboctl.base.NullNonce
-import info.nightscout.comboctl.base.PumpPairingData
+import info.nightscout.comboctl.base.PumpStateAlreadyExistsException
+import info.nightscout.comboctl.base.PumpStateDoesNotExistException
 import info.nightscout.comboctl.base.PumpStateStore
-import info.nightscout.comboctl.base.PumpStateStoreProvider
 import info.nightscout.comboctl.base.toBluetoothAddress
 import info.nightscout.comboctl.base.toCipher
 import info.nightscout.comboctl.base.toNonce
@@ -20,60 +21,20 @@ import java.io.IOException
 
 private val logger = Logger.get("JsonPumpStateStore")
 
-class JsonPumpStateStore(
-    val pumpAddress: BluetoothAddress,
-    private var storeProvider: JsonPumpStateStoreProvider,
-    private var pairingData: PumpPairingData? = null,
-    pumpID: String = "",
-    txNonce: Nonce = NullNonce
-) : PumpStateStore {
-    override fun retrievePumpPairingData(): PumpPairingData {
-        if (!isValid())
-            throw IllegalStateException("Pump state store is not valid")
-        return pairingData!!
-    }
+class JsonPumpStateStore : PumpStateStore {
+    data class Entry(val invariantPumpData: InvariantPumpData, var currentTxNonce: Nonce)
 
-    override fun storePumpPairingData(pumpPairingData: PumpPairingData) {
-        pairingData = pumpPairingData
-        storeProvider.write()
-    }
-
-    override fun isValid() = (pairingData != null)
-
-    override fun reset() {
-        pairingData = null
-        txNonceValue = NullNonce
-        storeProvider.erase(this)
-    }
-
-    override var currentTxNonce
-        get() = txNonceValue
-        set(value) {
-            txNonceValue = value
-            storeProvider.write()
-        }
-
-    private var txNonceValue = txNonce
-
-    override var pumpID = pumpID
-        set(value) {
-            field = value
-            storeProvider.write()
-        }
-}
-
-class JsonPumpStateStoreProvider : PumpStateStoreProvider {
-    private val jsonFilename = "jsonPumpStores.json"
-    private val storeMap = mutableMapOf<BluetoothAddress, JsonPumpStateStore>()
+    private val jsonFilename = "jsonPumpStateStore.json"
+    private val states = mutableMapOf<BluetoothAddress, Entry>()
 
     init {
         try {
             val file = File(jsonFilename)
-            val jsonStores = Klaxon().parseJsonObject(FileReader(file))
-            logger(LogLevel.DEBUG) { "Reading JSON data from pump stores file, with ${jsonStores.size} entries" }
+            val jsonStates = Klaxon().parseJsonObject(FileReader(file))
+            logger(LogLevel.DEBUG) { "Reading JSON data from pump state store file, with ${jsonStates.size} entries" }
 
-            for (key in jsonStores.keys) {
-                val jsonObj = jsonStores.obj(key)
+            for (key in jsonStates.keys) {
+                val jsonObj = jsonStates.obj(key)
                 if (jsonObj == null) {
                     logger(LogLevel.WARN) { "Did not find JSON object with key \"$key\"" }
                     continue
@@ -81,67 +42,82 @@ class JsonPumpStateStoreProvider : PumpStateStoreProvider {
 
                 val btAddress = key.toBluetoothAddress()
 
-                val store = JsonPumpStateStore(
-                    btAddress,
-                    this,
-                    PumpPairingData(
+                val entry = Entry(
+                    InvariantPumpData(
                         clientPumpCipher = jsonObj.string("clientPumpCipher")!!.toCipher(),
                         pumpClientCipher = jsonObj.string("pumpClientCipher")!!.toCipher(),
-                        keyResponseAddress = jsonObj.int("keyResponseAddress")!!.toByte()
+                        keyResponseAddress = jsonObj.int("keyResponseAddress")!!.toByte(),
+                        pumpID = jsonObj.string("pumpID")!!
                     ),
-                    jsonObj.string("pumpID")!!,
                     jsonObj.string("currentTxNonce")!!.toNonce()
                 )
 
-                storeMap[btAddress] = store
+                states[btAddress] = entry
             }
         } catch (e: IOException) {
-            logger(LogLevel.ERROR) { "Could not read data from store collection file" }
+            logger(LogLevel.ERROR) { "Could not read data from pump state store file" }
         }
     }
 
-    override fun getAvailableStoreAddresses() = storeMap.keys
+    override fun createPumpState(pumpAddress: BluetoothAddress, invariantPumpData: InvariantPumpData) {
+        if (states.contains(pumpAddress))
+            throw PumpStateAlreadyExistsException(pumpAddress)
 
-    override fun requestStore(pumpAddress: BluetoothAddress): PumpStateStore {
-        var store = storeMap[pumpAddress]
+        states[pumpAddress] = Entry(invariantPumpData, Nonce(List(NUM_NONCE_BYTES) { 0x00 }))
 
-        if (store == null) {
-            store = JsonPumpStateStore(pumpAddress, this)
-            storeMap[pumpAddress] = store
-        }
-
-        return store
+        write()
     }
 
-    override fun hasValidStore(pumpAddress: BluetoothAddress): Boolean = storeMap.containsKey(pumpAddress)
+    override fun deletePumpState(pumpAddress: BluetoothAddress) =
+        if (states.contains(pumpAddress)) {
+            states.remove(pumpAddress)
+            write()
+            true
+        } else {
+            false
+        }
+
+    override fun hasPumpState(pumpAddress: BluetoothAddress): Boolean =
+        states.contains(pumpAddress)
+
+    override fun getAvailablePumpStateAddresses(): Set<BluetoothAddress> = states.keys
+
+    override fun getInvariantPumpData(pumpAddress: BluetoothAddress): InvariantPumpData {
+        if (!states.contains(pumpAddress))
+            throw PumpStateDoesNotExistException(pumpAddress)
+        return states[pumpAddress]!!.invariantPumpData
+    }
+
+    override fun getCurrentTxNonce(pumpAddress: BluetoothAddress): Nonce {
+        if (!states.contains(pumpAddress))
+            throw PumpStateDoesNotExistException(pumpAddress)
+        return states[pumpAddress]!!.currentTxNonce
+    }
+
+    override fun setCurrentTxNonce(pumpAddress: BluetoothAddress, currentTxNonce: Nonce) {
+        if (!states.contains(pumpAddress))
+            throw PumpStateDoesNotExistException(pumpAddress)
+        states[pumpAddress]!!.currentTxNonce = currentTxNonce
+        write()
+    }
 
     fun write() {
         val jsonStores = JsonObject()
 
-        for (pumpAddress in storeMap.keys) {
-            val store = storeMap[pumpAddress]!!
-
-            if (!store.isValid())
-                continue
-
-            val pumpPairingData = store.retrievePumpPairingData()
+        for (pumpAddress in states.keys) {
+            val state = states[pumpAddress]!!
 
             val jsonObj = json { obj(
-                "clientPumpCipher" to pumpPairingData.clientPumpCipher.toString(),
-                "pumpClientCipher" to pumpPairingData.pumpClientCipher.toString(),
-                "keyResponseAddress" to pumpPairingData.keyResponseAddress.toInt(),
-                "pumpID" to store.pumpID,
-                "currentTxNonce" to store.currentTxNonce.toString()
+                "clientPumpCipher" to state.invariantPumpData.clientPumpCipher.toString(),
+                "pumpClientCipher" to state.invariantPumpData.pumpClientCipher.toString(),
+                "keyResponseAddress" to state.invariantPumpData.keyResponseAddress.toInt(),
+                "pumpID" to state.invariantPumpData.pumpID,
+                "currentTxNonce" to state.currentTxNonce.toString()
             ) }
 
             jsonStores[pumpAddress.toString()] = jsonObj
         }
 
         File(jsonFilename).writeText(jsonStores.toJsonString(true))
-    }
-
-    fun erase(store: JsonPumpStateStore) {
-        storeMap.remove(store.pumpAddress)
-        write()
     }
 }

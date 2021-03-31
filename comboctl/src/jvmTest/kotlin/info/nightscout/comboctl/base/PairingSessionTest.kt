@@ -357,7 +357,8 @@ class PairingSessionTest {
 
         val testIO = PairingTestComboIO(expectedTestSequence)
         val testPumpStateStore = TestPumpStateStore()
-        val pumpIO = PumpIO(testPumpStateStore, testIO)
+        val testBluetoothAddress = BluetoothAddress(byteArrayListOfInts(1, 2, 3, 4, 5, 6))
+        val pumpIO = PumpIO(testPumpStateStore, testBluetoothAddress, testIO)
 
         runBlockingWithWatchdog(6001) {
             pumpIO.performPairing(
