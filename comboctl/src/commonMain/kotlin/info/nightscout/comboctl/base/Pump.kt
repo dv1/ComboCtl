@@ -420,6 +420,26 @@ class Pump(
     }
 
     /**
+     * Reads the current error/warning status of the pump in COMMAND (CMD) mode.
+     *
+     * @return The current status.
+     * @throws IllegalStateException if the pump is not in the comand
+     *         mode, the worker has failed (see [connect]), or the
+     *         pump is not connected.
+     * @throws ApplicationLayerIO.InvalidPayloadException if the size
+     *         of a packet's payload does not match the expected size.
+     * @throws ComboIOException if IO with the pump fails.
+     */
+    suspend fun readCMDErrorWarningStatus(): ApplicationLayerIO.CMDErrorWarningStatus {
+        if (!pumpIO.isConnected())
+            throw IllegalStateException("Not connected to Combo")
+
+        return runChecked {
+            pumpIO.readCMDErrorWarningStatus()
+        }
+    }
+
+    /**
      * Requests a CMD history delta.
      *
      * In the command mode, the Combo can provide a "history delta".

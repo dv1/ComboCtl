@@ -157,6 +157,8 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
         CMD_READ_DATE_TIME_RESPONSE(ServiceID.COMMAND_MODE, 0xAAA6, true),
         CMD_READ_PUMP_STATUS(ServiceID.COMMAND_MODE, 0x9A9A, true),
         CMD_READ_PUMP_STATUS_RESPONSE(ServiceID.COMMAND_MODE, 0xAA9A, true),
+        CMD_READ_ERROR_WARNING_STATUS(ServiceID.COMMAND_MODE, 0x9AA5, true),
+        CMD_READ_ERROR_WARNING_STATUS_RESPONSE(ServiceID.COMMAND_MODE, 0xAAA5, true),
         CMD_READ_HISTORY_BLOCK(ServiceID.COMMAND_MODE, 0x9996, true),
         CMD_READ_HISTORY_BLOCK_RESPONSE(ServiceID.COMMAND_MODE, 0xA996, true),
         CMD_CONFIRM_HISTORY_BLOCK(ServiceID.COMMAND_MODE, 0x9999, true),
@@ -556,6 +558,8 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
 
         override fun toString() = str
     }
+
+    data class CMDErrorWarningStatus(val errorOccurred: Boolean, val warningOccurred: Boolean)
 
     /**
      * Command mode history event details.
@@ -976,6 +980,19 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
         )
 
         /**
+         * Creates a CMD_READ_ERROR_WARNING_STATUS packet.
+         *
+         * The command mode must have been activated before this can be sent to the Combo.
+         *
+         * See the combo-comm-spec.adoc file for details about this packet.
+         *
+         * @return The produced packet.
+         */
+        fun createCMDReadErrorWarningStatusPacket() = Packet(
+            command = Command.CMD_READ_ERROR_WARNING_STATUS
+        )
+
+        /**
          * Creates a CMD_READ_HISTORY_BLOCK packet.
          *
          * The command mode must have been activated before this can be sent to the Combo.
@@ -1153,6 +1170,36 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
             logger(LogLevel.VERBOSE) { "Pump status information: $status" }
 
             return status
+        }
+
+        /**
+         * Parses a CMD_READ_ERROR_WARNING_STATUS_RESPONSE packet and extracts its payload.
+         *
+         * @param packet Application layer CMD_READ_ERROR_WARNING_STATUS_RESPONSE packet to parse.
+         * @return The packet's parsed payload (the error/warning status).
+         * @throws InvalidPayloadException if the payload size is not the expected size.
+         */
+        fun parseCMDReadErrorWarningStatusResponsePacket(packet: Packet): CMDErrorWarningStatus {
+            logger(LogLevel.VERBOSE) { "Parsing CMD_READ_ERROR_WARNING_STATUS_RESPONSE packet" }
+
+            // Payload size sanity check.
+            if (packet.payload.size != 4) {
+                throw InvalidPayloadException(
+                    packet,
+                    "Incorrect payload size in ${packet.command} packet; expected exactly 4 bytes, got ${packet.payload.size}"
+                )
+            }
+
+            val payload = packet.payload
+
+            val errorWarningStatus = CMDErrorWarningStatus(
+                errorOccurred = (payload[2].toPosInt() == 0xB7),
+                warningOccurred = (payload[3].toPosInt() == 0xB7)
+            )
+
+            logger(LogLevel.VERBOSE) { "Error/warning status: $errorWarningStatus" }
+
+            return errorWarningStatus
         }
 
         /**

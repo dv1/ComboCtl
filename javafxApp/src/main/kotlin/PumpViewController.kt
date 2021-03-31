@@ -132,6 +132,9 @@ class PumpViewController {
             val pumpStatus = pump!!.readCMDPumpStatus()
             println("Got CMD pump status: $pumpStatus")
 
+            val errorWarningStatus = pump!!.readCMDErrorWarningStatus()
+            println("Got CMD error/warning status: $errorWarningStatus")
+
             val dateTime = pump!!.readCMDDateTime()
             println("Got CMD datetime: $dateTime")
 

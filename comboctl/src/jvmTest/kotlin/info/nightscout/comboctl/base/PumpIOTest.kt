@@ -334,6 +334,60 @@ class PumpIOTest {
     }
 
     @Test
+    fun cmdCMDReadErrorWarningStatus() {
+        runBlockingWithWatchdog(6000) {
+            // Check that a simulated CMD error/warning status retrieval is performed successfully.
+            // Feed in raw data bytes into the test IO. These raw bytes are packets that contain
+            // error/warning status data. Check that these packets are correctly parsed and that
+            // the retrieved status is correct.
+
+            val testStates = TestStates(setupInvariantPumpData = false)
+            val mainScope = this
+            val pumpIO = testStates.pumpIO
+            val testIO = testStates.testIO
+
+            // Need to set up custom keys since the test data was
+            // created with those instead of the default test keys.
+            val invariantPumpData = InvariantPumpData(
+                keyResponseAddress = 0x10,
+                clientPumpCipher = Cipher(byteArrayOfInts(
+                    0x12, 0xe2, 0x4a, 0xb6, 0x67, 0x50, 0xe5, 0xb4,
+                    0xc4, 0xea, 0x10, 0xa7, 0x55, 0x11, 0x61, 0xd4)),
+                pumpClientCipher = Cipher(byteArrayOfInts(
+                    0x8e, 0x0d, 0x35, 0xe3, 0x7c, 0xd7, 0x20, 0x55,
+                    0x57, 0x2b, 0x05, 0x50, 0x34, 0x43, 0xc9, 0x8d)),
+                pumpID = "testPump"
+            )
+            testStates.testPumpStateStore.createPumpState(testStates.testBluetoothAddress, invariantPumpData)
+
+            testStates.feedInitialPackets()
+
+            pumpIO.connect(
+                backgroundIOScope = mainScope,
+                onBackgroundIOException = { e -> fail("Exception thrown in background worker: $e") },
+                initialMode = PumpIO.Mode.COMMAND,
+                runKeepAliveLoop = false
+            ).join()
+
+            val errorWarningStatusData = byteArrayListOfInts(
+                0x10, 0x23, 0x08, 0x00, 0x01, 0x39, 0x01, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0xb7, 0xa5, 0xaa,
+                0x00, 0x00, 0x48, 0xb7, 0xa0, 0xea, 0x70, 0xc3, 0xd4, 0x42, 0x61, 0xd7
+            )
+            testIO.feedIncomingData(errorWarningStatusData)
+
+            val errorWarningStatus = pumpIO.readCMDErrorWarningStatus()
+
+            pumpIO.disconnect()
+
+            assertEquals(
+                ApplicationLayerIO.CMDErrorWarningStatus(errorOccurred = false, warningOccurred = true),
+                errorWarningStatus
+            )
+        }
+    }
+
+    @Test
     fun checkCMDHistoryDeltaRetrieval() {
         runBlockingWithWatchdog(6000) {
             // Check that a simulated CMD history delta retrieval is performed successfully.
