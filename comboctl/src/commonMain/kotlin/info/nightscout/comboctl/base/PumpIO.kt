@@ -325,14 +325,14 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
                 logger(LogLevel.DEBUG) { "Requesting command mode service version" }
                 sendPacketWithResponse(
                     ApplicationLayerIO.createCTRLGetServiceVersionPacket(ApplicationLayerIO.ServiceID.COMMAND_MODE),
-                    ApplicationLayerIO.Command.CTRL_SERVICE_VERSION_RESPONSE
+                    ApplicationLayerIO.Command.CTRL_GET_SERVICE_VERSION_RESPONSE
                 )
                 // NOTE: These two steps may not be necessary. See the
                 // "Application layer pairing" section in the spec.
                 /*
                 sendPacketWithResponse(
                     ApplicationLayerIO.ApplicationLayerIO.createCTRLGetServiceVersionPacket(ApplicationLayerIO.ServiceID.RT_MODE),
-                    ApplicationLayerIO.Command.CTRL_SERVICE_VERSION_RESPONSE
+                    ApplicationLayerIO.Command.CTRL_GET_SERVICE_VERSION_RESPONSE
                 )
                 */
 

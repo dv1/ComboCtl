@@ -139,7 +139,7 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
         CTRL_CONNECT(ServiceID.CONTROL, 0x9055, true),
         CTRL_CONNECT_RESPONSE(ServiceID.CONTROL, 0xA055, true),
         CTRL_GET_SERVICE_VERSION(ServiceID.CONTROL, 0x9065, true),
-        CTRL_SERVICE_VERSION_RESPONSE(ServiceID.CONTROL, 0xA065, true),
+        CTRL_GET_SERVICE_VERSION_RESPONSE(ServiceID.CONTROL, 0xA065, true),
         CTRL_BIND(ServiceID.CONTROL, 0x9095, true),
         CTRL_BIND_RESPONSE(ServiceID.CONTROL, 0xA095, true),
         CTRL_DISCONNECT(ServiceID.CONTROL, 0x005A, true),
@@ -148,7 +148,7 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
         CTRL_DEACTIVATE_SERVICE(ServiceID.CONTROL, 0x9069, true),
         CTRL_DEACTIVATE_SERVICE_RESPONSE(ServiceID.CONTROL, 0xA069, true),
         CTRL_DEACTIVATE_ALL_SERVICES(ServiceID.CONTROL, 0x906A, true),
-        CTRL_ALL_SERVICES_DEACTIVATED(ServiceID.CONTROL, 0xA06A, true),
+        CTRL_DEACTIVATE_ALL_SERVICES_RESPONSE(ServiceID.CONTROL, 0xA06A, true),
         CTRL_SERVICE_ERROR(ServiceID.CONTROL, 0x00AA, true),
 
         CMD_PING(ServiceID.COMMAND_MODE, 0x9AAA, true),
