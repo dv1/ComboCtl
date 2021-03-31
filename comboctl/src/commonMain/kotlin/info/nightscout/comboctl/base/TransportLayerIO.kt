@@ -808,6 +808,9 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val pumpAddr
      * @throws IllegalStateException if the background IO worker is not
      *         running or if it has failed.
      * @throws ComboIOException if sending fails due to an underlying IO error.
+     * @throws PumpStateStoreAccessException if accessing the current Tx
+     *         nonce in the pump state store failed while preparing the packet
+     *         for sending.
      */
     suspend fun sendPacket(packetInfo: OutgoingPacketInfo) {
         if (backgroundIOWorkerJob == null) {

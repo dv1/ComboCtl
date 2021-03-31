@@ -1814,6 +1814,9 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
      * @throws IllegalStateException if the background IO worker is not
      *         running or if it has failed.
      * @throws ComboIOException if sending fails due to an underlying IO error.
+     * @throws PumpStateStoreAccessException if accessing the current Tx
+     *         nonce in the pump state store failed while preparing the packet
+     *         for sending.
      * @throws InvalidPayloadException if appLayerPacket is an RT packet
      *         and its payload is not big enough to contain the RT sequence
      *         number, indicating that this is an invalid / malformed packet.
@@ -1885,6 +1888,9 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
      * @throws IllegalStateException if the background IO worker is not
      *         running or if it has failed.
      * @throws ComboIOException if sending fails due to an underlying IO error.
+     * @throws PumpStateStoreAccessException if accessing the current Tx
+     *         nonce in the pump state store failed while preparing the packet
+     *         for sending.
      * @throws InvalidPayloadException if appLayerPacket is an RT packet
      *         and its payload is not big enough to contain the RT sequence
      *         number, indicating that this is an invalid / malformed packet.
@@ -1926,6 +1932,9 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
      * @throws IllegalStateException if the background IO worker is not
      *         running or if it has failed.
      * @throws ComboIOException if sending fails due to an underlying IO error.
+     * @throws PumpStateStoreAccessException if accessing the current Tx
+     *         nonce in the pump state store failed while preparing the packet
+     *         for sending.
      * @throws TransportLayerIO.BackgroundIOException if an exception is thrown
      *         inside the worker while this call is waiting for a response.
      * @throws IncorrectPacketException if expectedCommand is non-null and
