@@ -1,9 +1,11 @@
 package info.nightscout.comboctl.comboandroid.utils
 
 import android.graphics.Bitmap
+import android.graphics.drawable.BitmapDrawable
 import android.view.View
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.databinding.BindingAdapter
+import info.nightscout.comboctl.comboandroid.App
 
 object BindingAdapters {
     @BindingAdapter("visibility")
@@ -18,6 +20,8 @@ object BindingAdapters {
     @BindingAdapter("comboDrawable")
     @JvmStatic
     fun AppCompatImageView.bindComboDrawable(bitmap: Bitmap?) {
-        this.setImageBitmap(bitmap)
+        val bitmapDrawable = BitmapDrawable(App.appContext.resources, bitmap)
+        bitmapDrawable.paint.isFilterBitmap = false
+        this.setImageDrawable(bitmapDrawable)
     }
 }
