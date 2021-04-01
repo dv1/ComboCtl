@@ -1,6 +1,7 @@
 package devtools.common
 
-import info.nightscout.comboctl.base.*
+import info.nightscout.comboctl.base.LogLevel
+import info.nightscout.comboctl.base.Logger
 import java.io.BufferedInputStream
 import java.io.IOException
 

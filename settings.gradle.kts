@@ -4,7 +4,7 @@ include(":devtools:dump_packets")
 include(":devtools:bluez_cli")
 include(":androidApp")
 
-val env = System.getProperties() ?: mapOf<String,String>()
+val env = System.getProperties() ?: mapOf<String, String>()
 
 if (env["idea.platform.prefix"] != "AndroidStudio") {
     logger.lifecycle("Not building with Android Studio; enabling javafxApp")
