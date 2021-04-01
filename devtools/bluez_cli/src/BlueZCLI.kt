@@ -1,10 +1,24 @@
 package devtools
 
-import devtools.common.*
-import info.nightscout.comboctl.base.*
+import devtools.common.CommandEntry
+import devtools.common.CommandLineException
+import devtools.common.CommandLineInterface
+import info.nightscout.comboctl.base.BluetoothAddress
+import info.nightscout.comboctl.base.BluetoothDevice
+import info.nightscout.comboctl.base.BluetoothException
+import info.nightscout.comboctl.base.ComboIOException
+import info.nightscout.comboctl.base.Constants
+import info.nightscout.comboctl.base.toBluetoothAddress
 import info.nightscout.comboctl.linuxBlueZ.BlueZInterface
 import kotlin.math.max
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.withContext
 
 // Tool for manually operating the BlueZ interface.
 //

@@ -1,6 +1,8 @@
 package info.nightscout.comboctl.base.testUtils
 
-import info.nightscout.comboctl.base.*
+import info.nightscout.comboctl.base.ApplicationLayerIO
+import info.nightscout.comboctl.base.TransportLayerIO
+import info.nightscout.comboctl.base.toTransportLayerPacket
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 

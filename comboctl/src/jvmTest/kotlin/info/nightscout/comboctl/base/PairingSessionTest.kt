@@ -1,9 +1,10 @@
 package info.nightscout.comboctl.base
 
-import info.nightscout.comboctl.base.testUtils.*
+import info.nightscout.comboctl.base.testUtils.TestPumpStateStore
+import info.nightscout.comboctl.base.testUtils.runBlockingWithWatchdog
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlinx.coroutines.*
+import kotlinx.coroutines.delay
 
 class PairingSessionTest {
     enum class PacketDirection {
