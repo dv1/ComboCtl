@@ -3,12 +3,18 @@ package info.nightscout.comboctl.android
 import android.bluetooth.BluetoothAdapter as SystemBluetoothAdapter
 import android.bluetooth.BluetoothDevice as SystemBluetoothDevice
 import android.bluetooth.BluetoothSocket as SystemBluetoothSocket
-import info.nightscout.comboctl.base.*
+import info.nightscout.comboctl.base.BluetoothAddress
+import info.nightscout.comboctl.base.BluetoothDevice
+import info.nightscout.comboctl.base.BluetoothException
+import info.nightscout.comboctl.base.BluetoothInterface
+import info.nightscout.comboctl.base.ComboIOException
+import info.nightscout.comboctl.base.LogLevel
+import info.nightscout.comboctl.base.Logger
 import info.nightscout.comboctl.utils.retryBlocking
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
-import java.util.*
+import java.util.Locale
 
 private val logger = Logger.get("AndroidBluetoothDevice")
 

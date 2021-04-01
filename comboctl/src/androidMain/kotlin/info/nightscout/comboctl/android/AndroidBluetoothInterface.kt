@@ -7,7 +7,13 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import info.nightscout.comboctl.base.*
+import info.nightscout.comboctl.base.BluetoothAddress
+import info.nightscout.comboctl.base.BluetoothDevice
+import info.nightscout.comboctl.base.BluetoothException
+import info.nightscout.comboctl.base.BluetoothInterface
+import info.nightscout.comboctl.base.LogLevel
+import info.nightscout.comboctl.base.Logger
+import info.nightscout.comboctl.base.toBluetoothAddress
 import java.io.IOException
 import java.util.concurrent.locks.ReentrantLock
 

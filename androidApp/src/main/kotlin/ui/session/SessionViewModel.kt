@@ -6,7 +6,11 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import info.nightscout.comboctl.base.*
+import info.nightscout.comboctl.base.DISPLAY_FRAME_HEIGHT
+import info.nightscout.comboctl.base.DISPLAY_FRAME_WIDTH
+import info.nightscout.comboctl.base.NUM_DISPLAY_FRAME_PIXELS
+import info.nightscout.comboctl.base.Pump
+import info.nightscout.comboctl.base.PumpIO
 import info.nightscout.comboctl.comboandroid.App
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
