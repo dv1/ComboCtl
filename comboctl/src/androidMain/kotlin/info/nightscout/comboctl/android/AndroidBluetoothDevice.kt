@@ -47,17 +47,23 @@ class AndroidBluetoothDevice(
             throw BluetoothException("Bluetooth address $address is invalid according to Android", e)
         }
 
-        logger(LogLevel.DEBUG) { "Attempting to connect RFCOMM socket to device" }
-
         // The Combo communicates over RFCOMM using the SDP Serial Port Profile.
         // We use an insecure socket, which means that it lacks an authenticated
         // link key. This is done because the Combo does not use this feature.
         try {
-            retryBlocking(numberOfRetries = 4, delayBetweenRetries = 100) { // TODO check why it fails at first exception
+            retryBlocking(numberOfRetries = 5, delayBetweenRetries = 100) { attemptNumber, previousException -> // TODO check why it fails at first exception
+                if (attemptNumber == 0) {
+                    logger(LogLevel.DEBUG) { "First attempt to create an RFCOMM client socket to the Combo" }
+                } else {
+                    logger(LogLevel.DEBUG) {
+                        "Previous attempt to create an RFCOMM client socket to the Combo failed with" +
+                        "exception \"$previousException\"; trying again (this is attempt #${attemptNumber + 1} of 5)"
+                    }
+                }
                 systemBluetoothSocket = device.createInsecureRfcommSocketToServiceRecord(Constants.sdpSerialPortUUID)
             }
-        } catch (e: IOException) {
-            throw BluetoothException("Could not connect RFCOMM socket to device with address $address", e)
+        } catch (e: Exception) {
+            throw BluetoothException("Could not create an RFCOMM client socket to device with address $address", e)
         }
 
         // connect() must be explicitly called. Just creating the socket via
@@ -72,11 +78,19 @@ class AndroidBluetoothDevice(
         // https://stackoverflow.com/questions/24267671/inputstream-read-causes-nullpointerexception-after-having-checked-inputstream#comment37491136_24267671
         // and: https://stackoverflow.com/a/24269255/560774
         try {
-            retryBlocking(5) {
+            retryBlocking(numberOfRetries = 5, delayBetweenRetries = 100) { attemptNumber, previousException ->
+                if (attemptNumber == 0) {
+                    logger(LogLevel.DEBUG) { "First attempt to establish an RFCOMM client connection to the Combo" }
+                } else {
+                    logger(LogLevel.DEBUG) {
+                        "Previous attempt to establish an RFCOMM client connection to the Combo failed with" +
+                        "exception \"$previousException\"; trying again (this is attempt #${attemptNumber + 1} of 5)"
+                    }
+                }
                 systemBluetoothSocket!!.connect()
             }
-        } catch (e: IOException) {
-            throw BluetoothException("Could not connect RFCOMM socket to device with address $address", e)
+        } catch (e: Exception) {
+            throw BluetoothException("Could not establish an RFCOMM client connection to device with address $address", e)
         }
 
         try {

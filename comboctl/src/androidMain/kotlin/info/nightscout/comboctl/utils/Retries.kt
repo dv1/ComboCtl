@@ -1,21 +1,24 @@
 package info.nightscout.comboctl.utils
 
-import info.nightscout.comboctl.base.LogLevel
-import info.nightscout.comboctl.base.SingleTagLogger
+fun <T> retryBlocking(
+    numberOfRetries: Int,
+    delayBetweenRetries: Long = 100,
+    block: (Int, Exception?) -> T
+): T {
+    require(numberOfRetries > 0)
 
- fun <T> retryBlocking(
-     numberOfRetries: Int,
-     delayBetweenRetries: Long = 100,
-     logger: SingleTagLogger? = null,
-     block: () -> T
- ): T {
-    repeat(numberOfRetries) {
+    var previousException: Exception? = null
+    repeat(numberOfRetries - 1) { attemptNumber ->
         try {
-            return block()
+            return block(attemptNumber, previousException)
         } catch (exception: Exception) {
-            logger?.invoke(LogLevel.VERBOSE, exception) { "retrying" }
+            previousException = exception
         }
         Thread.sleep(delayBetweenRetries)
     }
-    return block() // last attempt
+
+    // The last attempt. This one is _not_ surrounded with a try-catch
+    // block to make sure that if even the last attempt fails with an
+    // exception the caller gets informed about said exception.
+    return block(numberOfRetries - 1, previousException)
 }
