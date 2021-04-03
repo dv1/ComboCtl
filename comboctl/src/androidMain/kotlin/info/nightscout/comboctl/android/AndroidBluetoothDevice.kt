@@ -43,55 +43,22 @@ class AndroidBluetoothDevice(
         logger(LogLevel.DEBUG) { "Attempting to get object representing device with address $address" }
 
         lateinit var device: SystemBluetoothDevice
-        try {
-            // Use toUpperCase() since Android expects the A-F hex
-            // digits in the Bluetooth address string to be uppercase
-            // (lowercase ones are considered invalid and cause an
-            // exception to be thrown).
-            device = systemBluetoothAdapter.getRemoteDevice(address.toString().toUpperCase(Locale.ROOT))
-        } catch (e: IllegalArgumentException) {
-            throw BluetoothException("Bluetooth address $address is invalid according to Android", e)
-        }
 
-        // Wait for 500 ms until we actually try to connect. This seems to
-        // circumvent an as-of-yet unknown Bluetooth related race condition.
-        // TODO: Clarify this and wait for whatever is going on there properly.
-        try {
-            Thread.sleep(500)
-        } catch (e: InterruptedException) {
-        }
+        // Use toUpperCase() since Android expects the A-F hex digits in the
+        // Bluetooth address string to be uppercase (lowercase ones are considered
+        // invalid and cause an exception to be thrown).
+        val androidBtAddressString = address.toString().toUpperCase(Locale.ROOT)
 
-        // The Combo communicates over RFCOMM using the SDP Serial Port Profile.
-        // We use an insecure socket, which means that it lacks an authenticated
-        // link key. This is done because the Combo does not use this feature.
         try {
-            retryBlocking(numberOfRetries = 5, delayBetweenRetries = 100) { attemptNumber, previousException ->
-                if (attemptNumber == 0) {
-                    logger(LogLevel.DEBUG) { "First attempt to create an RFCOMM client socket to the Combo" }
-                } else {
-                    logger(LogLevel.DEBUG) {
-                        "Previous attempt to create an RFCOMM client socket to the Combo failed with" +
-                        "exception \"$previousException\"; trying again (this is attempt #${attemptNumber + 1} of 5)"
-                    }
-                }
-                systemBluetoothSocket = device.createInsecureRfcommSocketToServiceRecord(Constants.sdpSerialPortUUID)
-            }
-        } catch (e: Exception) {
-            throw BluetoothException("Could not create an RFCOMM client socket to device with address $address", e)
-        }
-
-        // connect() must be explicitly called. Just creating the socket via
-        // createInsecureRfcommSocketToServiceRecord() does not implicitly
-        // establish the connection. This is important to keep in mind, since
-        // otherwise, the calls below get input and output streams that seem
-        // to be OK until their read/write functions are actually used. At
-        // that point, very confusing NullPointerExceptions are thrown from
-        // seemingly nowhere. These NPEs happen because *inside* the streams
-        // there are internal Input/OutputStreams, and *these* are set to null
-        // if the connection wasn't established. See also:
-        // https://stackoverflow.com/questions/24267671/inputstream-read-causes-nullpointerexception-after-having-checked-inputstream#comment37491136_24267671
-        // and: https://stackoverflow.com/a/24269255/560774
-        try {
+            // Establishing the RFCOMM connection does not always work right away.
+            // Depending on the Android version and the individual Android device,
+            // it may require several attempts until the connection is actually
+            // established. Some phones behave better in this than others. We
+            // also retrieve the BluetoothDevice instance, create an RFCOMM
+            // socket, _and_ try to connect in each attempt, since any one of
+            // these steps may initially fail.
+            // TODO: Test and define what happens when all attempts failed.
+            // The user needs to be informed and given the choice to try again.
             retryBlocking(numberOfRetries = 5, delayBetweenRetries = 100) { attemptNumber, previousException ->
                 if (attemptNumber == 0) {
                     logger(LogLevel.DEBUG) { "First attempt to establish an RFCOMM client connection to the Combo" }
@@ -101,6 +68,34 @@ class AndroidBluetoothDevice(
                         "exception \"$previousException\"; trying again (this is attempt #${attemptNumber + 1} of 5)"
                     }
                 }
+
+                // Give the GC the chance to collect an older BluetoohSocket instance
+                // while this thread sleep (see below).
+                systemBluetoothSocket = null
+
+                device = systemBluetoothAdapter.getRemoteDevice(androidBtAddressString)
+
+                // Wait for 500 ms until we actually try to connect. This seems to
+                // circumvent an as-of-yet unknown Bluetooth related race condition.
+                // TODO: Clarify this and wait for whatever is going on there properly.
+                try {
+                    Thread.sleep(500)
+                } catch (e: InterruptedException) {
+                }
+
+                systemBluetoothSocket = device.createInsecureRfcommSocketToServiceRecord(Constants.sdpSerialPortUUID)
+
+                // connect() must be explicitly called. Just creating the socket via
+                // createInsecureRfcommSocketToServiceRecord() does not implicitly
+                // establish the connection. This is important to keep in mind, since
+                // otherwise, the calls below get input and output streams appear at
+                // first to be OK until their read/write functions are actually used.
+                // At that point, very confusing NullPointerExceptions are thrown from
+                // seemingly nowhere. These NPEs happen because *inside* the streams
+                // there are internal Input/OutputStreams, and *these* are set to null
+                // if the connection wasn't established. See also:
+                // https://stackoverflow.com/questions/24267671/inputstream-read-causes-nullpointerexception-after-having-checked-inputstream#comment37491136_24267671
+                // and: https://stackoverflow.com/a/24269255/560774
                 systemBluetoothSocket!!.connect()
             }
         } catch (e: Exception) {
