@@ -33,7 +33,7 @@ class MainControl(
     // is found during discovery (accesses the store), and when a pump is
     // unpaired (accesses the store).
     // These occasions are uncommon, and both the store & the list of
-    // cquired pumps are accessed in acquirePumps(), which is why one
+    // acquired pumps are accessed in acquirePumps(), which is why one
     // mutex for both is used.
     // Note that a coroutine mutex is rather slow. But since, as said, the
     // calls that use it aren't used very often, this is not an issue.
@@ -270,6 +270,7 @@ class MainControl(
         if (discoveryRunning)
             throw IllegalStateException("Discovery already ongoing")
 
+        this.onlyDiscoverOneDevice = onlyDiscoverOneDevice
         this.pumpPairingPINCallback = pumpPairingPINCallback
 
         try {
