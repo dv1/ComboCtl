@@ -53,11 +53,19 @@ class AndroidBluetoothDevice(
             throw BluetoothException("Bluetooth address $address is invalid according to Android", e)
         }
 
+        // Wait for 500 ms until we actually try to connect. This seems to
+        // circumvent an as-of-yet unknown Bluetooth related race condition.
+        // TODO: Clarify this and wait for whatever is going on there properly.
+        try {
+            Thread.sleep(500)
+        } catch (e: InterruptedException) {
+        }
+
         // The Combo communicates over RFCOMM using the SDP Serial Port Profile.
         // We use an insecure socket, which means that it lacks an authenticated
         // link key. This is done because the Combo does not use this feature.
         try {
-            retryBlocking(numberOfRetries = 5, delayBetweenRetries = 100) { attemptNumber, previousException -> // TODO check why it fails at first exception
+            retryBlocking(numberOfRetries = 5, delayBetweenRetries = 100) { attemptNumber, previousException ->
                 if (attemptNumber == 0) {
                     logger(LogLevel.DEBUG) { "First attempt to create an RFCOMM client socket to the Combo" }
                 } else {

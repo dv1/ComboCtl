@@ -55,7 +55,22 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
 
     private var unpairedDevicesBroadcastReceiver: BroadcastReceiver? = null
 
-    private val previouslyDiscoveredDevices = mutableSetOf<BluetoothAddress>()
+    // Stores SystemBluetoothDevice that were previously seen in
+    // onAclConnected(). These instances represent a device that
+    // was found during discovery. The first time the device is
+    // discovered, an instance is provided - but that first instance
+    // is not usable (this seems to be caused by an underlying
+    // Bluetooth stack bug). Only when _another_ instance that
+    // represents the same device is seen can that other instance
+    // be used and pairing can continue. Therefore, we store the
+    // previous observation to be able to detect whether a
+    // discovered instance is the first or second one that represents
+    // the device. We also retain the first instance until the
+    // second one is found - this seems to improve pairing stability
+    // on some Android devices.
+    // TODO: Find out why these weird behavior occurs and why
+    // we can only use the second instance.
+    private val previouslyDiscoveredDevices = mutableMapOf<BluetoothAddress, SystemBluetoothDevice?>()
 
     private var discoveryStopped: (reason: BluetoothInterface.DiscoveryStoppedReason) -> Unit = { }
 
@@ -325,13 +340,14 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
         // devices. On some, it seems to also work if we use the
         // first offered BluetoothDevice.
         if (comboctlBtAddress !in previouslyDiscoveredDevices) {
-            previouslyDiscoveredDevices.add(comboctlBtAddress)
+            previouslyDiscoveredDevices[comboctlBtAddress] = androidBtDevice
             logger(LogLevel.DEBUG) {
                 "Device with address $comboctlBtAddress discovered for the first time; " +
                         "need to \"discover\" it again to be able to announce its discovery"
             }
             return
         } else {
+            previouslyDiscoveredDevices[comboctlBtAddress] = null
             logger(LogLevel.DEBUG) {
                 "Device with address $comboctlBtAddress discovered for the second time; " +
                         "announcing it as discovered"
