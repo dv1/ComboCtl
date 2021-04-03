@@ -3,6 +3,7 @@ package info.nightscout.comboctl.android
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice as SystemBluetoothDevice
 import android.bluetooth.BluetoothServerSocket as SystemBluetoothServerSocket
+import android.bluetooth.BluetoothSocket as SystemBluetoothSocket
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -16,6 +17,7 @@ import info.nightscout.comboctl.base.Logger
 import info.nightscout.comboctl.base.toBluetoothAddress
 import java.io.IOException
 import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.thread
 
 private val logger = Logger.get("AndroidBluetoothInterface")
 
@@ -48,6 +50,8 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
     // run in the UI thread, while access to the pairedDeviceAddresses
     // can be requested from other threads.
     private val deviceAddressLock = ReentrantLock()
+
+    private var listenThread: Thread? = null
 
     private var unpairedDevicesBroadcastReceiver: BroadcastReceiver? = null
 
@@ -132,6 +136,35 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
             Constants.sdpSerialPortUUID
         )
 
+        // Run a separate thread to accept and throw away incoming RFCOMM connections.
+        // We do not actually use those; the RFCOMM listener socket only exists to be
+        // able to provide an SDP SerialPort service record that can be discovered by
+        // the pump, and that record needs an RFCOMM listener port number.
+        listenThread = thread {
+            logger(LogLevel.DEBUG) { "RFCOMM listener thread started" }
+
+            try {
+                while (true) {
+                    logger(LogLevel.DEBUG) { "Waiting for incoming RFCOMM socket to accept" }
+                    var socket: SystemBluetoothSocket? = null
+                    if (rfcommServerSocket != null)
+                        socket = rfcommServerSocket!!.accept()
+                    if (socket != null) {
+                        logger(LogLevel.DEBUG) { "Closing accepted incoming RFCOMM socket" }
+                        try {
+                            socket.close()
+                        } catch (e: IOException) {
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                // This happens when rfcommServerSocket.close() is called.
+                logger(LogLevel.DEBUG) { "RFCOMM listener accept() call aborted" }
+            }
+
+            logger(LogLevel.DEBUG) { "RFCOMM listener thread stopped" }
+        }
+
         this.discoveryStopped = discoveryStopped
 
         logger(LogLevel.DEBUG) {
@@ -177,11 +210,9 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
     }
 
     override fun stopDiscovery() {
-        if (discoveryBroadcastReceiver != null) {
-            androidContext.unregisterReceiver(discoveryBroadcastReceiver)
-            discoveryBroadcastReceiver = null
-        }
-
+        // Close the server socket. This frees RFCOMM resources and ends
+        // the listenThread because the accept() call inside will be aborted
+        // by the close() call.
         try {
             if (rfcommServerSocket != null)
                 rfcommServerSocket!!.close()
@@ -189,6 +220,22 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
             logger(LogLevel.ERROR) { "Caught IO exception while closing RFCOMM server socket: $e" }
         } finally {
             rfcommServerSocket = null
+        }
+
+        // The listenThread will be shutting down now after the server
+        // socket was closed, since the blocking accept() call inside
+        // the thread gets aborted by close(). Just wait here for the
+        // thread to fully finish before we continue.
+        if (listenThread != null) {
+            logger(LogLevel.DEBUG) { "Waiting for RFCOMM listener thread to finish" }
+            listenThread!!.join()
+            logger(LogLevel.DEBUG) { "RFCOMM listener thread finished" }
+            listenThread = null
+        }
+
+        if (discoveryBroadcastReceiver != null) {
+            androidContext.unregisterReceiver(discoveryBroadcastReceiver)
+            discoveryBroadcastReceiver = null
         }
 
         if (bluetoothAdapter.isDiscovering) {
