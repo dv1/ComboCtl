@@ -127,6 +127,9 @@ private:
 typedef std::unique_ptr<bluez_bluetooth_device> bluez_bluetooth_device_uptr;
 
 
+/**
+ * Possible reasons for why discovery was stopped before a device was found.
+ */
 enum class discovery_stopped_reason
 {
 	manually_stopped = 0,
@@ -221,6 +224,11 @@ public:
 	 * device that was found and is paired already. Unpaired devices
 	 * are ignored until they get paired.
 	 *
+	 * Once a device is found, discovery stops. In that case however, the
+	 * on_discovery_stopped callback is _not_ called. The invocation of
+	 * on_found_new_device also implictly notifies the user that discovery
+	 * has been stopped (the reason being that a device was discovered).
+	 *
 	 * @param service_name Name the SDP service record shall use.
 	 *        Must not be empty.
 	 * @param service_provider Name of the provider that shall be added
@@ -233,13 +241,14 @@ public:
 	 *        discovery started. Useful for setting up resources that are
 	 *        used during discovery.
 	 * @param on_discovery_stopped Callback to be invoked as soon as the
-	 *        discovery stopped. Useful for tearing down resources that are
-	 *        used during discovery.
+	 *        discovery stopped for any reason _other_ than that a device
+	 *        was discovered (which implictly stops discovery).
 	 * @param on_found_new_device Callback invoked whenever a new
 	 *        paired device is found. The device's Bluetooth address
 	 *        is given to the callback. Only devices that pass the
 	 *        device filter will be passed to this callback.
-	 *        (See set_device_filter() for more.)
+	 *        (See set_device_filter() for more.) Discovery is stopped once
+	 *        a device was found, and it is stopped _before_ this is called.
 	 *        This argument must be set to a valid function.
 	 * @throws invalid_call_exception If the discovery is already ongoing.
 	 * @throws io_exception in case of an IO error.
@@ -260,6 +269,10 @@ public:
 	 * Stops the discovery process.
 	 *
 	 * If no discovery is going on, this function does nothing.
+	 *
+	 * If discovery is ongoing, then the on_discovery_started callback that
+	 * was passed to start_discovery() will be called, with the reason for the
+	 * stop being set to discovery_stopped_reason::manually_stopped.
 	 *
 	 * The destructor automatically calls this function.
 	 *

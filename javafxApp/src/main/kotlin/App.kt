@@ -15,7 +15,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.javafx.JavaFx
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 
 fun main() {
     launch(App::class.java)
@@ -35,17 +34,10 @@ class App : Application(), CoroutineScope {
         val scope = this
         bluezInterface = BlueZInterface()
         mainControl = MainControl(bluezInterface, pumpStateStore)
-        mainControl.startEventHandling(
-            scope,
-            { pumpAddress, pumpID ->
-                if (mainViewController != null)
-                    mainViewController!!.onNewPairedPump(pumpAddress, pumpID)
-            },
-            { pumpAddress ->
-                if (mainViewController != null)
-                    mainViewController!!.onPumpUnpaired(pumpAddress)
-            }
-        )
+        mainControl.setup { pumpAddress ->
+            if (mainViewController != null)
+                mainViewController!!.onPumpUnpaired(pumpAddress)
+        }
     }
 
     override val coroutineContext: CoroutineContext
@@ -86,8 +78,8 @@ class App : Application(), CoroutineScope {
 
     override fun stop() {
         mainViewController = null
-        mainControl.stopDiscovery()
-        runBlocking { mainControl.stopEventHandling() }
+        /* mainControl.stopDiscovery()
+        runBlocking { mainControl.stopEventHandling() } */
         bluezInterface.shutdown()
     }
 
