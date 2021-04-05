@@ -71,6 +71,8 @@ class MainViewController {
                     }
                 }
 
+                println("Pairing result: $result")
+
                 resetPumpList()
             }
         } catch (e: IllegalStateException) {
@@ -78,41 +80,12 @@ class MainViewController {
         } catch (e: BluetoothException) {
             println("Bluetooth interface exception: $e")
         }
-
-        pairingJob = null
     }
 
     fun stopPairing() {
         pairingJob?.cancel()
         pairingJob = null
     }
-
-    /* fun startDiscovery() {
-        require(mainControl != null)
-        require(mainScope != null)
-        try {
-            mainControl!!.startDiscovery(
-                mainScope!!,
-                false,
-                300,
-                { reason -> println("Discovery stopped due to reason: $reason") },
-                { newPumpAddress, _ ->
-                    withContext(mainScope!!.coroutineContext) {
-                        askUserForPIN(newPumpAddress)
-                    }
-                }
-            )
-        } catch (e: IllegalStateException) {
-            println("Attempted to start discovery even though it is running already")
-        } catch (e: BluetoothException) {
-            println("Bluetooth interface exception: $e")
-        }
-    }
-
-    fun stopDiscovery() {
-        require(mainControl != null)
-        mainControl!!.stopDiscovery()
-    } */
 
     fun openPumpView() {
         require(mainControl != null)
@@ -171,13 +144,7 @@ class MainViewController {
         pumpViewStage.show()
     }
 
-    /* fun onNewPairedPump(pumpAddress: BluetoothAddress, pumpID: String) {
-        resetPumpList()
-    } */
-
-    fun onPumpUnpaired(pumpAddress: BluetoothAddress) {
-        resetPumpList()
-    }
+    fun onPumpUnpaired(pumpAddress: BluetoothAddress) = resetPumpList()
 
     private fun resetPumpList() {
         require(pumpStateStore != null)

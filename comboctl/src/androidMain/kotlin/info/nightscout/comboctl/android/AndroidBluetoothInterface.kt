@@ -72,6 +72,15 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
     // we can only use the second instance.
     private val previouslyDiscoveredDevices = mutableMapOf<BluetoothAddress, SystemBluetoothDevice?>()
 
+    // Set to a non-null value if discovery timeouts or if it is
+    // manually stopped via stopDiscovery().
+    private var discoveryStoppedReason: BluetoothInterface.DiscoveryStoppedReason? = null
+    // Set to true once a device is found. Used in onDiscoveryFinished()
+    // to suppress a discoveryStopped callback invocation.
+    private var foundDevice = false
+
+    // Invoked if discovery stops for any reason other than that
+    // a device was found.
     private var discoveryStopped: (reason: BluetoothInterface.DiscoveryStoppedReason) -> Unit = { }
 
     override var onDeviceUnpaired: (deviceAddress: BluetoothAddress) -> Unit = { }
@@ -79,8 +88,6 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
     override var deviceFilter: (deviceAddress: BluetoothAddress) -> Boolean = { true }
 
     fun setup() {
-        previouslyDiscoveredDevices.clear()
-
         val bondedDevices = bluetoothAdapter.bondedDevices
 
         logger(LogLevel.DEBUG) { "Found ${bondedDevices.size} bonded Bluetooth device(s)" }
@@ -137,6 +144,10 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
     ) {
         if (discoveryStarted)
             throw IllegalStateException("Discovery already started")
+
+        previouslyDiscoveredDevices.clear()
+        foundDevice = false
+        discoveryStoppedReason = null
 
         // The Combo communicates over RFCOMM using the SDP Serial Port Profile.
         // We use an insecure socket, which means that it lacks an authenticated
@@ -225,6 +236,30 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
     }
 
     override fun stopDiscovery() {
+        discoveryStoppedReason = BluetoothInterface.DiscoveryStoppedReason.MANUALLY_STOPPED
+        stopDiscoveryInternal()
+    }
+
+    override fun unpairDevice(deviceAddress: BluetoothAddress) {
+        // NOTE: Unfortunately, Android has no public removeBond() functionality,
+        // so we cannot do anything here.
+    }
+
+    override fun getDevice(deviceAddress: BluetoothAddress): BluetoothDevice =
+        AndroidBluetoothDevice(this, bluetoothAdapter, deviceAddress)
+
+    override fun getAdapterFriendlyName() =
+        bluetoothAdapter.name ?: throw BluetoothException("Could not get Bluetooth adapter friendly name")
+
+    override fun getPairedDeviceAddresses(): Set<BluetoothAddress> =
+        try {
+            deviceAddressLock.lock()
+            pairedDeviceAddresses.filter { pairedDeviceAddress -> deviceFilter(pairedDeviceAddress) }.toSet()
+        } finally {
+            deviceAddressLock.unlock()
+        }
+
+    private fun stopDiscoveryInternal() {
         // Close the server socket. This frees RFCOMM resources and ends
         // the listenThread because the accept() call inside will be aborted
         // by the close() call.
@@ -263,25 +298,6 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
             discoveryStarted = false
         }
     }
-
-    override fun unpairDevice(deviceAddress: BluetoothAddress) {
-        // NOTE: Unfortunately, Android has no public removeBond() functionality,
-        // so we cannot do anything here.
-    }
-
-    override fun getDevice(deviceAddress: BluetoothAddress): BluetoothDevice =
-        AndroidBluetoothDevice(this, bluetoothAdapter, deviceAddress)
-
-    override fun getAdapterFriendlyName() =
-        bluetoothAdapter.name ?: throw BluetoothException("Could not get Bluetooth adapter friendly name")
-
-    override fun getPairedDeviceAddresses(): Set<BluetoothAddress> =
-        try {
-            deviceAddressLock.lock()
-            pairedDeviceAddresses.filter { pairedDeviceAddress -> deviceFilter(pairedDeviceAddress) }.toSet()
-        } finally {
-            deviceAddressLock.unlock()
-        }
 
     private fun onAclConnected(intent: Intent, foundNewPairedDevice: (deviceAddress: BluetoothAddress) -> Unit) {
         // Sanity check in case we get this notification for the
@@ -371,8 +387,11 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
             // discovered device, just as the ComboCtl
             // BluetoothInterface.startDiscovery()
             // documentation requires.
-            if (deviceFilter(comboctlBtAddress))
+            if (deviceFilter(comboctlBtAddress)) {
+                foundDevice = true
+                stopDiscoveryInternal()
                 foundNewPairedDevice(comboctlBtAddress)
+            }
         } catch (e: Exception) {
             logger(LogLevel.ERROR) { "Caught exception while invoking foundNewPairedDevice callback: $e" }
         }
@@ -508,7 +527,15 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
 
     private fun onDiscoveryFinished() {
         logger(LogLevel.DEBUG) { "Discovery finished" }
-        // TODO: Is there a way to determine the reason for the stop?
-        discoveryStopped(BluetoothInterface.DiscoveryStoppedReason.MANUALLY_STOPPED)
+
+        // If a device was found, foundNewPairedDevice is called,
+        // which implictly announces that discovery stopped.
+        if (!foundDevice) {
+            // discoveryStoppedReason is set to a non-NULL value only
+            // if stopDiscovery() is called. If the discovery timeout
+            // is reached, we get to this point, but the value of
+            // discoveryStoppedReason  is still null.
+            discoveryStopped(discoveryStoppedReason ?: BluetoothInterface.DiscoveryStoppedReason.DISCOVERY_TIMEOUT)
+        }
     }
 }

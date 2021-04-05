@@ -4,12 +4,13 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import info.nightscout.comboctl.base.MainControl
 import info.nightscout.comboctl.base.PairingPIN
 import info.nightscout.comboctl.base.TransportLayerIO
 import info.nightscout.comboctl.comboandroid.App
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class PairingViewModel : ViewModel() {
@@ -19,9 +20,8 @@ class PairingViewModel : ViewModel() {
     private val _pwValidatedLiveData = MutableLiveData<Boolean>(false)
     val pwValidatedLiveData: LiveData<Boolean> = _pwValidatedLiveData
 
-    private val discoveryScope = CoroutineScope(Dispatchers.Default)
-
     private var pairingPINDeferred: CompletableDeferred<PairingPIN>? = null
+    private var pairingJob: Job? = null
 
     var password: String = ""
         set(value) {
@@ -39,20 +39,19 @@ class PairingViewModel : ViewModel() {
 
         pairingPINDeferred = CompletableDeferred<PairingPIN>()
 
-        App.mainControl.startDiscovery(
-            discoveryScope,
-            onlyDiscoverOneDevice = true,
-            discoveryDuration = 300,
-            discoveryStoppedCallback = {
-                _state.postValue(State.DISCOVERY_STOPPED)
-            },
-            pumpPairingPINCallback = { _, _ ->
-                withContext(viewModelScope.coroutineContext) {
-                    _state.value = State.PIN_ENTRY
-                    pairingPINDeferred!!.await()
+        pairingJob = viewModelScope.launch {
+            val result = App.mainControl.pairWithNewPump(
+                discoveryDuration = 300,
+                pumpPairingPINCallback = { _, _ ->
+                    withContext(viewModelScope.coroutineContext) {
+                        _state.value = State.PIN_ENTRY
+                        pairingPINDeferred!!.await()
+                    }
                 }
-            }
-        )
+            )
+            if (result !is MainControl.PairingResult.Success)
+                _state.postValue(State.DISCOVERY_STOPPED)
+        }
     }
 
     fun onOkClicked() {
@@ -67,7 +66,7 @@ class PairingViewModel : ViewModel() {
 
     fun stopLifeCycle() {
         pairingPINDeferred!!.completeExceptionally(TransportLayerIO.PairingAbortedException())
-        App.mainControl.stopDiscovery()
+        pairingJob?.cancel()
     }
 
     override fun onCleared() {
