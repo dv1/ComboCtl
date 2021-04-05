@@ -3,6 +3,7 @@ package info.nightscout.comboctl.android
 import android.bluetooth.BluetoothAdapter as SystemBluetoothAdapter
 import android.bluetooth.BluetoothDevice as SystemBluetoothDevice
 import android.bluetooth.BluetoothSocket as SystemBluetoothSocket
+import info.nightscout.comboctl.base.BasicProgressStage
 import info.nightscout.comboctl.base.BluetoothAddress
 import info.nightscout.comboctl.base.BluetoothDevice
 import info.nightscout.comboctl.base.BluetoothException
@@ -10,6 +11,7 @@ import info.nightscout.comboctl.base.BluetoothInterface
 import info.nightscout.comboctl.base.ComboIOException
 import info.nightscout.comboctl.base.LogLevel
 import info.nightscout.comboctl.base.Logger
+import info.nightscout.comboctl.base.ProgressReporter
 import info.nightscout.comboctl.utils.retryBlocking
 import java.io.IOException
 import java.io.InputStream
@@ -36,7 +38,7 @@ class AndroidBluetoothDevice(
 
     // Base class overrides.
 
-    override fun connect() {
+    override fun connect(progressReporter: ProgressReporter?) {
         if (systemBluetoothSocket != null)
             throw IllegalStateException("Connection already established")
 
@@ -59,7 +61,8 @@ class AndroidBluetoothDevice(
             // these steps may initially fail.
             // TODO: Test and define what happens when all attempts failed.
             // The user needs to be informed and given the choice to try again.
-            retryBlocking(numberOfRetries = 5, delayBetweenRetries = 100) { attemptNumber, previousException ->
+            val totalNumAttempts = 5
+            retryBlocking(numberOfRetries = totalNumAttempts, delayBetweenRetries = 100) { attemptNumber, previousException ->
                 if (attemptNumber == 0) {
                     logger(LogLevel.DEBUG) { "First attempt to establish an RFCOMM client connection to the Combo" }
                 } else {
@@ -68,6 +71,8 @@ class AndroidBluetoothDevice(
                         "exception \"$previousException\"; trying again (this is attempt #${attemptNumber + 1} of 5)"
                     }
                 }
+
+                progressReporter?.setCurrentProgressStage(BasicProgressStage.EstablishingBtConnection(attemptNumber + 1, totalNumAttempts))
 
                 // Give the GC the chance to collect an older BluetoohSocket instance
                 // while this thread sleep (see below).
