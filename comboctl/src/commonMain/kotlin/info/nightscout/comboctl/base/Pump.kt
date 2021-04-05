@@ -76,7 +76,7 @@ class Pump(
     val address = bluetoothDevice.address
 
     /**
-     * Read-only [StateFlow] property that delivers newly assembled display frames.
+     * Read-only [SharedFlow] property that delivers newly assembled display frames.
      *
      * See [DisplayFrame] for details about these frames.
      */

@@ -476,7 +476,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
                     ApplicationLayerIO.Command.CTRL_CONNECT_RESPONSE
                 )
 
-                // Explicitely switch to the initial mode.
+                // Explicitly switch to the initial mode.
                 switchMode(initialMode, runKeepAliveLoop)
 
                 logger(LogLevel.INFO) { "Pump IO connected" }
