@@ -121,6 +121,10 @@ class PumpViewController {
         require(mainScope != null)
 
         mainScope!!.launch {
+            pump!!.connectProgressFlow
+                .onEach { println("Connect progress: $it") }
+                .launchIn(mainScope!!)
+
             // Connect to the pump and let it initially run in the COMMAND mode.
             pump!!.connect(mainScope!!, initialMode = PumpIO.Mode.COMMAND).join()
 

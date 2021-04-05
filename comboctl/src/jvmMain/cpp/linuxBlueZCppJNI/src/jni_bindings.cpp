@@ -162,7 +162,7 @@ public:
 	bluetooth_device_jni(bluetooth_device_jni const &) = delete;
 	bluetooth_device_jni& operator = (bluetooth_device_jni const &) = delete;
 
-	void connect(jni::JNIEnv &env)
+	void connect_impl(jni::JNIEnv &env)
 	{
 		assert(m_device != nullptr);
 		call_with_jni_rethrow(env, [&]() { m_device->connect(); });
@@ -611,7 +611,7 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*)
 			jni::MakePeer<bluetooth_device_jni>,
 			"initialize",
 			"finalize",
-			METHOD(&bluetooth_device_jni::connect, "connect"),
+			METHOD(&bluetooth_device_jni::connect_impl, "connectImpl"),
 			METHOD(&bluetooth_device_jni::disconnect, "disconnect"),
 			METHOD(&bluetooth_device_jni::send_impl, "sendImpl"),
 			METHOD(&bluetooth_device_jni::receive_impl, "receiveImpl"),
