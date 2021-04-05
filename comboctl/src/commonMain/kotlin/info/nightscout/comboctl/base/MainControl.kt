@@ -275,18 +275,18 @@ class MainControl(
 
         try {
             bluetoothInterface.startDiscovery(
-                Constants.BT_SDP_SERVICE_NAME,
-                "ComboCtl SDP service",
-                "ComboCtl",
-                Constants.BT_PAIRING_PIN,
-                discoveryDuration,
-                { reason ->
+                sdpServiceName = Constants.BT_SDP_SERVICE_NAME,
+                sdpServiceProvider = "ComboCtl SDP service",
+                sdpServiceDescription = "ComboCtl",
+                btPairingPin = Constants.BT_PAIRING_PIN,
+                discoveryDuration = discoveryDuration,
+                discoveryStopped = { reason ->
                     discoveryEventHandlingScope.launch {
                         discoveryRunning = false
                         discoveryStoppedCallback(reason)
                     }
                 },
-                { deviceAddress ->
+                foundNewPairedDevice = { deviceAddress ->
                     discoveryEventHandlingScope.launch {
                         runEventHandler {
                             handleNewlyPairedPump(deviceAddress)
