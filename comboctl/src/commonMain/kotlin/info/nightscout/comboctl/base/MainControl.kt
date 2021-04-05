@@ -132,12 +132,10 @@ class MainControl(
      * the 10-digit Combo PIN).
      *
      * When the Bluetooth-level pairing is done, additional processing is
-     * necessary: The Combo-level pairing must be performed, which also
-     * sets up a state in the [PumpStateStore] for the discovered pump.
-     * These steps are done by background coroutines that run in the
-     * [discoveryEventHandlingScope]. The [pumpPairingPINCallback] is
-     * called when the Combo-level pairing process reaches a point where
-     * the user must be asked for the 10-digit PIN.
+     * necessary: The Combo-level pairing must be performed, which also sets
+     * up a state in the [PumpStateStore] for the discovered pump. The
+     * [pumpPairingPINCallback] is called when the Combo-level pairing process
+     * reaches a point where the user must be asked for the 10-digit PIN.
      *
      * @param discoveryDuration How long the discovery shall go on,
      *        in seconds. Must be a value between 1 and 300.
