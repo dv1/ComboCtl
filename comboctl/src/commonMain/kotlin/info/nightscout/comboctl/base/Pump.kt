@@ -136,6 +136,7 @@ class Pump(
      * @param bluetoothFriendlyName The Bluetooth friendly name to use in
      *        REQUEST_ID packets. Use [BluetoothInterface.getAdapterFriendlyName]
      *        to get the friendly name.
+     * @param progressReporter [ProgressReporter] for tracking pairing progress.
      * @param pairingPINCallback Callback that gets invoked as soon as
      *        the pairing process needs the 10-digit-PIN.
      * @throws IllegalStateException if this is ran while a connection
@@ -146,6 +147,7 @@ class Pump(
      */
     suspend fun performPairing(
         bluetoothFriendlyName: String,
+        progressReporter: ProgressReporter?,
         pairingPINCallback: PairingPINCallback
     ) {
         // This function is called once the Bluetooth pairing
@@ -179,13 +181,15 @@ class Pump(
         // back to the unpaired state, since pairing failed, and
         // the state is undefined when that happens.
         try {
+            progressReporter?.setCurrentProgressStage(BasicProgressStage.StartingConnectionSetup)
+
             // Connecting to Bluetooth may block, so run it in
             // a coroutine with an IO dispatcher.
             withContext(ioDispatcher()) {
-                bluetoothDevice.connect()
+                bluetoothDevice.connect(progressReporter)
             }
 
-            pumpIO.performPairing(bluetoothFriendlyName, pairingPINCallback)
+            pumpIO.performPairing(bluetoothFriendlyName, progressReporter, pairingPINCallback)
             doUnpair = false
             logger(LogLevel.INFO) { "Paired with Combo with address ${bluetoothDevice.address}" }
         } finally {
@@ -235,6 +239,21 @@ class Pump(
 
         logger(LogLevel.INFO) { "Unpaired from Combo with address ${bluetoothDevice.address}" }
     }
+
+    private val connectProgressReporter = ProgressReporter(
+        listOf(
+            BasicProgressStage.StartingConnectionSetup::class,
+            BasicProgressStage.EstablishingBtConnection::class,
+            BasicProgressStage.PerformingConnectionHandshake::class
+        )
+    )
+
+    /**
+     * [StateFlow] for reporting progress during the [connect] call.
+     *
+     * See the [ProgressReporter] documentation for details.
+     */
+    val connectProgressFlow = connectProgressReporter.progressFlow
 
     /**
      * Establishes a regular connection.
@@ -314,6 +333,9 @@ class Pump(
         // a previous connection.
         framedComboIO.reset()
 
+        connectProgressReporter.reset()
+        connectProgressReporter.setCurrentProgressStage(BasicProgressStage.StartingConnectionSetup)
+
         // Run the actual connection attempt in the background IO scope.
         return backgroundIOScope.launch {
             // Suspend the coroutine until Bluetooth is connected.
@@ -327,12 +349,20 @@ class Pump(
             // to make sure the coroutine here waits until the sub-coroutine
             // that is started by pumpIO.connect() finishes.
             runChecked {
-                pumpIO.connect(
-                    backgroundIOScope = backgroundIOScope,
-                    onBackgroundIOException = onBackgroundWorkerException,
-                    initialMode = initialMode,
-                    runKeepAliveLoop = true
-                ).join()
+                try {
+                    pumpIO.connect(
+                        backgroundIOScope = backgroundIOScope,
+                        progressReporter = connectProgressReporter,
+                        onBackgroundIOException = onBackgroundWorkerException,
+                        initialMode = initialMode,
+                        runKeepAliveLoop = true
+                    ).join()
+
+                    connectProgressReporter.setCurrentProgressStage(BasicProgressStage.Finished)
+                } catch (e: Exception) {
+                    connectProgressReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
+                    throw e
+                }
             }
         }
     }

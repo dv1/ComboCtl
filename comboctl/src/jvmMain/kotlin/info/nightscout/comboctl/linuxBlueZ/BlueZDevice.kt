@@ -1,8 +1,10 @@
 package info.nightscout.comboctl.linuxBlueZ
 
+import info.nightscout.comboctl.base.BasicProgressStage
 import info.nightscout.comboctl.base.BluetoothAddress
 import info.nightscout.comboctl.base.BluetoothDevice
 import info.nightscout.comboctl.base.BluetoothInterface
+import info.nightscout.comboctl.base.ProgressReporter
 
 /**
  * Class representing a Bluetooth device accessible through BlueZ.
@@ -36,10 +38,15 @@ class BlueZDevice(
     override fun blockingSend(dataToSend: List<Byte>) = sendImpl(dataToSend.toByteArray())
     override fun blockingReceive(): List<Byte> = receiveImpl().toList()
 
-    external override fun connect()
+    override fun connect(progressReporter: ProgressReporter?) {
+        progressReporter?.setCurrentProgressStage(BasicProgressStage.EstablishingBtConnection(1, 1))
+        connectImpl()
+    }
     external override fun disconnect()
 
     // Private external C++ functions.
+
+    private external fun connectImpl()
 
     private external fun sendImpl(data: ByteArray)
     private external fun receiveImpl(): ByteArray

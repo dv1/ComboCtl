@@ -20,6 +20,8 @@ import javafx.scene.image.ImageView
 import javafx.stage.Stage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -57,6 +59,10 @@ class MainViewController {
 
         try {
             pairingJob = mainScope!!.launch {
+                mainControl!!.pairingProgressFlow
+                    .onEach { println("Pairing progress: $it") }
+                    .launchIn(mainScope!!)
+
                 mainControl!!.pairWithNewPump(
                     300
                 ) { newPumpAddress, _ ->

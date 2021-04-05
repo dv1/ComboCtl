@@ -118,6 +118,23 @@ class MainControl(
         }
     }
 
+    private val pairingProgressReporter = ProgressReporter(
+        listOf(
+            BasicProgressStage.StartingConnectionSetup::class,
+            BasicProgressStage.EstablishingBtConnection::class,
+            BasicProgressStage.ComboPairingStarting::class,
+            BasicProgressStage.ComboPairingKeyAndPinRequested::class,
+            BasicProgressStage.ComboPairingFinishing::class
+        )
+    )
+
+    /**
+     * [StateFlow] for reporting progress during the [pairWithNewPump] call.
+     *
+     * See the [ProgressReporter] documentation for details.
+     */
+    val pairingProgressFlow = pairingProgressReporter.progressFlow
+
     /**
      * Starts device discovery and pairs with a pump once one is discovered.
      *
@@ -154,6 +171,8 @@ class MainControl(
 
         lateinit var result: PairingResult
 
+        pairingProgressReporter.reset()
+
         coroutineScope {
             val thisScope = this
             try {
@@ -182,7 +201,7 @@ class MainControl(
                                     if (pumpStateStore.hasPumpState(deviceAddress)) {
                                         logger(LogLevel.DEBUG) { "Skipping added pump since it has already been paired" }
                                     } else {
-                                        performPairing(deviceAddress)
+                                        performPairing(deviceAddress, pairingProgressReporter)
 
                                         val pumpID = pumpStateStore.getInvariantPumpData(deviceAddress).pumpID
                                         logger(LogLevel.DEBUG) { "Paired pump with address $deviceAddress ; pump ID = $pumpID" }
@@ -202,14 +221,25 @@ class MainControl(
                 result = deferred.await()
             } catch (e: TransportLayerIO.PairingAbortedException) {
                 logger(LogLevel.DEBUG) { "User aborted pairing" }
+                pairingProgressReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
                 result = PairingResult.PairingAbortedByUser
             } catch (e: CancellationException) {
                 logger(LogLevel.DEBUG) { "Pairing cancelled" }
+                pairingProgressReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
+                throw e
+            } catch (e: Exception) {
+                pairingProgressReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
+                result = PairingResult.ExceptionDuringPairing(e)
                 throw e
             } finally {
                 bluetoothInterface.stopDiscovery()
             }
         }
+
+        // Report "Finished" _after_ discovery was stopped
+        // (otherwise it isn't really finished yet).
+        if (result is PairingResult.Success)
+            pairingProgressReporter.setCurrentProgressStage(BasicProgressStage.Finished)
 
         return result
     }
@@ -297,7 +327,7 @@ class MainControl(
         (deviceAddress[1] == 0x0E.toByte()) &&
         (deviceAddress[2] == 0x2F.toByte())
 
-    private suspend fun performPairing(pumpAddress: BluetoothAddress) {
+    private suspend fun performPairing(pumpAddress: BluetoothAddress, progressReporter: ProgressReporter?) {
         // NOTE: Pairing can be aborted either by calling stopDiscovery()
         // or by throwing an exception in the pairing PIN callback.
 
@@ -315,7 +345,7 @@ class MainControl(
 
         logger(LogLevel.DEBUG) { "Pump instance ready for pairing" }
 
-        pump.performPairing(bluetoothInterface.getAdapterFriendlyName()) {
+        pump.performPairing(bluetoothInterface.getAdapterFriendlyName(), progressReporter) {
             previousAttemptFailed -> pumpPairingPINCallback(pumpAddress, previousAttemptFailed)
         }
 

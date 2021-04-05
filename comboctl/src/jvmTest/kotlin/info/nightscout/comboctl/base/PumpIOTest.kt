@@ -181,6 +181,7 @@ class PumpIOTest {
 
             pumpIO.connect(
                 backgroundIOScope = mainScope,
+                progressReporter = null,
                 onBackgroundIOException = { e -> fail("Exception thrown in background worker: $e") },
                 runKeepAliveLoop = false
             ).join()
@@ -202,6 +203,7 @@ class PumpIOTest {
 
             pumpIO.connect(
                 backgroundIOScope = mainScope,
+                progressReporter = null,
                 onBackgroundIOException = { e -> fail("Exception thrown in background worker: $e") },
                 runKeepAliveLoop = false
             ).join()
@@ -232,6 +234,7 @@ class PumpIOTest {
 
             pumpIO.connect(
                 backgroundIOScope = mainScope,
+                progressReporter = null,
                 onBackgroundIOException = { e -> fail("Exception thrown in background worker: $e") },
                 runKeepAliveLoop = false
             ).join()
@@ -263,6 +266,7 @@ class PumpIOTest {
 
             pumpIO.connect(
                 backgroundIOScope = mainScope,
+                progressReporter = null,
                 onBackgroundIOException = { e -> fail("Exception thrown in background worker: $e") },
                 runKeepAliveLoop = false
             ).join()
@@ -297,6 +301,7 @@ class PumpIOTest {
 
             pumpIO.connect(
                 backgroundIOScope = mainScope,
+                progressReporter = null,
                 onBackgroundIOException = { e -> fail("Exception thrown in background worker: $e") },
                 runKeepAliveLoop = false
             ).join()
@@ -369,6 +374,7 @@ class PumpIOTest {
 
             pumpIO.connect(
                 backgroundIOScope = mainScope,
+                progressReporter = null,
                 onBackgroundIOException = { e -> fail("Exception thrown in background worker: $e") },
                 initialMode = PumpIO.Mode.COMMAND,
                 runKeepAliveLoop = false
@@ -567,6 +573,7 @@ class PumpIOTest {
 
             pumpIO.connect(
                 backgroundIOScope = mainScope,
+                progressReporter = null,
                 onBackgroundIOException = { e -> fail("Exception thrown in background worker: $e") },
                 initialMode = PumpIO.Mode.COMMAND,
                 runKeepAliveLoop = false

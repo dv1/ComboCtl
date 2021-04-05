@@ -19,6 +19,7 @@ abstract class BluetoothDevice(private val bluetoothInterface: BluetoothInterfac
      *
      * This function blocks until the connection is set up or an error occurs.
      *
+     * @param progressReporter [ProgressReporter] for tracking connect progress.
      * @throws BluetoothException if connection fails due to an underlying
      *         Bluetooth issue.
      * @throws ComboIOException if connection fails due to an underlying
@@ -27,7 +28,7 @@ abstract class BluetoothDevice(private val bluetoothInterface: BluetoothInterfac
      *         that does not permit connecting, such as a device
      *         that has been shut down.
      */
-    abstract fun connect()
+    abstract fun connect(progressReporter: ProgressReporter? = null)
 
     /**
      * Explicitly disconnect the device's RFCOMM connection now.

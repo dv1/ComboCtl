@@ -364,6 +364,7 @@ class PairingSessionTest {
         runBlockingWithWatchdog(6001) {
             pumpIO.performPairing(
                 testBtFriendlyName,
+                null,
                 { testPIN }
             )
         }

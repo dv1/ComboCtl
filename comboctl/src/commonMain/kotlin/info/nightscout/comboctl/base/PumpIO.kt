@@ -255,6 +255,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      * @param bluetoothFriendlyName The Bluetooth friendly name to use in
      *        REQUEST_ID packets. Use [BluetoothInterface.getAdapterFriendlyName]
      *        to get the friendly name.
+     * @param progressReporter [ProgressReporter] for tracking pairing progress.
      * @param pairingPINCallback Callback that gets invoked as soon as
      *        the pairing process needs the 10-digit-PIN.
      * @throws IllegalStateException if this is ran while a connection
@@ -265,6 +266,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      */
     suspend fun performPairing(
         bluetoothFriendlyName: String,
+        progressReporter: ProgressReporter?,
         pairingPINCallback: PairingPINCallback
     ) {
         if (isConnected())
@@ -273,6 +275,8 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
         coroutineScope {
             try {
                 applicationLayerIO.startIO(backgroundIOScope = this, pairingPINCallback = pairingPINCallback)
+
+                progressReporter?.setCurrentProgressStage(BasicProgressStage.ComboPairingStarting)
 
                 // Initiate pairing and wait for the response.
                 // (The response contains no meaningful payload.)
@@ -288,6 +292,8 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
                 logger(LogLevel.DEBUG) { "Requesting the pump to generate and show the pairing PIN" }
                 sendPacketNoResponse(TransportLayerIO.createRequestKeysPacketInfo())
 
+                progressReporter?.setCurrentProgressStage(BasicProgressStage.ComboPairingKeyAndPinRequested)
+
                 logger(LogLevel.DEBUG) { "Requesting the keys and IDs from the pump" }
                 sendPacketWithResponse(
                     TransportLayerIO.createGetAvailableKeysPacketInfo(),
@@ -297,6 +303,8 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
                     TransportLayerIO.createRequestIDPacketInfo(bluetoothFriendlyName),
                     TransportLayerIO.Command.ID_RESPONSE
                 )
+
+                progressReporter?.setCurrentProgressStage(BasicProgressStage.ComboPairingFinishing)
 
                 // Initiate a regular (= non-pairing) transport layer connection.
                 // Note that we are still pairing - it just continues in the
@@ -414,6 +422,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      *
      * @param backgroundIOScope Coroutine scope to start the background
      *        worker in.
+     * @param progressReporter [ProgressReporter] for tracking connect progress.
      * @param onBackgroundIOException Optional callback for notifying
      *        about exceptions that get thrown inside the worker.
      * @param initialMode What mode to initially switch to.
@@ -430,6 +439,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      */
     fun connect(
         backgroundIOScope: CoroutineScope,
+        progressReporter: ProgressReporter?,
         onBackgroundIOException: (e: Exception) -> Unit = { },
         initialMode: Mode = Mode.REMOTE_TERMINAL,
         runKeepAliveLoop: Boolean = true
@@ -457,6 +467,8 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
         applicationLayerIO.startIO(backgroundIOScope, onBackgroundIOException)
 
         logger(LogLevel.DEBUG) { "Pump IO connecting asynchronously" }
+
+        progressReporter?.setCurrentProgressStage(BasicProgressStage.PerformingConnectionHandshake)
 
         // Launch the coroutine that sets up the connection.
         return backgroundIOScope.launch {
