@@ -95,8 +95,25 @@ interface BluetoothInterface {
      * Do not spend too much time in the callbacks, since this
      * may block internal threads.
      *
-     * This function may only be called after creating the interface
-     * and after having called [stopDiscovery].
+     * This function may only be called after creating the interface and
+     * after discovery stopped.
+     *
+     * Discovery can stop because of these reasons:
+     *
+     * 1. [stopDiscovery] is called. This will cause the discoveryStopped
+     *    callback to be invoked, with its "reason" argument value set to
+     *    [DiscoveryStoppedReason.MANUALLY_STOPPED].
+     * 2. An error occurred during discovery. The discoveryStopped callback
+     *    is then called with its "reason" argument value set to
+     *    [DiscoveryStoppedReason.DISCOVERY_ERROR].
+     * 3. The discovery timeout was reached and no device was discovered.
+     *    The discoveryStopped callback is then called with its "reason"
+     *    argument value set to [DiscoveryStoppedReason.DISCOVERY_TIMEOUT].
+     * 4. A device is discovered and paired (with the given pairing PIN).
+     *    The discoveryStopped callback is _not_ called in that case.
+     *    The foundNewPairedDevice callback is called (after discovery
+     *    was shut down), both announcing the newly discovered device to
+     *    the caller and implicitly notifying that discovery stopped.
      *
      * @param sdpServiceName Name for the SDP service record.
      *        Must not be empty.
@@ -111,12 +128,12 @@ interface BluetoothInterface {
      * @param discoveryDuration How long the discovery shall go on,
      *        in seconds. Must be a value between 1 and 300.
      * @param discoveryStopped: Callback that gets invoked when discovery
-     *        is stopped, either due to a manual stop, or due to an error or
-     *        because the timeout defined by discoveryDuration was reached.
+     *        is stopped for any reason _other_ than that a device
+     *        was discovered.
      * @param foundNewPairedDevice Callback that gets invoked when
      *        a device was found that passed the filter (see [deviceFilter])
      *        and is paired. Exceptions thrown by this callback are logged,
-     *        but not propagated.
+     *        but not propagated. Discovery is stopped before this is called.
      * @throws IllegalStateException if this is called again after
      *         discovery has been started already, or if the interface
      *         is in a state in which discovery is not possible, such as

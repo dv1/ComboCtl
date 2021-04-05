@@ -4,6 +4,7 @@
 #include <future>
 #include <set>
 #include <assert.h>
+#include <optional>
 #include "bluez_interface.hpp"
 #include "agent.hpp"
 #include "adapter.hpp"
@@ -358,6 +359,13 @@ struct bluez_interface_priv
 
 				try
 				{
+					// As requested by the API documentation, we
+					// stop the discovery after discovering a device,
+					// _without_ invoking the m_on_discovery_stopped
+					// callback (hence the std::nullopt argument).
+					// Also, first stop discoverry, then announce the
+					// newly discovered device.
+					stop_discovery_impl(std::nullopt);
 					m_on_found_new_device(device_address);
 				}
 				catch (std::exception const &exc)
@@ -376,14 +384,15 @@ struct bluez_interface_priv
 	}
 
 
-	void stop_discovery_impl(discovery_stopped_reason reason)
+	void stop_discovery_impl(std::optional<discovery_stopped_reason> reason)
 	{
 		if (!m_discovery_started)
 			return;
 
 		m_discovery_started = false;
 
-		m_on_discovery_stopped(reason);
+		if (reason)
+			m_on_discovery_stopped(*reason);
 
 		m_agent.teardown();
 		m_sdp_service.teardown();

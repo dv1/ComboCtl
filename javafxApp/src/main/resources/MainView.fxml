@@ -17,7 +17,7 @@
     <ListView fx:id="pairedPumpListView" onMouseClicked="#openPumpView" prefHeight="200.0" prefWidth="216.0"
               VBox.vgrow="ALWAYS"/>
     <HBox alignment="CENTER" spacing="20.0">
-        <Button mnemonicParsing="false" onAction="#startDiscovery" text="Start discovery"/>
-        <Button mnemonicParsing="false" onAction="#stopDiscovery" text="Stop discovery"/>
+        <Button mnemonicParsing="false" onAction="#pairWithNewPump" text="Start pairing"/>
+        <Button mnemonicParsing="false" onAction="#stopPairing" text="Stop pairing"/>
     </HBox>
 </VBox>

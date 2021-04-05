@@ -19,6 +19,7 @@ import javafx.scene.control.TextInputDialog
 import javafx.scene.image.ImageView
 import javafx.stage.Stage
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -28,6 +29,8 @@ class MainViewController {
     private var mainScope: CoroutineScope? = null
     private var pumpStateStore: JsonPumpStateStore? = null
     private var listView: ListView<String>? = null
+
+    private var pairingJob: Job? = null
 
     private val pumpList: ObservableList<String> = FXCollections.observableArrayList()
 
@@ -48,7 +51,37 @@ class MainViewController {
         resetPumpList()
     }
 
-    fun startDiscovery() {
+    fun pairWithNewPump() {
+        require(mainControl != null)
+        require(mainScope != null)
+
+        try {
+            pairingJob = mainScope!!.launch {
+                mainControl!!.pairWithNewPump(
+                    300
+                ) { newPumpAddress, _ ->
+                    withContext(mainScope!!.coroutineContext) {
+                        askUserForPIN(newPumpAddress)
+                    }
+                }
+
+                resetPumpList()
+            }
+        } catch (e: IllegalStateException) {
+            println("Attempted to start discovery even though it is running already")
+        } catch (e: BluetoothException) {
+            println("Bluetooth interface exception: $e")
+        }
+
+        pairingJob = null
+    }
+
+    fun stopPairing() {
+        pairingJob?.cancel()
+        pairingJob = null
+    }
+
+    /* fun startDiscovery() {
         require(mainControl != null)
         require(mainScope != null)
         try {
@@ -73,7 +106,7 @@ class MainViewController {
     fun stopDiscovery() {
         require(mainControl != null)
         mainControl!!.stopDiscovery()
-    }
+    } */
 
     fun openPumpView() {
         require(mainControl != null)
@@ -132,9 +165,9 @@ class MainViewController {
         pumpViewStage.show()
     }
 
-    fun onNewPairedPump(pumpAddress: BluetoothAddress, pumpID: String) {
+    /* fun onNewPairedPump(pumpAddress: BluetoothAddress, pumpID: String) {
         resetPumpList()
-    }
+    } */
 
     fun onPumpUnpaired(pumpAddress: BluetoothAddress) {
         resetPumpList()
