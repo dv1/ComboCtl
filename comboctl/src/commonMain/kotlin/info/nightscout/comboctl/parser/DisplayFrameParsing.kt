@@ -23,10 +23,6 @@ enum class ReservoirState {
 /**
  * Result of a successful [parseDisplayFrame] call.
  *
- * Some of the subclasses are normal, empty classes, while others are data classes.
- * The empty classes are still useful for identifying the screen itself; they
- * aren't data classes simply because no info is parsed out of these screens.
- *
  * Subclasses which have hour quantities use a 0..23 range for the hours.
  * (Even if the screen showed the hours in the 12-hour AM/PM format, they are
  * converted to the 24-hour format.) Minute quantities use a 0..59 range.
@@ -35,17 +31,17 @@ enum class ReservoirState {
  * the integer make up the 3 most significant fractional digits of a decimal.
  * For example, "37.5" is encoded as 37500, "10" as 10000, "0.02" as 20 etc.
  */
-sealed class ParseResult {
+sealed class ParsedScreen {
     data class NormalMainScreen(
         val currentTimeHours: Int,
         val currentTimeMinutes: Int,
         val activeBasalRateNumber: Int,
         val currentBasalRateFactor: Int
-    ) : ParseResult()
+    ) : ParsedScreen()
     data class StoppedMainScreen(
         val currentTimeHours: Int,
         val currentTimeMinutes: Int
-    ) : ParseResult()
+    ) : ParsedScreen()
     data class TbrMainScreen(
         val currentTimeHours: Int,
         val currentTimeMinutes: Int,
@@ -54,45 +50,45 @@ sealed class ParseResult {
         val tbrPercentage: Int,
         val activeBasalRateNumber: Int,
         val currentBasalRateFactor: Int
-    ) : ParseResult()
+    ) : ParsedScreen()
 
-    class BasalRateProfileSelectionMenuScreen() : ParseResult()
-    class BluetoothSettingsMenuScreen() : ParseResult()
-    class ExtendedBolusMenuScreen() : ParseResult()
-    class MultiwaveBolusMenuScreen() : ParseResult()
-    class MenuSettingsMenuScreen() : ParseResult()
-    class MyDataMenuScreen() : ParseResult()
-    data class BasalRateProgrammingMenuScreen(val basalRateNumber: Int) : ParseResult()
-    class PumpSettingsMenuScreen() : ParseResult()
-    class ReminderSettingsMenuScreen() : ParseResult()
-    class TimeAndDateSettingsMenuScreen() : ParseResult()
-    class StandardBolusMenuScreen() : ParseResult()
-    class StopPumpMenuScreen() : ParseResult()
-    class TemporaryBasalRateMenuScreen() : ParseResult()
-    class TherapySettingsMenuScreen() : ParseResult()
+    object BasalRateProfileSelectionMenuScreen : ParsedScreen()
+    object BluetoothSettingsMenuScreen : ParsedScreen()
+    object ExtendedBolusMenuScreen : ParsedScreen()
+    object MultiwaveBolusMenuScreen : ParsedScreen()
+    object MenuSettingsMenuScreen : ParsedScreen()
+    object MyDataMenuScreen : ParsedScreen()
+    data class BasalRateProgrammingMenuScreen(val basalRateNumber: Int) : ParsedScreen()
+    object PumpSettingsMenuScreen : ParsedScreen()
+    object ReminderSettingsMenuScreen : ParsedScreen()
+    object TimeAndDateSettingsMenuScreen : ParsedScreen()
+    object StandardBolusMenuScreen : ParsedScreen()
+    object StopPumpMenuScreen : ParsedScreen()
+    object TemporaryBasalRateMenuScreen : ParsedScreen()
+    object TherapySettingsMenuScreen : ParsedScreen()
 
-    data class WarningScreen(val warningNumber: Int) : ParseResult()
-    data class ErrorScreen(val errorNumber: Int) : ParseResult()
+    data class WarningScreen(val warningNumber: Int) : ParsedScreen()
+    data class ErrorScreen(val errorNumber: Int) : ParsedScreen()
 
-    data class BasalRateTotalScreen(val totalNumUnits: Int) : ParseResult()
+    data class BasalRateTotalScreen(val totalNumUnits: Int) : ParsedScreen()
     data class BasalRateFactorSettingScreen(
         val beginHours: Int,
         val beginMinutes: Int,
         val endHours: Int,
         val endMinutes: Int,
         val numUnits: Int
-    ) : ParseResult()
+    ) : ParsedScreen()
 
-    data class TemporaryBasalRatePercentageScreen(val percentage: Int) : ParseResult()
-    data class TemporaryBasalRateDurationScreen(val hours: Int, val minutes: Int) : ParseResult()
+    data class TemporaryBasalRatePercentageScreen(val percentage: Int) : ParsedScreen()
+    data class TemporaryBasalRateDurationScreen(val hours: Int, val minutes: Int) : ParsedScreen()
 
-    data class QuickinfoMainScreen(val availableUnits: Int, val reservoirState: ReservoirState) : ParseResult()
+    data class QuickinfoMainScreen(val availableUnits: Int, val reservoirState: ReservoirState) : ParsedScreen()
 
-    data class TimeAndDateSettingsHourScreen(val hour: Int) : ParseResult()
-    data class TimeAndDateSettingsMinuteScreen(val minute: Int) : ParseResult()
-    data class TimeAndDateSettingsYearScreen(val year: Int) : ParseResult()
-    data class TimeAndDateSettingsMonthScreen(val month: Int) : ParseResult()
-    data class TimeAndDateSettingsDayScreen(val day: Int) : ParseResult()
+    data class TimeAndDateSettingsHourScreen(val hour: Int) : ParsedScreen()
+    data class TimeAndDateSettingsMinuteScreen(val minute: Int) : ParsedScreen()
+    data class TimeAndDateSettingsYearScreen(val year: Int) : ParsedScreen()
+    data class TimeAndDateSettingsMonthScreen(val month: Int) : ParsedScreen()
+    data class TimeAndDateSettingsDayScreen(val day: Int) : ParsedScreen()
 }
 
 /**
@@ -107,12 +103,12 @@ class DisplayFrameParseException(message: String, val displayFrame: DisplayFrame
  * Parses a given display frame, tries to recognize the frame, and extract information from it.
  *
  * @param displayFrame The display frame to parse.
- * @return The [ParseResult] of the parsing process, or null if the screen wasn't recognized.
+ * @return The [ParsedScreen] of the parsing process, or null if the screen wasn't recognized.
  * @throws DisplayFrameParseException if the display frame was recognized but something
  *         in the frame is bogus/invalid (suspiciously high insulin amounts for example).
  */
-fun parseDisplayFrame(displayFrame: DisplayFrame): ParseResult? {
-    var result: ParseResult?
+fun parseDisplayFrame(displayFrame: DisplayFrame): ParsedScreen? {
+    var result: ParsedScreen?
 
     // Find the pattern matches first. We'll parse the
     // resulting list to try to recognize the screen type.
@@ -159,8 +155,11 @@ fun parseDisplayFrame(displayFrame: DisplayFrame): ParseResult? {
 
 /************* Parsers for main screen categories and misc screens *************/
 
-private fun tryParseTopLeftClockScreens(displayFrame: DisplayFrame, matches: PatternMatches): ParseResult? {
-    var result: ParseResult?
+private fun tryParseTopLeftClockScreens(displayFrame: DisplayFrame, matches: PatternMatches): ParsedScreen? {
+    var result: ParsedScreen?
+
+    if (matches.isEmpty())
+        return null
 
     // Verify that the very first matched pattern (the clock symbol
     // at the top left) is actually present.
@@ -182,7 +181,7 @@ private fun tryParseTopLeftClockScreens(displayFrame: DisplayFrame, matches: Pat
     return null
 }
 
-private fun tryParseMenuScreen(matches: PatternMatches): ParseResult? {
+private fun tryParseMenuScreen(matches: PatternMatches): ParsedScreen? {
     // Menu screens are characterized by one icon at the bottom center
     // that identifies what menu screen this is. There is also a title
     // at the top, but that one is redundant for parsing purposes,
@@ -195,19 +194,19 @@ private fun tryParseMenuScreen(matches: PatternMatches): ParseResult? {
     val lastGlyph = matches.last().glyph
 
     when (lastGlyph) {
-        Glyph.LargeSymbol(Symbol.LARGE_BOLUS) -> return ParseResult.StandardBolusMenuScreen()
-        Glyph.LargeSymbol(Symbol.LARGE_EXTENDED_BOLUS) -> return ParseResult.ExtendedBolusMenuScreen()
-        Glyph.LargeSymbol(Symbol.LARGE_MULTIWAVE) -> return ParseResult.MultiwaveBolusMenuScreen()
-        Glyph.LargeSymbol(Symbol.LARGE_BLUETOOTH_SETTINGS) -> return ParseResult.BluetoothSettingsMenuScreen()
-        Glyph.LargeSymbol(Symbol.LARGE_MENU_SETTINGS) -> return ParseResult.MenuSettingsMenuScreen()
-        Glyph.LargeSymbol(Symbol.LARGE_MY_DATA) -> return ParseResult.MyDataMenuScreen()
-        Glyph.LargeSymbol(Symbol.LARGE_BASAL) -> return ParseResult.BasalRateProfileSelectionMenuScreen()
-        Glyph.LargeSymbol(Symbol.LARGE_PUMP_SETTINGS) -> return ParseResult.PumpSettingsMenuScreen()
-        Glyph.LargeSymbol(Symbol.LARGE_REMINDER_SETTINGS) -> return ParseResult.ReminderSettingsMenuScreen()
-        Glyph.LargeSymbol(Symbol.LARGE_CALENDAR_AND_CLOCK) -> return ParseResult.TimeAndDateSettingsMenuScreen()
-        Glyph.LargeSymbol(Symbol.LARGE_STOP) -> return ParseResult.StopPumpMenuScreen()
-        Glyph.LargeSymbol(Symbol.LARGE_TBR) -> return ParseResult.TemporaryBasalRateMenuScreen()
-        Glyph.LargeSymbol(Symbol.LARGE_THERAPY_SETTINGS) -> return ParseResult.TherapySettingsMenuScreen()
+        Glyph.LargeSymbol(Symbol.LARGE_BOLUS) -> return ParsedScreen.StandardBolusMenuScreen
+        Glyph.LargeSymbol(Symbol.LARGE_EXTENDED_BOLUS) -> return ParsedScreen.ExtendedBolusMenuScreen
+        Glyph.LargeSymbol(Symbol.LARGE_MULTIWAVE) -> return ParsedScreen.MultiwaveBolusMenuScreen
+        Glyph.LargeSymbol(Symbol.LARGE_BLUETOOTH_SETTINGS) -> return ParsedScreen.BluetoothSettingsMenuScreen
+        Glyph.LargeSymbol(Symbol.LARGE_MENU_SETTINGS) -> return ParsedScreen.MenuSettingsMenuScreen
+        Glyph.LargeSymbol(Symbol.LARGE_MY_DATA) -> return ParsedScreen.MyDataMenuScreen
+        Glyph.LargeSymbol(Symbol.LARGE_BASAL) -> return ParsedScreen.BasalRateProfileSelectionMenuScreen
+        Glyph.LargeSymbol(Symbol.LARGE_PUMP_SETTINGS) -> return ParsedScreen.PumpSettingsMenuScreen
+        Glyph.LargeSymbol(Symbol.LARGE_REMINDER_SETTINGS) -> return ParsedScreen.ReminderSettingsMenuScreen
+        Glyph.LargeSymbol(Symbol.LARGE_CALENDAR_AND_CLOCK) -> return ParsedScreen.TimeAndDateSettingsMenuScreen
+        Glyph.LargeSymbol(Symbol.LARGE_STOP) -> return ParsedScreen.StopPumpMenuScreen
+        Glyph.LargeSymbol(Symbol.LARGE_TBR) -> return ParsedScreen.TemporaryBasalRateMenuScreen
+        Glyph.LargeSymbol(Symbol.LARGE_THERAPY_SETTINGS) -> return ParsedScreen.TherapySettingsMenuScreen
         else -> Unit
     }
 
@@ -217,13 +216,13 @@ private fun tryParseMenuScreen(matches: PatternMatches): ParseResult? {
     if ((matches.size >= 2) &&
         (lastGlyph is Glyph.LargeDigit) &&
         (matches[matches.size - 2].glyph == Glyph.LargeSymbol(Symbol.LARGE_BASAL))) {
-        return ParseResult.BasalRateProgrammingMenuScreen(lastGlyph.digit)
+        return ParsedScreen.BasalRateProgrammingMenuScreen(lastGlyph.digit)
     }
 
     return null
 }
 
-private fun tryParseScreenByTitle(displayFrame: DisplayFrame, matches: PatternMatches): ParsedValue<ParseResult?> {
+private fun tryParseScreenByTitle(displayFrame: DisplayFrame, matches: PatternMatches): ParsedValue<ParsedScreen?> {
     // Try to parse the title. If the frame contains a screen with
     // a title, then the first N matches will contain small character
     // glyphs that make up said title.
@@ -249,7 +248,7 @@ private fun tryParseScreenByTitle(displayFrame: DisplayFrame, matches: PatternMa
     return ParsedValue(result, numTitleCharacters)
 }
 
-private fun tryParseWarningOrMenuScreen(matches: PatternMatches, numTitlePatternMatches: Int): ParseResult? {
+private fun tryParseWarningOrMenuScreen(matches: PatternMatches, numTitlePatternMatches: Int): ParsedScreen? {
     // Start at an offset that is past the screen title. The
     // warning and error screens have multiple possible titles
     // depending on the exact nature of the warning / error.
@@ -306,13 +305,13 @@ private fun tryParseWarningOrMenuScreen(matches: PatternMatches, numTitlePattern
         return null
 
     return when (warningOrErrorSymbol) {
-        Symbol.LARGE_WARNING -> ParseResult.WarningScreen(warningOrErrorNumberParseResult.value)
-        Symbol.LARGE_ERROR -> ParseResult.ErrorScreen(warningOrErrorNumberParseResult.value)
+        Symbol.LARGE_WARNING -> ParsedScreen.WarningScreen(warningOrErrorNumberParseResult.value)
+        Symbol.LARGE_ERROR -> ParsedScreen.ErrorScreen(warningOrErrorNumberParseResult.value)
         else -> null
     }
 }
 
-private fun tryParseBasalRateTotalScreen(matches: PatternMatches, numTitlePatternMatches: Int): ParseResult? {
+private fun tryParseBasalRateTotalScreen(matches: PatternMatches, numTitlePatternMatches: Int): ParsedScreen? {
     // Start at an offset that is past the screen title.
     // We can identify this screen without having to
     // resort to the title.
@@ -335,12 +334,12 @@ private fun tryParseBasalRateTotalScreen(matches: PatternMatches, numTitlePatter
     if ((curMatchesOffset >= matches.size) || (matches[curMatchesOffset].glyph != Glyph.LargeCharacter('u')))
         return null
 
-    return ParseResult.BasalRateTotalScreen(totalNumUnits = totalNumUnitsParseResult.value)
+    return ParsedScreen.BasalRateTotalScreen(totalNumUnits = totalNumUnitsParseResult.value)
 }
 
 /************* Parsers for top-left clock screens *************/
 
-private fun tryParseBasalRateFactorSettingScreen(matches: PatternMatches): ParseResult? {
+private fun tryParseBasalRateFactorSettingScreen(matches: PatternMatches): ParsedScreen? {
     // Start at 1 to skip the clock symbol. This functio is called
     // by tryParseTopLeftClockScreens() precisely _because_ that
     // function already checked for that clock symbol.
@@ -373,7 +372,7 @@ private fun tryParseBasalRateFactorSettingScreen(matches: PatternMatches): Parse
     if ((curMatchesOffset >= matches.size) || (matches[curMatchesOffset].glyph != Glyph.LargeSymbol(Symbol.LARGE_UNITS_PER_HOUR)))
         return null
 
-    return ParseResult.BasalRateFactorSettingScreen(
+    return ParsedScreen.BasalRateFactorSettingScreen(
         beginHours = beginTimeParseResult.value.hours,
         beginMinutes = beginTimeParseResult.value.minutes,
         endHours = endTimeParseResult.value.hours,
@@ -382,7 +381,7 @@ private fun tryParseBasalRateFactorSettingScreen(matches: PatternMatches): Parse
     )
 }
 
-private fun tryParseMainScreen(displayFrame: DisplayFrame, matches: PatternMatches): ParseResult? {
+private fun tryParseMainScreen(displayFrame: DisplayFrame, matches: PatternMatches): ParsedScreen? {
     // Start at 1 to skip the clock symbol. This functio is called
     // by tryParseTopLeftClockScreens() precisely _because_ that
     // function already checked for that clock symbol.
@@ -412,7 +411,7 @@ private fun tryParseMainScreen(displayFrame: DisplayFrame, matches: PatternMatch
             // If there is a stop symbol at the center, this is the
             // stopped variant of the main screen.
 
-            return ParseResult.StoppedMainScreen(
+            return ParsedScreen.StoppedMainScreen(
                 currentTimeHours = hours,
                 currentTimeMinutes = minutes
             )
@@ -440,7 +439,7 @@ private fun tryParseNormalMainScreen(
     matchesOffset: Int,
     hours: Int,
     minutes: Int
-): ParseResult? {
+): ParsedScreen? {
     // Start parsing right after the SMALL_ARROW symbol (tryParseMainScreen()
     // takes care of checking for that symbol glyph already.)
     var curMatchesOffset = matchesOffset
@@ -471,7 +470,7 @@ private fun tryParseNormalMainScreen(
             displayFrame
         )
 
-    return ParseResult.NormalMainScreen(
+    return ParsedScreen.NormalMainScreen(
         currentTimeHours = hours,
         currentTimeMinutes = minutes,
         activeBasalRateNumber = activeBasalRateNumber,
@@ -485,7 +484,7 @@ private fun tryParseMainScreenWithTbrInfo(
     matchesOffset: Int,
     hours: Int,
     minutes: Int
-): ParseResult? {
+): ParsedScreen? {
     // Start parsing right after the SMALL_ARROW symbol (tryParseMainScreen()
     // takes care of checking for that symbol glyph already.)
     var curMatchesOffset = matchesOffset
@@ -537,7 +536,7 @@ private fun tryParseMainScreenWithTbrInfo(
     // The current basal rate factor follows.
     val currentBasalRateFactorParseResult = parseDecimal(matches, curMatchesOffset) ?: return null
 
-    return ParseResult.TbrMainScreen(
+    return ParsedScreen.TbrMainScreen(
         currentTimeHours = hours,
         currentTimeMinutes = minutes,
         remainingTbrDurationHours = remainingTbrDurationParseResult.value.hours,
@@ -554,7 +553,7 @@ private fun parseQuickinfoScreen(
     displayFrame: DisplayFrame,
     matches: PatternMatches,
     numTitleCharacters: Int
-): ParseResult.QuickinfoMainScreen? {
+): ParsedScreen.QuickinfoMainScreen? {
     // A quickinfo screen always contains at least the title string,
     // the reservoir state symbol, and at least one digit (the number
     // of units in the reservoir).
@@ -587,13 +586,13 @@ private fun parseQuickinfoScreen(
             displayFrame
         )
 
-    return ParseResult.QuickinfoMainScreen(
+    return ParsedScreen.QuickinfoMainScreen(
         availableUnits = availableUnitsParseResult.value,
         reservoirState = reservoirState
     )
 }
 
-private fun parseTemporaryBasalRatePercentageScreen(matches: PatternMatches, numTitleCharacters: Int): ParseResult? {
+private fun parseTemporaryBasalRatePercentageScreen(matches: PatternMatches, numTitleCharacters: Int): ParsedScreen? {
     // Start to parse right after the matches that make up the title.
     var curMatchesOffset = numTitleCharacters
 
@@ -613,10 +612,10 @@ private fun parseTemporaryBasalRatePercentageScreen(matches: PatternMatches, num
     if ((curMatchesOffset >= matches.size) || (matches[curMatchesOffset].glyph != Glyph.LargeSymbol(Symbol.LARGE_PERCENT)))
         return null
 
-    return ParseResult.TemporaryBasalRatePercentageScreen(percentage = percentageParseResult.value)
+    return ParsedScreen.TemporaryBasalRatePercentageScreen(percentage = percentageParseResult.value)
 }
 
-private fun parseTemporaryBasalRateDurationScreen(matches: PatternMatches, numTitleCharacters: Int): ParseResult? {
+private fun parseTemporaryBasalRateDurationScreen(matches: PatternMatches, numTitleCharacters: Int): ParsedScreen? {
     // Start to parse right after the matches that make up the title.
     var curMatchesOffset = numTitleCharacters
 
@@ -629,7 +628,7 @@ private fun parseTemporaryBasalRateDurationScreen(matches: PatternMatches, numTi
     // Next comes the currently picked TBR duration.
     val durationParseResult = parseTime(matches, curMatchesOffset) ?: return null
 
-    return ParseResult.TemporaryBasalRateDurationScreen(
+    return ParsedScreen.TemporaryBasalRateDurationScreen(
         hours = durationParseResult.value.hours,
         minutes = durationParseResult.value.minutes
     )
@@ -640,7 +639,7 @@ private fun parseTimeAndDateSettingsScreen(
     matches: PatternMatches,
     titleID: TitleID,
     numTitleCharacters: Int
-): ParseResult? {
+): ParsedScreen? {
     // Start to parse right after the matches that make up the title.
     var curMatchesOffset = numTitleCharacters
 
@@ -697,11 +696,11 @@ private fun parseTimeAndDateSettingsScreen(
     }
 
     return when (titleID) {
-        TitleID.HOUR -> ParseResult.TimeAndDateSettingsHourScreen(integer)
-        TitleID.MINUTE -> ParseResult.TimeAndDateSettingsMinuteScreen(integer)
-        TitleID.YEAR -> ParseResult.TimeAndDateSettingsYearScreen(integer)
-        TitleID.MONTH -> ParseResult.TimeAndDateSettingsMonthScreen(integer)
-        TitleID.DAY -> ParseResult.TimeAndDateSettingsDayScreen(integer)
+        TitleID.HOUR -> ParsedScreen.TimeAndDateSettingsHourScreen(integer)
+        TitleID.MINUTE -> ParsedScreen.TimeAndDateSettingsMinuteScreen(integer)
+        TitleID.YEAR -> ParsedScreen.TimeAndDateSettingsYearScreen(integer)
+        TitleID.MONTH -> ParsedScreen.TimeAndDateSettingsMonthScreen(integer)
+        TitleID.DAY -> ParsedScreen.TimeAndDateSettingsDayScreen(integer)
         else ->
             throw DisplayFrameParseException(
                 "Invalid title ID $titleID when processing TimeAndDate settings screen",

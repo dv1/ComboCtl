@@ -9,7 +9,7 @@ class DisplayFrameParsingTest {
     fun checkFrameBasalRateFactorSettingParsing() {
         val result0 = parseDisplayFrame(testFrameBasalRateFactorSettingScreen0)
         assertEquals(
-            ParseResult.BasalRateFactorSettingScreen(
+            ParsedScreen.BasalRateFactorSettingScreen(
                 beginHours = 2,
                 beginMinutes = 0,
                 endHours = 3,
@@ -21,7 +21,7 @@ class DisplayFrameParsingTest {
 
         val result1 = parseDisplayFrame(testFrameBasalRateFactorSettingScreen1)
         assertEquals(
-            ParseResult.BasalRateFactorSettingScreen(
+            ParsedScreen.BasalRateFactorSettingScreen(
                 beginHours = 2,
                 beginMinutes = 0,
                 endHours = 3,
@@ -33,7 +33,7 @@ class DisplayFrameParsingTest {
 
         val resultAM = parseDisplayFrame(testFrameBasalRateFactorSettingScreenAM)
         assertEquals(
-            ParseResult.BasalRateFactorSettingScreen(
+            ParsedScreen.BasalRateFactorSettingScreen(
                 beginHours = 0,
                 beginMinutes = 0,
                 endHours = 1,
@@ -45,7 +45,7 @@ class DisplayFrameParsingTest {
 
         val resultAMPM = parseDisplayFrame(testFrameBasalRateFactorSettingScreenAMPM)
         assertEquals(
-            ParseResult.BasalRateFactorSettingScreen(
+            ParsedScreen.BasalRateFactorSettingScreen(
                 beginHours = 11,
                 beginMinutes = 0,
                 endHours = 12,
@@ -57,7 +57,7 @@ class DisplayFrameParsingTest {
 
         val resultPMAM = parseDisplayFrame(testFrameBasalRateFactorSettingScreenPMAM)
         assertEquals(
-            ParseResult.BasalRateFactorSettingScreen(
+            ParsedScreen.BasalRateFactorSettingScreen(
                 beginHours = 23,
                 beginMinutes = 0,
                 endHours = 0,
@@ -72,7 +72,7 @@ class DisplayFrameParsingTest {
     fun checkMainScreenParsing() {
         val resultWithSeparator = parseDisplayFrame(testFrameMainScreenWithTimeSeparator)
         assertEquals(
-            ParseResult.NormalMainScreen(
+            ParsedScreen.NormalMainScreen(
                 currentTimeHours = 10,
                 currentTimeMinutes = 20,
                 activeBasalRateNumber = 1,
@@ -83,7 +83,7 @@ class DisplayFrameParsingTest {
 
         val resultWithoutSeparator = parseDisplayFrame(testFrameMainScreenWithoutTimeSeparator)
         assertEquals(
-            ParseResult.NormalMainScreen(
+            ParsedScreen.NormalMainScreen(
                 currentTimeHours = 10,
                 currentTimeMinutes = 20,
                 activeBasalRateNumber = 1,
@@ -97,7 +97,7 @@ class DisplayFrameParsingTest {
     fun checkMainScreenStoppedParsing() {
         val resultWithSeparator = parseDisplayFrame(testFrameMainScreenStoppedWithTimeSeparator)
         assertEquals(
-            ParseResult.StoppedMainScreen(
+            ParsedScreen.StoppedMainScreen(
                 currentTimeHours = 10,
                 currentTimeMinutes = 20
             ),
@@ -106,7 +106,7 @@ class DisplayFrameParsingTest {
 
         val resultWithoutSeparator = parseDisplayFrame(testFrameMainScreenStoppedWithoutTimeSeparator)
         assertEquals(
-            ParseResult.StoppedMainScreen(
+            ParsedScreen.StoppedMainScreen(
                 currentTimeHours = 10,
                 currentTimeMinutes = 20
             ),
@@ -118,7 +118,7 @@ class DisplayFrameParsingTest {
     fun checkMainScreenWithTbrInfoParsing() {
         val result = parseDisplayFrame(testFrameMainScreenWithTbrInfo)
         assertEquals(
-            ParseResult.TbrMainScreen(
+            ParsedScreen.TbrMainScreen(
                 currentTimeHours = 10,
                 currentTimeMinutes = 21,
                 remainingTbrDurationHours = 0,
@@ -134,43 +134,43 @@ class DisplayFrameParsingTest {
     @Test
     fun checkStandardBolusMenuScreenParsing() {
         val result = parseDisplayFrame(testFrameStandardBolusMenuScreen)
-        assert(result is ParseResult.StandardBolusMenuScreen)
+        assert(result is ParsedScreen.StandardBolusMenuScreen)
     }
 
     @Test
     fun checkExtendedBolusMenuScreenParsing() {
         val result = parseDisplayFrame(testFrameExtendedBolusMenuScreen)
-        assert(result is ParseResult.ExtendedBolusMenuScreen)
+        assert(result is ParsedScreen.ExtendedBolusMenuScreen)
     }
 
     @Test
     fun checkMultiwaveBolusMenuScreenParsing() {
         val result = parseDisplayFrame(testFrameMultiwaveBolusMenuScreen)
-        assert(result is ParseResult.MultiwaveBolusMenuScreen)
+        assert(result is ParsedScreen.MultiwaveBolusMenuScreen)
     }
 
     @Test
     fun checkBluetoothSettingsMenuScreenParsing() {
         val result = parseDisplayFrame(testFrameBluetoothSettingsMenuScreen)
-        assert(result is ParseResult.BluetoothSettingsMenuScreen)
+        assert(result is ParsedScreen.BluetoothSettingsMenuScreen)
     }
 
     @Test
     fun checkMenuSettingsMenuScreenParsing() {
         val result = parseDisplayFrame(testFrameMenuSettingsMenuScreen)
-        assert(result is ParseResult.MenuSettingsMenuScreen)
+        assert(result is ParsedScreen.MenuSettingsMenuScreen)
     }
 
     @Test
     fun checkMyDataMenuScreenParsing() {
         val result = parseDisplayFrame(testFrameMyDataMenuScreen)
-        assert(result is ParseResult.MyDataMenuScreen)
+        assert(result is ParsedScreen.MyDataMenuScreen)
     }
 
     @Test
     fun checkBasalRateProfileSelectionMenuScreenParsing() {
         val result = parseDisplayFrame(testFrameBasalRateProfileSelectionMenuScreen)
-        assert(result is ParseResult.BasalRateProfileSelectionMenuScreen)
+        assert(result is ParsedScreen.BasalRateProfileSelectionMenuScreen)
     }
 
     @Test
@@ -186,56 +186,56 @@ class DisplayFrameParsingTest {
                 else -> fail("No test frame for index  $i")
             }
             val result = parseDisplayFrame(testFrame)
-            assertEquals(ParseResult.BasalRateProgrammingMenuScreen(i), result)
+            assertEquals(ParsedScreen.BasalRateProgrammingMenuScreen(i), result)
         }
     }
 
     @Test
     fun checkPumpSettingsMenuScreenParsing() {
         val result = parseDisplayFrame(testFramePumpSettingsMenuScreen)
-        assert(result is ParseResult.PumpSettingsMenuScreen)
+        assert(result is ParsedScreen.PumpSettingsMenuScreen)
     }
 
     @Test
     fun checkReminderSettingsMenuScreenParsing() {
         val result = parseDisplayFrame(testFrameReminderSettingsMenuScreen)
-        assert(result is ParseResult.ReminderSettingsMenuScreen)
+        assert(result is ParsedScreen.ReminderSettingsMenuScreen)
     }
 
     @Test
     fun checkTimeAndDateSettingsMenuScreenParsing() {
         val result = parseDisplayFrame(testFrameTimeAndDateSettingsMenuScreen)
-        assert(result is ParseResult.TimeAndDateSettingsMenuScreen)
+        assert(result is ParsedScreen.TimeAndDateSettingsMenuScreen)
     }
 
     @Test
     fun checkStopPumpMenuScreenParsing() {
         val result = parseDisplayFrame(testFrameStopPumpMenuScreen)
-        assert(result is ParseResult.StopPumpMenuScreen)
+        assert(result is ParsedScreen.StopPumpMenuScreen)
     }
 
     @Test
     fun checkTemporaryBasalRateMenuScreenParsing() {
         val result = parseDisplayFrame(testFrameTemporaryBasalRateMenuScreen)
-        assert(result is ParseResult.TemporaryBasalRateMenuScreen)
+        assert(result is ParsedScreen.TemporaryBasalRateMenuScreen)
     }
 
     @Test
     fun checkTherapySettingsMenuScreenParsing() {
         val result = parseDisplayFrame(testFrameTherapySettingsMenuScreen)
-        assert(result is ParseResult.TherapySettingsMenuScreen)
+        assert(result is ParsedScreen.TherapySettingsMenuScreen)
     }
 
     @Test
     fun checkQuickinfoMainScreenParsing() {
         val result = parseDisplayFrame(testFrameQuickinfoMainScreen)
-        assertEquals(ParseResult.QuickinfoMainScreen(availableUnits = 213, reservoirState = ReservoirState.FULL), result)
+        assertEquals(ParsedScreen.QuickinfoMainScreen(availableUnits = 213, reservoirState = ReservoirState.FULL), result)
     }
 
     @Test
     fun checkWarningScreenParsing() {
         val resultTbr = parseDisplayFrame(testFrameW6CancelTbrWarningScreen)
-        assertEquals(ParseResult.WarningScreen(warningNumber = 6), resultTbr)
+        assertEquals(ParsedScreen.WarningScreen(warningNumber = 6), resultTbr)
 
         // The main contents of the warning screen blink. During
         // the phase where the main contents aren't visible, we
@@ -245,45 +245,45 @@ class DisplayFrameParsingTest {
         assertEquals(null, resultBolus0)
 
         val resultBolus1 = parseDisplayFrame(testFrameW8CancelBolusWarningScreen1)
-        assertEquals(ParseResult.WarningScreen(warningNumber = 8), resultBolus1)
+        assertEquals(ParsedScreen.WarningScreen(warningNumber = 8), resultBolus1)
 
         // Same as above with regards to the blinking.
         val resultBolus2 = parseDisplayFrame(testFrameW8CancelBolusWarningScreen2)
         assertEquals(null, resultBolus2)
 
         val resultBolus3 = parseDisplayFrame(testFrameW8CancelBolusWarningScreen3)
-        assertEquals(ParseResult.WarningScreen(warningNumber = 8), resultBolus3)
+        assertEquals(ParsedScreen.WarningScreen(warningNumber = 8), resultBolus3)
     }
 
     @Test
     fun checkTemporaryBasalRatePercentageParsing() {
         val result100 = parseDisplayFrame(testFrameTemporaryBasalRatePercentage100Screen)
-        assertEquals(ParseResult.TemporaryBasalRatePercentageScreen(percentage = 100), result100)
+        assertEquals(ParsedScreen.TemporaryBasalRatePercentageScreen(percentage = 100), result100)
 
         val result110 = parseDisplayFrame(testFrameTemporaryBasalRatePercentage110Screen)
-        assertEquals(ParseResult.TemporaryBasalRatePercentageScreen(percentage = 110), result110)
+        assertEquals(ParsedScreen.TemporaryBasalRatePercentageScreen(percentage = 110), result110)
 
         val testScreens = listOf(
-            Pair(testFrameTbrPercentageEnglishScreen, ParseResult.TemporaryBasalRatePercentageScreen(percentage = 110)),
-            Pair(testFrameTbrPercentageSpanishScreen, ParseResult.TemporaryBasalRatePercentageScreen(percentage = 110)),
-            Pair(testFrameTbrPercentageFrenchScreen, ParseResult.TemporaryBasalRatePercentageScreen(percentage = 110)),
-            Pair(testFrameTbrPercentageItalianScreen, ParseResult.TemporaryBasalRatePercentageScreen(percentage = 110)),
-            Pair(testFrameTbrPercentageRussianScreen, ParseResult.TemporaryBasalRatePercentageScreen(percentage = 110)),
-            Pair(testFrameTbrPercentageTurkishScreen, ParseResult.TemporaryBasalRatePercentageScreen(percentage = 110)),
-            Pair(testFrameTbrPercentagePolishScreen, ParseResult.TemporaryBasalRatePercentageScreen(percentage = 100)),
-            Pair(testFrameTbrPercentageCzechScreen, ParseResult.TemporaryBasalRatePercentageScreen(percentage = 110)),
-            Pair(testFrameTbrPercentageHungarianScreen, ParseResult.TemporaryBasalRatePercentageScreen(percentage = 110)),
-            Pair(testFrameTbrPercentageSlovakScreen, ParseResult.TemporaryBasalRatePercentageScreen(percentage = 110)),
-            Pair(testFrameTbrPercentageRomanianScreen, ParseResult.TemporaryBasalRatePercentageScreen(percentage = 110)),
-            Pair(testFrameTbrPercentageCroatianScreen, ParseResult.TemporaryBasalRatePercentageScreen(percentage = 110)),
-            Pair(testFrameTbrPercentageDutchScreen, ParseResult.TemporaryBasalRatePercentageScreen(percentage = 110)),
-            Pair(testFrameTbrPercentageGreekScreen, ParseResult.TemporaryBasalRatePercentageScreen(percentage = 110)),
-            Pair(testFrameTbrPercentageFinnishScreen, ParseResult.TemporaryBasalRatePercentageScreen(percentage = 110)),
-            Pair(testFrameTbrPercentageNorwegianScreen, ParseResult.TemporaryBasalRatePercentageScreen(percentage = 110)),
-            Pair(testFrameTbrPercentagePortugueseScreen, ParseResult.TemporaryBasalRatePercentageScreen(percentage = 110)),
-            Pair(testFrameTbrPercentageSwedishScreen, ParseResult.TemporaryBasalRatePercentageScreen(percentage = 110)),
-            Pair(testFrameTbrPercentageDanishScreen, ParseResult.TemporaryBasalRatePercentageScreen(percentage = 110)),
-            Pair(testFrameTbrPercentageGermanScreen, ParseResult.TemporaryBasalRatePercentageScreen(percentage = 110))
+            Pair(testFrameTbrPercentageEnglishScreen, ParsedScreen.TemporaryBasalRatePercentageScreen(percentage = 110)),
+            Pair(testFrameTbrPercentageSpanishScreen, ParsedScreen.TemporaryBasalRatePercentageScreen(percentage = 110)),
+            Pair(testFrameTbrPercentageFrenchScreen, ParsedScreen.TemporaryBasalRatePercentageScreen(percentage = 110)),
+            Pair(testFrameTbrPercentageItalianScreen, ParsedScreen.TemporaryBasalRatePercentageScreen(percentage = 110)),
+            Pair(testFrameTbrPercentageRussianScreen, ParsedScreen.TemporaryBasalRatePercentageScreen(percentage = 110)),
+            Pair(testFrameTbrPercentageTurkishScreen, ParsedScreen.TemporaryBasalRatePercentageScreen(percentage = 110)),
+            Pair(testFrameTbrPercentagePolishScreen, ParsedScreen.TemporaryBasalRatePercentageScreen(percentage = 100)),
+            Pair(testFrameTbrPercentageCzechScreen, ParsedScreen.TemporaryBasalRatePercentageScreen(percentage = 110)),
+            Pair(testFrameTbrPercentageHungarianScreen, ParsedScreen.TemporaryBasalRatePercentageScreen(percentage = 110)),
+            Pair(testFrameTbrPercentageSlovakScreen, ParsedScreen.TemporaryBasalRatePercentageScreen(percentage = 110)),
+            Pair(testFrameTbrPercentageRomanianScreen, ParsedScreen.TemporaryBasalRatePercentageScreen(percentage = 110)),
+            Pair(testFrameTbrPercentageCroatianScreen, ParsedScreen.TemporaryBasalRatePercentageScreen(percentage = 110)),
+            Pair(testFrameTbrPercentageDutchScreen, ParsedScreen.TemporaryBasalRatePercentageScreen(percentage = 110)),
+            Pair(testFrameTbrPercentageGreekScreen, ParsedScreen.TemporaryBasalRatePercentageScreen(percentage = 110)),
+            Pair(testFrameTbrPercentageFinnishScreen, ParsedScreen.TemporaryBasalRatePercentageScreen(percentage = 110)),
+            Pair(testFrameTbrPercentageNorwegianScreen, ParsedScreen.TemporaryBasalRatePercentageScreen(percentage = 110)),
+            Pair(testFrameTbrPercentagePortugueseScreen, ParsedScreen.TemporaryBasalRatePercentageScreen(percentage = 110)),
+            Pair(testFrameTbrPercentageSwedishScreen, ParsedScreen.TemporaryBasalRatePercentageScreen(percentage = 110)),
+            Pair(testFrameTbrPercentageDanishScreen, ParsedScreen.TemporaryBasalRatePercentageScreen(percentage = 110)),
+            Pair(testFrameTbrPercentageGermanScreen, ParsedScreen.TemporaryBasalRatePercentageScreen(percentage = 110))
         )
 
         for ((testScreen, expectedResult) in testScreens) {
@@ -295,26 +295,26 @@ class DisplayFrameParsingTest {
     @Test
     fun checkTemporaryBasalRateDurationParsing() {
         val testScreens = listOf(
-            Pair(testFrameTbrDurationEnglishScreen, ParseResult.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationSpanishScreen, ParseResult.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationFrenchScreen, ParseResult.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationItalianScreen, ParseResult.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationRussianScreen, ParseResult.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationTurkishScreen, ParseResult.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationPolishScreen, ParseResult.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationCzechScreen, ParseResult.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationHungarianScreen, ParseResult.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationSlovakScreen, ParseResult.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationRomanianScreen, ParseResult.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationCroatianScreen, ParseResult.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationDutchScreen, ParseResult.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationGreekScreen, ParseResult.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationFinnishScreen, ParseResult.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationNorwegianScreen, ParseResult.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationPortugueseScreen, ParseResult.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationSwedishScreen, ParseResult.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationDanishScreen, ParseResult.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationGermanScreen, ParseResult.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30))
+            Pair(testFrameTbrDurationEnglishScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
+            Pair(testFrameTbrDurationSpanishScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
+            Pair(testFrameTbrDurationFrenchScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
+            Pair(testFrameTbrDurationItalianScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
+            Pair(testFrameTbrDurationRussianScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
+            Pair(testFrameTbrDurationTurkishScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
+            Pair(testFrameTbrDurationPolishScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
+            Pair(testFrameTbrDurationCzechScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
+            Pair(testFrameTbrDurationHungarianScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
+            Pair(testFrameTbrDurationSlovakScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
+            Pair(testFrameTbrDurationRomanianScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
+            Pair(testFrameTbrDurationCroatianScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
+            Pair(testFrameTbrDurationDutchScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
+            Pair(testFrameTbrDurationGreekScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
+            Pair(testFrameTbrDurationFinnishScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
+            Pair(testFrameTbrDurationNorwegianScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
+            Pair(testFrameTbrDurationPortugueseScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
+            Pair(testFrameTbrDurationSwedishScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
+            Pair(testFrameTbrDurationDanishScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
+            Pair(testFrameTbrDurationGermanScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30))
         )
 
         for ((testScreen, expectedResult) in testScreens) {
@@ -326,140 +326,140 @@ class DisplayFrameParsingTest {
     @Test
     fun checkBasalRateTotalScreenParsing() {
         val result0 = parseDisplayFrame(testFrameBasalRateTotalScreen0)
-        assertEquals(ParseResult.BasalRateTotalScreen(totalNumUnits = 5160), result0)
+        assertEquals(ParsedScreen.BasalRateTotalScreen(totalNumUnits = 5160), result0)
 
         val result1 = parseDisplayFrame(testFrameBasalRateTotalScreen1)
-        assertEquals(ParseResult.BasalRateTotalScreen(totalNumUnits = 56970), result1)
+        assertEquals(ParsedScreen.BasalRateTotalScreen(totalNumUnits = 56970), result1)
     }
 
     @Test
     fun checkTimeAndDateSettingsScreenParsing() {
         val resultHour12h = parseDisplayFrame(testTimeAndDateSettingsHour12hFormatScreen)
-        assertEquals(ParseResult.TimeAndDateSettingsHourScreen(hour = 20), resultHour12h)
+        assertEquals(ParsedScreen.TimeAndDateSettingsHourScreen(hour = 20), resultHour12h)
 
         val resultHour24h = parseDisplayFrame(testTimeAndDateSettingsHour24hFormatScreen)
-        assertEquals(ParseResult.TimeAndDateSettingsHourScreen(hour = 10), resultHour24h)
+        assertEquals(ParsedScreen.TimeAndDateSettingsHourScreen(hour = 10), resultHour24h)
 
         val testScreens = listOf(
-            Pair(testTimeAndDateSettingsHourEnglishScreen, ParseResult.TimeAndDateSettingsHourScreen(hour = 8)),
-            Pair(testTimeAndDateSettingsMinuteEnglishScreen, ParseResult.TimeAndDateSettingsMinuteScreen(minute = 35)),
-            Pair(testTimeAndDateSettingsYearEnglishScreen, ParseResult.TimeAndDateSettingsYearScreen(year = 2015)),
-            Pair(testTimeAndDateSettingsMonthEnglishScreen, ParseResult.TimeAndDateSettingsMonthScreen(month = 4)),
-            Pair(testTimeAndDateSettingsDayEnglishScreen, ParseResult.TimeAndDateSettingsDayScreen(day = 27)),
+            Pair(testTimeAndDateSettingsHourEnglishScreen, ParsedScreen.TimeAndDateSettingsHourScreen(hour = 8)),
+            Pair(testTimeAndDateSettingsMinuteEnglishScreen, ParsedScreen.TimeAndDateSettingsMinuteScreen(minute = 35)),
+            Pair(testTimeAndDateSettingsYearEnglishScreen, ParsedScreen.TimeAndDateSettingsYearScreen(year = 2015)),
+            Pair(testTimeAndDateSettingsMonthEnglishScreen, ParsedScreen.TimeAndDateSettingsMonthScreen(month = 4)),
+            Pair(testTimeAndDateSettingsDayEnglishScreen, ParsedScreen.TimeAndDateSettingsDayScreen(day = 27)),
 
-            Pair(testTimeAndDateSettingsHourSpanishScreen, ParseResult.TimeAndDateSettingsHourScreen(hour = 8)),
-            Pair(testTimeAndDateSettingsMinuteSpanishScreen, ParseResult.TimeAndDateSettingsMinuteScreen(minute = 36)),
-            Pair(testTimeAndDateSettingsYearSpanishScreen, ParseResult.TimeAndDateSettingsYearScreen(year = 2015)),
-            Pair(testTimeAndDateSettingsMonthSpanishScreen, ParseResult.TimeAndDateSettingsMonthScreen(month = 4)),
-            Pair(testTimeAndDateSettingsDaySpanishScreen, ParseResult.TimeAndDateSettingsDayScreen(day = 27)),
+            Pair(testTimeAndDateSettingsHourSpanishScreen, ParsedScreen.TimeAndDateSettingsHourScreen(hour = 8)),
+            Pair(testTimeAndDateSettingsMinuteSpanishScreen, ParsedScreen.TimeAndDateSettingsMinuteScreen(minute = 36)),
+            Pair(testTimeAndDateSettingsYearSpanishScreen, ParsedScreen.TimeAndDateSettingsYearScreen(year = 2015)),
+            Pair(testTimeAndDateSettingsMonthSpanishScreen, ParsedScreen.TimeAndDateSettingsMonthScreen(month = 4)),
+            Pair(testTimeAndDateSettingsDaySpanishScreen, ParsedScreen.TimeAndDateSettingsDayScreen(day = 27)),
 
-            Pair(testTimeAndDateSettingsHourFrenchScreen, ParseResult.TimeAndDateSettingsHourScreen(hour = 10)),
-            Pair(testTimeAndDateSettingsMinuteFrenchScreen, ParseResult.TimeAndDateSettingsMinuteScreen(minute = 4)),
-            Pair(testTimeAndDateSettingsYearFrenchScreen, ParseResult.TimeAndDateSettingsYearScreen(year = 2015)),
-            Pair(testTimeAndDateSettingsMonthFrenchScreen, ParseResult.TimeAndDateSettingsMonthScreen(month = 4)),
-            Pair(testTimeAndDateSettingsDayFrenchScreen, ParseResult.TimeAndDateSettingsDayScreen(day = 27)),
+            Pair(testTimeAndDateSettingsHourFrenchScreen, ParsedScreen.TimeAndDateSettingsHourScreen(hour = 10)),
+            Pair(testTimeAndDateSettingsMinuteFrenchScreen, ParsedScreen.TimeAndDateSettingsMinuteScreen(minute = 4)),
+            Pair(testTimeAndDateSettingsYearFrenchScreen, ParsedScreen.TimeAndDateSettingsYearScreen(year = 2015)),
+            Pair(testTimeAndDateSettingsMonthFrenchScreen, ParsedScreen.TimeAndDateSettingsMonthScreen(month = 4)),
+            Pair(testTimeAndDateSettingsDayFrenchScreen, ParsedScreen.TimeAndDateSettingsDayScreen(day = 27)),
 
-            Pair(testTimeAndDateSettingsHourItalianScreen, ParseResult.TimeAndDateSettingsHourScreen(hour = 13)),
-            Pair(testTimeAndDateSettingsMinuteItalianScreen, ParseResult.TimeAndDateSettingsMinuteScreen(minute = 48)),
-            Pair(testTimeAndDateSettingsYearItalianScreen, ParseResult.TimeAndDateSettingsYearScreen(year = 2015)),
-            Pair(testTimeAndDateSettingsMonthItalianScreen, ParseResult.TimeAndDateSettingsMonthScreen(month = 4)),
-            Pair(testTimeAndDateSettingsDayItalianScreen, ParseResult.TimeAndDateSettingsDayScreen(day = 27)),
+            Pair(testTimeAndDateSettingsHourItalianScreen, ParsedScreen.TimeAndDateSettingsHourScreen(hour = 13)),
+            Pair(testTimeAndDateSettingsMinuteItalianScreen, ParsedScreen.TimeAndDateSettingsMinuteScreen(minute = 48)),
+            Pair(testTimeAndDateSettingsYearItalianScreen, ParsedScreen.TimeAndDateSettingsYearScreen(year = 2015)),
+            Pair(testTimeAndDateSettingsMonthItalianScreen, ParsedScreen.TimeAndDateSettingsMonthScreen(month = 4)),
+            Pair(testTimeAndDateSettingsDayItalianScreen, ParsedScreen.TimeAndDateSettingsDayScreen(day = 27)),
 
-            Pair(testTimeAndDateSettingsHourRussianScreen, ParseResult.TimeAndDateSettingsHourScreen(hour = 13)),
-            Pair(testTimeAndDateSettingsMinuteRussianScreen, ParseResult.TimeAndDateSettingsMinuteScreen(minute = 52)),
-            Pair(testTimeAndDateSettingsYearRussianScreen, ParseResult.TimeAndDateSettingsYearScreen(year = 2015)),
-            Pair(testTimeAndDateSettingsMonthRussianScreen, ParseResult.TimeAndDateSettingsMonthScreen(month = 4)),
-            Pair(testTimeAndDateSettingsDayRussianScreen, ParseResult.TimeAndDateSettingsDayScreen(day = 27)),
+            Pair(testTimeAndDateSettingsHourRussianScreen, ParsedScreen.TimeAndDateSettingsHourScreen(hour = 13)),
+            Pair(testTimeAndDateSettingsMinuteRussianScreen, ParsedScreen.TimeAndDateSettingsMinuteScreen(minute = 52)),
+            Pair(testTimeAndDateSettingsYearRussianScreen, ParsedScreen.TimeAndDateSettingsYearScreen(year = 2015)),
+            Pair(testTimeAndDateSettingsMonthRussianScreen, ParsedScreen.TimeAndDateSettingsMonthScreen(month = 4)),
+            Pair(testTimeAndDateSettingsDayRussianScreen, ParsedScreen.TimeAndDateSettingsDayScreen(day = 27)),
 
-            Pair(testTimeAndDateSettingsHourTurkishScreen, ParseResult.TimeAndDateSettingsHourScreen(hour = 13)),
-            Pair(testTimeAndDateSettingsMinuteTurkishScreen, ParseResult.TimeAndDateSettingsMinuteScreen(minute = 53)),
-            Pair(testTimeAndDateSettingsYearTurkishScreen, ParseResult.TimeAndDateSettingsYearScreen(year = 2015)),
-            Pair(testTimeAndDateSettingsMonthTurkishScreen, ParseResult.TimeAndDateSettingsMonthScreen(month = 4)),
-            Pair(testTimeAndDateSettingsDayTurkishScreen, ParseResult.TimeAndDateSettingsDayScreen(day = 27)),
+            Pair(testTimeAndDateSettingsHourTurkishScreen, ParsedScreen.TimeAndDateSettingsHourScreen(hour = 13)),
+            Pair(testTimeAndDateSettingsMinuteTurkishScreen, ParsedScreen.TimeAndDateSettingsMinuteScreen(minute = 53)),
+            Pair(testTimeAndDateSettingsYearTurkishScreen, ParsedScreen.TimeAndDateSettingsYearScreen(year = 2015)),
+            Pair(testTimeAndDateSettingsMonthTurkishScreen, ParsedScreen.TimeAndDateSettingsMonthScreen(month = 4)),
+            Pair(testTimeAndDateSettingsDayTurkishScreen, ParsedScreen.TimeAndDateSettingsDayScreen(day = 27)),
 
-            Pair(testTimeAndDateSettingsHourPolishScreen, ParseResult.TimeAndDateSettingsHourScreen(hour = 14)),
-            Pair(testTimeAndDateSettingsMinutePolishScreen, ParseResult.TimeAndDateSettingsMinuteScreen(minute = 34)),
-            Pair(testTimeAndDateSettingsYearPolishScreen, ParseResult.TimeAndDateSettingsYearScreen(year = 2015)),
-            Pair(testTimeAndDateSettingsMonthPolishScreen, ParseResult.TimeAndDateSettingsMonthScreen(month = 4)),
-            Pair(testTimeAndDateSettingsDayPolishScreen, ParseResult.TimeAndDateSettingsDayScreen(day = 27)),
+            Pair(testTimeAndDateSettingsHourPolishScreen, ParsedScreen.TimeAndDateSettingsHourScreen(hour = 14)),
+            Pair(testTimeAndDateSettingsMinutePolishScreen, ParsedScreen.TimeAndDateSettingsMinuteScreen(minute = 34)),
+            Pair(testTimeAndDateSettingsYearPolishScreen, ParsedScreen.TimeAndDateSettingsYearScreen(year = 2015)),
+            Pair(testTimeAndDateSettingsMonthPolishScreen, ParsedScreen.TimeAndDateSettingsMonthScreen(month = 4)),
+            Pair(testTimeAndDateSettingsDayPolishScreen, ParsedScreen.TimeAndDateSettingsDayScreen(day = 27)),
 
-            Pair(testTimeAndDateSettingsHourCzechScreen, ParseResult.TimeAndDateSettingsHourScreen(hour = 14)),
-            Pair(testTimeAndDateSettingsMinuteCzechScreen, ParseResult.TimeAndDateSettingsMinuteScreen(minute = 34)),
-            Pair(testTimeAndDateSettingsYearCzechScreen, ParseResult.TimeAndDateSettingsYearScreen(year = 2015)),
-            Pair(testTimeAndDateSettingsMonthCzechScreen, ParseResult.TimeAndDateSettingsMonthScreen(month = 4)),
-            Pair(testTimeAndDateSettingsDayCzechScreen, ParseResult.TimeAndDateSettingsDayScreen(day = 27)),
+            Pair(testTimeAndDateSettingsHourCzechScreen, ParsedScreen.TimeAndDateSettingsHourScreen(hour = 14)),
+            Pair(testTimeAndDateSettingsMinuteCzechScreen, ParsedScreen.TimeAndDateSettingsMinuteScreen(minute = 34)),
+            Pair(testTimeAndDateSettingsYearCzechScreen, ParsedScreen.TimeAndDateSettingsYearScreen(year = 2015)),
+            Pair(testTimeAndDateSettingsMonthCzechScreen, ParsedScreen.TimeAndDateSettingsMonthScreen(month = 4)),
+            Pair(testTimeAndDateSettingsDayCzechScreen, ParsedScreen.TimeAndDateSettingsDayScreen(day = 27)),
 
-            Pair(testTimeAndDateSettingsHourHungarianScreen, ParseResult.TimeAndDateSettingsHourScreen(hour = 14)),
-            Pair(testTimeAndDateSettingsMinuteHungarianScreen, ParseResult.TimeAndDateSettingsMinuteScreen(minute = 34)),
-            Pair(testTimeAndDateSettingsYearHungarianScreen, ParseResult.TimeAndDateSettingsYearScreen(year = 2015)),
-            Pair(testTimeAndDateSettingsMonthHungarianScreen, ParseResult.TimeAndDateSettingsMonthScreen(month = 4)),
-            Pair(testTimeAndDateSettingsDayHungarianScreen, ParseResult.TimeAndDateSettingsDayScreen(day = 27)),
+            Pair(testTimeAndDateSettingsHourHungarianScreen, ParsedScreen.TimeAndDateSettingsHourScreen(hour = 14)),
+            Pair(testTimeAndDateSettingsMinuteHungarianScreen, ParsedScreen.TimeAndDateSettingsMinuteScreen(minute = 34)),
+            Pair(testTimeAndDateSettingsYearHungarianScreen, ParsedScreen.TimeAndDateSettingsYearScreen(year = 2015)),
+            Pair(testTimeAndDateSettingsMonthHungarianScreen, ParsedScreen.TimeAndDateSettingsMonthScreen(month = 4)),
+            Pair(testTimeAndDateSettingsDayHungarianScreen, ParsedScreen.TimeAndDateSettingsDayScreen(day = 27)),
 
-            Pair(testTimeAndDateSettingsHourSlovakScreen, ParseResult.TimeAndDateSettingsHourScreen(hour = 14)),
-            Pair(testTimeAndDateSettingsMinuteSlovakScreen, ParseResult.TimeAndDateSettingsMinuteScreen(minute = 34)),
-            Pair(testTimeAndDateSettingsYearSlovakScreen, ParseResult.TimeAndDateSettingsYearScreen(year = 2015)),
-            Pair(testTimeAndDateSettingsMonthSlovakScreen, ParseResult.TimeAndDateSettingsMonthScreen(month = 4)),
-            Pair(testTimeAndDateSettingsDaySlovakScreen, ParseResult.TimeAndDateSettingsDayScreen(day = 27)),
+            Pair(testTimeAndDateSettingsHourSlovakScreen, ParsedScreen.TimeAndDateSettingsHourScreen(hour = 14)),
+            Pair(testTimeAndDateSettingsMinuteSlovakScreen, ParsedScreen.TimeAndDateSettingsMinuteScreen(minute = 34)),
+            Pair(testTimeAndDateSettingsYearSlovakScreen, ParsedScreen.TimeAndDateSettingsYearScreen(year = 2015)),
+            Pair(testTimeAndDateSettingsMonthSlovakScreen, ParsedScreen.TimeAndDateSettingsMonthScreen(month = 4)),
+            Pair(testTimeAndDateSettingsDaySlovakScreen, ParsedScreen.TimeAndDateSettingsDayScreen(day = 27)),
 
-            Pair(testTimeAndDateSettingsHourRomanianScreen, ParseResult.TimeAndDateSettingsHourScreen(hour = 14)),
-            Pair(testTimeAndDateSettingsMinuteRomanianScreen, ParseResult.TimeAndDateSettingsMinuteScreen(minute = 34)),
-            Pair(testTimeAndDateSettingsYearRomanianScreen, ParseResult.TimeAndDateSettingsYearScreen(year = 2015)),
-            Pair(testTimeAndDateSettingsMonthRomanianScreen, ParseResult.TimeAndDateSettingsMonthScreen(month = 4)),
-            Pair(testTimeAndDateSettingsDayRomanianScreen, ParseResult.TimeAndDateSettingsDayScreen(day = 27)),
+            Pair(testTimeAndDateSettingsHourRomanianScreen, ParsedScreen.TimeAndDateSettingsHourScreen(hour = 14)),
+            Pair(testTimeAndDateSettingsMinuteRomanianScreen, ParsedScreen.TimeAndDateSettingsMinuteScreen(minute = 34)),
+            Pair(testTimeAndDateSettingsYearRomanianScreen, ParsedScreen.TimeAndDateSettingsYearScreen(year = 2015)),
+            Pair(testTimeAndDateSettingsMonthRomanianScreen, ParsedScreen.TimeAndDateSettingsMonthScreen(month = 4)),
+            Pair(testTimeAndDateSettingsDayRomanianScreen, ParsedScreen.TimeAndDateSettingsDayScreen(day = 27)),
 
-            Pair(testTimeAndDateSettingsHourCroatianScreen, ParseResult.TimeAndDateSettingsHourScreen(hour = 14)),
-            Pair(testTimeAndDateSettingsMinuteCroatianScreen, ParseResult.TimeAndDateSettingsMinuteScreen(minute = 34)),
-            Pair(testTimeAndDateSettingsYearCroatianScreen, ParseResult.TimeAndDateSettingsYearScreen(year = 2015)),
-            Pair(testTimeAndDateSettingsMonthCroatianScreen, ParseResult.TimeAndDateSettingsMonthScreen(month = 4)),
-            Pair(testTimeAndDateSettingsDayCroatianScreen, ParseResult.TimeAndDateSettingsDayScreen(day = 27)),
+            Pair(testTimeAndDateSettingsHourCroatianScreen, ParsedScreen.TimeAndDateSettingsHourScreen(hour = 14)),
+            Pair(testTimeAndDateSettingsMinuteCroatianScreen, ParsedScreen.TimeAndDateSettingsMinuteScreen(minute = 34)),
+            Pair(testTimeAndDateSettingsYearCroatianScreen, ParsedScreen.TimeAndDateSettingsYearScreen(year = 2015)),
+            Pair(testTimeAndDateSettingsMonthCroatianScreen, ParsedScreen.TimeAndDateSettingsMonthScreen(month = 4)),
+            Pair(testTimeAndDateSettingsDayCroatianScreen, ParsedScreen.TimeAndDateSettingsDayScreen(day = 27)),
 
-            Pair(testTimeAndDateSettingsHourDutchScreen, ParseResult.TimeAndDateSettingsHourScreen(hour = 14)),
-            Pair(testTimeAndDateSettingsMinuteDutchScreen, ParseResult.TimeAndDateSettingsMinuteScreen(minute = 34)),
-            Pair(testTimeAndDateSettingsYearDutchScreen, ParseResult.TimeAndDateSettingsYearScreen(year = 2015)),
-            Pair(testTimeAndDateSettingsMonthDutchScreen, ParseResult.TimeAndDateSettingsMonthScreen(month = 4)),
-            Pair(testTimeAndDateSettingsDayDutchScreen, ParseResult.TimeAndDateSettingsDayScreen(day = 27)),
+            Pair(testTimeAndDateSettingsHourDutchScreen, ParsedScreen.TimeAndDateSettingsHourScreen(hour = 14)),
+            Pair(testTimeAndDateSettingsMinuteDutchScreen, ParsedScreen.TimeAndDateSettingsMinuteScreen(minute = 34)),
+            Pair(testTimeAndDateSettingsYearDutchScreen, ParsedScreen.TimeAndDateSettingsYearScreen(year = 2015)),
+            Pair(testTimeAndDateSettingsMonthDutchScreen, ParsedScreen.TimeAndDateSettingsMonthScreen(month = 4)),
+            Pair(testTimeAndDateSettingsDayDutchScreen, ParsedScreen.TimeAndDateSettingsDayScreen(day = 27)),
 
-            Pair(testTimeAndDateSettingsHourGreekScreen, ParseResult.TimeAndDateSettingsHourScreen(hour = 14)),
-            Pair(testTimeAndDateSettingsMinuteGreekScreen, ParseResult.TimeAndDateSettingsMinuteScreen(minute = 34)),
-            Pair(testTimeAndDateSettingsYearGreekScreen, ParseResult.TimeAndDateSettingsYearScreen(year = 2015)),
-            Pair(testTimeAndDateSettingsMonthGreekScreen, ParseResult.TimeAndDateSettingsMonthScreen(month = 4)),
-            Pair(testTimeAndDateSettingsDayGreekScreen, ParseResult.TimeAndDateSettingsDayScreen(day = 27)),
+            Pair(testTimeAndDateSettingsHourGreekScreen, ParsedScreen.TimeAndDateSettingsHourScreen(hour = 14)),
+            Pair(testTimeAndDateSettingsMinuteGreekScreen, ParsedScreen.TimeAndDateSettingsMinuteScreen(minute = 34)),
+            Pair(testTimeAndDateSettingsYearGreekScreen, ParsedScreen.TimeAndDateSettingsYearScreen(year = 2015)),
+            Pair(testTimeAndDateSettingsMonthGreekScreen, ParsedScreen.TimeAndDateSettingsMonthScreen(month = 4)),
+            Pair(testTimeAndDateSettingsDayGreekScreen, ParsedScreen.TimeAndDateSettingsDayScreen(day = 27)),
 
-            Pair(testTimeAndDateSettingsHourFinnishScreen, ParseResult.TimeAndDateSettingsHourScreen(hour = 14)),
-            Pair(testTimeAndDateSettingsMinuteFinnishScreen, ParseResult.TimeAndDateSettingsMinuteScreen(minute = 34)),
-            Pair(testTimeAndDateSettingsYearFinnishScreen, ParseResult.TimeAndDateSettingsYearScreen(year = 2015)),
-            Pair(testTimeAndDateSettingsMonthFinnishScreen, ParseResult.TimeAndDateSettingsMonthScreen(month = 4)),
-            Pair(testTimeAndDateSettingsDayFinnishScreen, ParseResult.TimeAndDateSettingsDayScreen(day = 27)),
+            Pair(testTimeAndDateSettingsHourFinnishScreen, ParsedScreen.TimeAndDateSettingsHourScreen(hour = 14)),
+            Pair(testTimeAndDateSettingsMinuteFinnishScreen, ParsedScreen.TimeAndDateSettingsMinuteScreen(minute = 34)),
+            Pair(testTimeAndDateSettingsYearFinnishScreen, ParsedScreen.TimeAndDateSettingsYearScreen(year = 2015)),
+            Pair(testTimeAndDateSettingsMonthFinnishScreen, ParsedScreen.TimeAndDateSettingsMonthScreen(month = 4)),
+            Pair(testTimeAndDateSettingsDayFinnishScreen, ParsedScreen.TimeAndDateSettingsDayScreen(day = 27)),
 
-            Pair(testTimeAndDateSettingsHourNorwegianScreen, ParseResult.TimeAndDateSettingsHourScreen(hour = 14)),
-            Pair(testTimeAndDateSettingsMinuteNorwegianScreen, ParseResult.TimeAndDateSettingsMinuteScreen(minute = 34)),
-            Pair(testTimeAndDateSettingsYearNorwegianScreen, ParseResult.TimeAndDateSettingsYearScreen(year = 2015)),
-            Pair(testTimeAndDateSettingsMonthNorwegianScreen, ParseResult.TimeAndDateSettingsMonthScreen(month = 4)),
-            Pair(testTimeAndDateSettingsDayNorwegianScreen, ParseResult.TimeAndDateSettingsDayScreen(day = 27)),
+            Pair(testTimeAndDateSettingsHourNorwegianScreen, ParsedScreen.TimeAndDateSettingsHourScreen(hour = 14)),
+            Pair(testTimeAndDateSettingsMinuteNorwegianScreen, ParsedScreen.TimeAndDateSettingsMinuteScreen(minute = 34)),
+            Pair(testTimeAndDateSettingsYearNorwegianScreen, ParsedScreen.TimeAndDateSettingsYearScreen(year = 2015)),
+            Pair(testTimeAndDateSettingsMonthNorwegianScreen, ParsedScreen.TimeAndDateSettingsMonthScreen(month = 4)),
+            Pair(testTimeAndDateSettingsDayNorwegianScreen, ParsedScreen.TimeAndDateSettingsDayScreen(day = 27)),
 
-            Pair(testTimeAndDateSettingsHourPortugueseScreen, ParseResult.TimeAndDateSettingsHourScreen(hour = 14)),
-            Pair(testTimeAndDateSettingsMinutePortugueseScreen, ParseResult.TimeAndDateSettingsMinuteScreen(minute = 34)),
-            Pair(testTimeAndDateSettingsYearPortugueseScreen, ParseResult.TimeAndDateSettingsYearScreen(year = 2015)),
-            Pair(testTimeAndDateSettingsMonthPortugueseScreen, ParseResult.TimeAndDateSettingsMonthScreen(month = 4)),
-            Pair(testTimeAndDateSettingsDayPortugueseScreen, ParseResult.TimeAndDateSettingsDayScreen(day = 27)),
+            Pair(testTimeAndDateSettingsHourPortugueseScreen, ParsedScreen.TimeAndDateSettingsHourScreen(hour = 14)),
+            Pair(testTimeAndDateSettingsMinutePortugueseScreen, ParsedScreen.TimeAndDateSettingsMinuteScreen(minute = 34)),
+            Pair(testTimeAndDateSettingsYearPortugueseScreen, ParsedScreen.TimeAndDateSettingsYearScreen(year = 2015)),
+            Pair(testTimeAndDateSettingsMonthPortugueseScreen, ParsedScreen.TimeAndDateSettingsMonthScreen(month = 4)),
+            Pair(testTimeAndDateSettingsDayPortugueseScreen, ParsedScreen.TimeAndDateSettingsDayScreen(day = 27)),
 
-            Pair(testTimeAndDateSettingsHourSwedishScreen, ParseResult.TimeAndDateSettingsHourScreen(hour = 14)),
-            Pair(testTimeAndDateSettingsMinuteSwedishScreen, ParseResult.TimeAndDateSettingsMinuteScreen(minute = 34)),
-            Pair(testTimeAndDateSettingsYearSwedishScreen, ParseResult.TimeAndDateSettingsYearScreen(year = 2015)),
-            Pair(testTimeAndDateSettingsMonthSwedishScreen, ParseResult.TimeAndDateSettingsMonthScreen(month = 4)),
-            Pair(testTimeAndDateSettingsDaySwedishScreen, ParseResult.TimeAndDateSettingsDayScreen(day = 27)),
+            Pair(testTimeAndDateSettingsHourSwedishScreen, ParsedScreen.TimeAndDateSettingsHourScreen(hour = 14)),
+            Pair(testTimeAndDateSettingsMinuteSwedishScreen, ParsedScreen.TimeAndDateSettingsMinuteScreen(minute = 34)),
+            Pair(testTimeAndDateSettingsYearSwedishScreen, ParsedScreen.TimeAndDateSettingsYearScreen(year = 2015)),
+            Pair(testTimeAndDateSettingsMonthSwedishScreen, ParsedScreen.TimeAndDateSettingsMonthScreen(month = 4)),
+            Pair(testTimeAndDateSettingsDaySwedishScreen, ParsedScreen.TimeAndDateSettingsDayScreen(day = 27)),
 
-            Pair(testTimeAndDateSettingsHourDanishScreen, ParseResult.TimeAndDateSettingsHourScreen(hour = 14)),
-            Pair(testTimeAndDateSettingsMinuteDanishScreen, ParseResult.TimeAndDateSettingsMinuteScreen(minute = 34)),
-            Pair(testTimeAndDateSettingsYearDanishScreen, ParseResult.TimeAndDateSettingsYearScreen(year = 2015)),
-            Pair(testTimeAndDateSettingsMonthDanishScreen, ParseResult.TimeAndDateSettingsMonthScreen(month = 4)),
-            Pair(testTimeAndDateSettingsDayDanishScreen, ParseResult.TimeAndDateSettingsDayScreen(day = 27)),
+            Pair(testTimeAndDateSettingsHourDanishScreen, ParsedScreen.TimeAndDateSettingsHourScreen(hour = 14)),
+            Pair(testTimeAndDateSettingsMinuteDanishScreen, ParsedScreen.TimeAndDateSettingsMinuteScreen(minute = 34)),
+            Pair(testTimeAndDateSettingsYearDanishScreen, ParsedScreen.TimeAndDateSettingsYearScreen(year = 2015)),
+            Pair(testTimeAndDateSettingsMonthDanishScreen, ParsedScreen.TimeAndDateSettingsMonthScreen(month = 4)),
+            Pair(testTimeAndDateSettingsDayDanishScreen, ParsedScreen.TimeAndDateSettingsDayScreen(day = 27)),
 
-            Pair(testTimeAndDateSettingsHourGermanScreen, ParseResult.TimeAndDateSettingsHourScreen(hour = 10)),
-            Pair(testTimeAndDateSettingsMinuteGermanScreen, ParseResult.TimeAndDateSettingsMinuteScreen(minute = 22)),
-            Pair(testTimeAndDateSettingsYearGermanScreen, ParseResult.TimeAndDateSettingsYearScreen(year = 2015)),
-            Pair(testTimeAndDateSettingsMonthGermanScreen, ParseResult.TimeAndDateSettingsMonthScreen(month = 4)),
-            Pair(testTimeAndDateSettingsDayGermanScreen, ParseResult.TimeAndDateSettingsDayScreen(day = 21))
+            Pair(testTimeAndDateSettingsHourGermanScreen, ParsedScreen.TimeAndDateSettingsHourScreen(hour = 10)),
+            Pair(testTimeAndDateSettingsMinuteGermanScreen, ParsedScreen.TimeAndDateSettingsMinuteScreen(minute = 22)),
+            Pair(testTimeAndDateSettingsYearGermanScreen, ParsedScreen.TimeAndDateSettingsYearScreen(year = 2015)),
+            Pair(testTimeAndDateSettingsMonthGermanScreen, ParsedScreen.TimeAndDateSettingsMonthScreen(month = 4)),
+            Pair(testTimeAndDateSettingsDayGermanScreen, ParsedScreen.TimeAndDateSettingsDayScreen(day = 21))
         )
 
         for ((testScreen, expectedResult) in testScreens) {
