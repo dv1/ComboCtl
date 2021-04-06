@@ -63,7 +63,7 @@ class MainViewController {
                     .onEach { println("Pairing progress: $it") }
                     .launchIn(mainScope!!)
 
-                mainControl!!.pairWithNewPump(
+                val result = mainControl!!.pairWithNewPump(
                     300
                 ) { newPumpAddress, _ ->
                     withContext(mainScope!!.coroutineContext) {
