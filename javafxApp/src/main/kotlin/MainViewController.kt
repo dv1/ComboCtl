@@ -3,9 +3,9 @@ package info.nightscout.comboctl.javafxApp
 import info.nightscout.comboctl.base.BluetoothAddress
 import info.nightscout.comboctl.base.BluetoothException
 import info.nightscout.comboctl.base.PairingPIN
-import info.nightscout.comboctl.base.Pump
 import info.nightscout.comboctl.base.TransportLayerIO
 import info.nightscout.comboctl.base.toBluetoothAddress
+import info.nightscout.comboctl.main.Pump
 import info.nightscout.comboctl.main.PumpManager
 import javafx.beans.binding.Bindings
 import javafx.collections.FXCollections

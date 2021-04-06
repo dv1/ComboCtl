@@ -3,8 +3,8 @@ package info.nightscout.comboctl.javafxApp
 import info.nightscout.comboctl.base.DISPLAY_FRAME_HEIGHT
 import info.nightscout.comboctl.base.DISPLAY_FRAME_WIDTH
 import info.nightscout.comboctl.base.DisplayFrame
-import info.nightscout.comboctl.base.Pump
 import info.nightscout.comboctl.base.PumpIO
+import info.nightscout.comboctl.main.Pump
 import javafx.scene.image.ImageView
 import javafx.scene.image.PixelFormat
 import javafx.scene.image.WritableImage
