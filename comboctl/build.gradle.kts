@@ -3,7 +3,6 @@ import org.jetbrains.dokka.gradle.DokkaTask
 plugins {
     kotlin("multiplatform")
     id("com.android.library")
-    id("kotlin-android-extensions")
     id("org.jetbrains.dokka") version "0.10.1"
 }
 
