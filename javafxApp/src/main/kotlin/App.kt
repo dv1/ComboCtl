@@ -1,7 +1,7 @@
 package info.nightscout.comboctl.javafxApp
 
-import info.nightscout.comboctl.base.MainControl
 import info.nightscout.comboctl.linuxBlueZ.BlueZInterface
+import info.nightscout.comboctl.main.PumpManager
 import javafx.application.Application
 import javafx.application.Application.launch
 import javafx.fxml.FXMLLoader
@@ -27,14 +27,14 @@ fun main() {
 class App : Application(), CoroutineScope {
     private val bluezInterface: BlueZInterface
     private val pumpStateStore = JsonPumpStateStore()
-    private val mainControl: MainControl
+    private val pumpManager: PumpManager
     private var mainViewController: MainViewController? = null
 
     init {
         val scope = this
         bluezInterface = BlueZInterface()
-        mainControl = MainControl(bluezInterface, pumpStateStore)
-        mainControl.setup { pumpAddress ->
+        pumpManager = PumpManager(bluezInterface, pumpStateStore)
+        pumpManager.setup { pumpAddress ->
             if (mainViewController != null)
                 mainViewController!!.onPumpUnpaired(pumpAddress)
         }
@@ -65,7 +65,7 @@ class App : Application(), CoroutineScope {
         mainViewController = loader.getController()
 
         mainViewController!!.setup(
-            mainControl,
+            pumpManager,
             this,
             pumpStateStore,
             scene.lookup("#pairedPumpListView") as ListView<String>
@@ -78,8 +78,8 @@ class App : Application(), CoroutineScope {
 
     override fun stop() {
         mainViewController = null
-        /* mainControl.stopDiscovery()
-        runBlocking { mainControl.stopEventHandling() } */
+        /* pumpManager.stopDiscovery()
+        runBlocking { pumpManager.stopEventHandling() } */
         bluezInterface.shutdown()
     }
 

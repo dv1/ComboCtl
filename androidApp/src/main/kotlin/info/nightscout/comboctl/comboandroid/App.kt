@@ -3,8 +3,8 @@ package info.nightscout.comboctl.comboandroid
 import android.app.Application
 import android.content.Context
 import info.nightscout.comboctl.android.AndroidBluetoothInterface
-import info.nightscout.comboctl.base.MainControl
 import info.nightscout.comboctl.comboandroid.persist.SharedPrefsPumpStateStore
+import info.nightscout.comboctl.main.PumpManager
 
 class App : Application() {
     private val bluetoothInterface = AndroidBluetoothInterface(this)
@@ -16,8 +16,8 @@ class App : Application() {
         pumpStateStore = SharedPrefsPumpStateStore(
             appContext.getSharedPreferences("combo_sp", MODE_PRIVATE)
         )
-        mainControl = MainControl(bluetoothInterface, pumpStateStore)
-        mainControl.setup()
+        pumpManager = PumpManager(bluetoothInterface, pumpStateStore)
+        pumpManager.setup()
     }
 
     companion object {
@@ -28,7 +28,7 @@ class App : Application() {
         lateinit var pumpStateStore: SharedPrefsPumpStateStore
             private set
 
-        lateinit var mainControl: MainControl
+        lateinit var pumpManager: PumpManager
             private set
     }
 }

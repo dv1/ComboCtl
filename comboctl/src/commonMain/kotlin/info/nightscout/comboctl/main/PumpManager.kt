@@ -1,5 +1,17 @@
-package info.nightscout.comboctl.base
+package info.nightscout.comboctl.main
 
+import info.nightscout.comboctl.base.BasicProgressStage
+import info.nightscout.comboctl.base.BluetoothAddress
+import info.nightscout.comboctl.base.BluetoothInterface
+import info.nightscout.comboctl.base.ComboException
+import info.nightscout.comboctl.base.Constants
+import info.nightscout.comboctl.base.LogLevel
+import info.nightscout.comboctl.base.Logger
+import info.nightscout.comboctl.base.PairingPIN
+import info.nightscout.comboctl.base.ProgressReporter
+import info.nightscout.comboctl.base.PumpStateStore
+import info.nightscout.comboctl.base.TransportLayerIO
+import info.nightscout.comboctl.base.nullPairingPIN
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.coroutineScope
@@ -7,12 +19,22 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-private val logger = Logger.get("MainControl")
+private val logger = Logger.get("PumpManager")
 
 typealias PumpPairingPINCallback =
     suspend (newPumpAddress: BluetoothAddress, previousAttemptFailed: Boolean) -> PairingPIN
 
-class MainControl(
+/**
+ * Manager class for acquiring and creating [Pump] instances.
+ *
+ * This is the main class for accessing pumps. It manages a list
+ * of paired pumps and handles discovery and pairing. Applications
+ * use this class as the primary ComboCtl interface.
+ *
+ * Before an instance of this class can actually be used, [setup]
+ * must be called.
+ */
+class PumpManager(
     private val bluetoothInterface: BluetoothInterface,
     private val pumpStateStore: PumpStateStore
 ) {
@@ -36,7 +58,7 @@ class MainControl(
      *
      * Pumps can only be acquired once at a time. This is a safety measure to
      * prevent multiple [Pump] instances from accessing the same pump, which
-     * would lead to undefined behavior. See [MainControl.acquirePump] for more.
+     * would lead to undefined behavior. See [PumpManager.acquirePump] for more.
      *
      * @param pumpAddress Bluetooth address of the pump that was already acquired.
      */
@@ -75,7 +97,7 @@ class MainControl(
     }
 
     /**
-     * Sets up this MainControl instance.
+     * Sets up this PumpManager instance.
      *
      * Once this is called, the [onPumpUnpaired] callback will be invoked
      * whenever a pump is unpaired (this includes unpairing via the system's
@@ -248,7 +270,7 @@ class MainControl(
      * Returns a set of Bluetooth addresses of the paired pumps.
      *
      * This equals the list of addresses of all the pump states in the
-     * [PumpStateStore] assigned to this MainControl instance.
+     * [PumpStateStore] assigned to this PumpManager instance.
      */
     fun getPairedPumpAddresses() = pumpStateStore.getAvailablePumpStateAddresses()
 

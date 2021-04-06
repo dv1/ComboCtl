@@ -20,7 +20,7 @@ class StartupViewModel : ViewModel() {
 
     private fun determineStatus() {
         _statusLiveData.postValue(
-            if (App.mainControl.getPairedPumpAddresses().isEmpty())
+            if (App.pumpManager.getPairedPumpAddresses().isEmpty())
                 Status.UNPAIRED
             else
                 Status.PAIRED

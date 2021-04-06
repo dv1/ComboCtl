@@ -9,9 +9,9 @@ import androidx.lifecycle.viewModelScope
 import info.nightscout.comboctl.base.DISPLAY_FRAME_HEIGHT
 import info.nightscout.comboctl.base.DISPLAY_FRAME_WIDTH
 import info.nightscout.comboctl.base.NUM_DISPLAY_FRAME_PIXELS
-import info.nightscout.comboctl.base.Pump
 import info.nightscout.comboctl.base.PumpIO
 import info.nightscout.comboctl.comboandroid.App
+import info.nightscout.comboctl.main.Pump
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
@@ -60,8 +60,8 @@ class SessionViewModel : ViewModel() {
 
         viewModelScope.launch {
             _state.value = State.CONNECTING
-            val pumpLocal = App.mainControl.getPairedPumpAddresses().firstOrNull()?.let {
-                App.mainControl.acquirePump(it)
+            val pumpLocal = App.pumpManager.getPairedPumpAddresses().firstOrNull()?.let {
+                App.pumpManager.acquirePump(it)
             }
             pump = pumpLocal
             if (pumpLocal == null) {

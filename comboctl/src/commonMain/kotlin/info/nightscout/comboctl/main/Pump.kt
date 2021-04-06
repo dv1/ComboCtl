@@ -1,5 +1,17 @@
-package info.nightscout.comboctl.base
+package info.nightscout.comboctl.main
 
+import info.nightscout.comboctl.base.ApplicationLayerIO
+import info.nightscout.comboctl.base.BasicProgressStage
+import info.nightscout.comboctl.base.BluetoothDevice
+import info.nightscout.comboctl.base.DateTime
+import info.nightscout.comboctl.base.FramedComboIO
+import info.nightscout.comboctl.base.LogLevel
+import info.nightscout.comboctl.base.Logger
+import info.nightscout.comboctl.base.PairingPINCallback
+import info.nightscout.comboctl.base.ProgressReporter
+import info.nightscout.comboctl.base.PumpIO
+import info.nightscout.comboctl.base.PumpStateStore
+import info.nightscout.comboctl.base.ioDispatcher
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -18,7 +30,7 @@ private val logger = Logger.get("Pump")
  *
  * This is the high level interface for controlling a pump with
  * ComboCtl. Programs using ComboCtl primarily use this class,
- * along with [MainControl].
+ * along with [PumpManager].
  *
  * Each Pump object has a [PumpStateStore] associated with
  * it. A [PumpStateStore] of one Pump instance must be kept
@@ -39,9 +51,9 @@ private val logger = Logger.get("Pump")
  * safety is established.
  *
  * Instances of this class are typically not created manually,
- * but rather by calling [MainControl.acquirePump]. Likewise, the
+ * but rather by calling [PumpManager.acquirePump]. Likewise, the
  * [performPairing] function is typically not called directly,
- * but rather by [MainControl] during discovery.
+ * but rather by [PumpManager] during discovery.
  *
  * WARNING: Do not create more than one Pump instance for the same
  * pump at the same time. Two Pump instances operating the same pump

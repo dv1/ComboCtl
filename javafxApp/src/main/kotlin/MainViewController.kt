@@ -2,11 +2,11 @@ package info.nightscout.comboctl.javafxApp
 
 import info.nightscout.comboctl.base.BluetoothAddress
 import info.nightscout.comboctl.base.BluetoothException
-import info.nightscout.comboctl.base.MainControl
 import info.nightscout.comboctl.base.PairingPIN
 import info.nightscout.comboctl.base.Pump
 import info.nightscout.comboctl.base.TransportLayerIO
 import info.nightscout.comboctl.base.toBluetoothAddress
+import info.nightscout.comboctl.main.PumpManager
 import javafx.beans.binding.Bindings
 import javafx.collections.FXCollections
 import javafx.collections.ObservableList
@@ -27,7 +27,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
 class MainViewController {
-    private var mainControl: MainControl? = null
+    private var pumpManager: PumpManager? = null
     private var mainScope: CoroutineScope? = null
     private var pumpStateStore: JsonPumpStateStore? = null
     private var listView: ListView<String>? = null
@@ -39,12 +39,12 @@ class MainViewController {
     private val pumpInstances = mutableMapOf<BluetoothAddress, Pump>()
 
     fun setup(
-        mainControl: MainControl,
+        pumpManager: PumpManager,
         mainScope: CoroutineScope,
         pumpStateStore: JsonPumpStateStore,
         listView: ListView<String>
     ) {
-        this.mainControl = mainControl
+        this.pumpManager = pumpManager
         this.mainScope = mainScope
         this.pumpStateStore = pumpStateStore
         this.listView = listView
@@ -54,16 +54,16 @@ class MainViewController {
     }
 
     fun pairWithNewPump() {
-        require(mainControl != null)
+        require(pumpManager != null)
         require(mainScope != null)
 
         try {
             pairingJob = mainScope!!.launch {
-                mainControl!!.pairingProgressFlow
+                pumpManager!!.pairingProgressFlow
                     .onEach { println("Pairing progress: $it") }
                     .launchIn(mainScope!!)
 
-                val result = mainControl!!.pairWithNewPump(
+                val result = pumpManager!!.pairWithNewPump(
                     300
                 ) { newPumpAddress, _ ->
                     withContext(mainScope!!.coroutineContext) {
@@ -88,7 +88,7 @@ class MainViewController {
     }
 
     fun openPumpView() {
-        require(mainControl != null)
+        require(pumpManager != null)
         require(listView != null)
 
         val selectedItems = listView!!.selectionModel.selectedItems
@@ -119,7 +119,7 @@ class MainViewController {
         val pumpViewController: PumpViewController = loader.getController()
 
         val pump = runBlocking {
-            mainControl!!.acquirePump(pumpBluetoothAddress)
+            pumpManager!!.acquirePump(pumpBluetoothAddress)
         }
         pumpInstances[pumpBluetoothAddress] = pump
 
@@ -137,7 +137,7 @@ class MainViewController {
                 mainScope!!.launch {
                     pumpToRemove.disconnect()
                     pumpInstances.remove(pumpBluetoothAddress)
-                    mainControl!!.releasePump(pumpBluetoothAddress)
+                    pumpManager!!.releasePump(pumpBluetoothAddress)
                 }
             }
         }

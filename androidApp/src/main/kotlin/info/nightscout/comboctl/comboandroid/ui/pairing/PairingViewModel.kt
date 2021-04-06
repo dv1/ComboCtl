@@ -4,10 +4,10 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import info.nightscout.comboctl.base.MainControl
 import info.nightscout.comboctl.base.PairingPIN
 import info.nightscout.comboctl.base.TransportLayerIO
 import info.nightscout.comboctl.comboandroid.App
+import info.nightscout.comboctl.main.PumpManager
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -40,7 +40,7 @@ class PairingViewModel : ViewModel() {
         pairingPINDeferred = CompletableDeferred<PairingPIN>()
 
         pairingJob = viewModelScope.launch {
-            val result = App.mainControl.pairWithNewPump(
+            val result = App.pumpManager.pairWithNewPump(
                 discoveryDuration = 300,
                 pumpPairingPINCallback = { _, _ ->
                     withContext(viewModelScope.coroutineContext) {
@@ -49,7 +49,7 @@ class PairingViewModel : ViewModel() {
                     }
                 }
             )
-            if (result !is MainControl.PairingResult.Success)
+            if (result !is PumpManager.PairingResult.Success)
                 _state.postValue(State.DISCOVERY_STOPPED)
         }
     }

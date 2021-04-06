@@ -56,7 +56,7 @@ The reverse engineered communication protocols and procedures are documented in
 
 === Main API
 
-The main class to use is `MainControl`. It allows for discovering and pairing
+The main class to use is `PumpManager`. It allows for discovering and pairing
 with Combo pumps, and creates instances of the `Pump` class. This class is the
 second primary class to use. It provides access to a particular pump (specified
 by its Bluetooth address).
@@ -76,7 +76,7 @@ Integration requires that the user implements the following bits:
   the user defines a custom logger backend, but it is recommended
   for a more seamless integration if the application that ComboCtl
   gets integrated into uses its own logging framework.
-* Bluetooth interface: `MainControl` expects an objec that implements
+* Bluetooth interface: `PumpManager` expects an objec that implements
   the `BluetoothInterface` interface. On Linux, there is the
   `BlueZInterface` class for this purpose.
 
