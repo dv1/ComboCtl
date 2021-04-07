@@ -732,6 +732,12 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      * @throws ComboIOException if IO with the pump fails.
      */
     suspend fun getCMDBolusStatus(): ApplicationLayerIO.CMDBolusDeliveryStatus {
+        if (!isConnected())
+            throw IllegalStateException("Cannot get history delta because the background worker is not running")
+
+        if (currentMode != Mode.COMMAND)
+            throw IllegalStateException("Cannot get history delta while being in $currentMode mode")
+
         val packet = sendPacketWithResponse(
             ApplicationLayerIO.createCMDGetBolusStatusPacket(),
             ApplicationLayerIO.Command.CMD_GET_BOLUS_STATUS_RESPONSE
@@ -753,6 +759,9 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      * recommended to keep track of the current bolus status by periodically
      * calling [getCMDBolusStatus].
      *
+     * @throws IllegalStateException if the pump is not in the comand
+     *         mode, the worker has failed (see [connect]), or the
+     *         pump is not connected.
      * @param bolusAmount Bolus amount to deliver. Note that this is given
      *        in 0.1 IU units, so for example, "57" means 5.7 IU.
      * @return true if the bolus could be delivered, false otherwise.
@@ -761,6 +770,12 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      * @throws ComboIOException if IO with the pump fails.
      */
     suspend fun deliverCMDStandardBolus(bolusAmount: Int): Boolean {
+        if (!isConnected())
+            throw IllegalStateException("Cannot get history delta because the background worker is not running")
+
+        if (currentMode != Mode.COMMAND)
+            throw IllegalStateException("Cannot get history delta while being in $currentMode mode")
+
         val packet = sendPacketWithResponse(
             ApplicationLayerIO.createCMDDeliverBolusPacket(bolusAmount),
             ApplicationLayerIO.Command.CMD_DELIVER_BOLUS_RESPONSE
