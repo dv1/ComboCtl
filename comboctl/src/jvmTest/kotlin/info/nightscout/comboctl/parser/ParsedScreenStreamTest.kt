@@ -10,7 +10,7 @@ import kotlinx.coroutines.runBlocking
 
 class ParsedScreenStreamTest {
     @Test
-    fun checkUniqueFrames() {
+    fun checkDuplicateDisplayFrameFiltering() {
         // Test the ParsedScreenStream by feeding it known test frames
         // along with unrecognizable ones. We also feed duplicates in,
         // both recognizable and unrecognizable ones, to check that
@@ -73,6 +73,31 @@ class ParsedScreenStreamTest {
                 ParsedScreen.StandardBolusMenuScreen,
                 parsedScreenStream.getNextParsedScreen()
             )
+        }
+    }
+
+    @Test
+    fun checkDuplicateParsedScreenFiltering() {
+        // Test the duplicate parsed screen detection with 3 time and date hour settings screens.
+        // All three are parsed to ParsedScreen.TimeAndDateSettingsHourScreen instances.
+        // All three contain different pixels. (This is the crucial difference to the
+        // checkDuplicateDisplayFrameFiltering above.) However, the first 2 have their "hour"
+        // properties set to 13, while the third has "hour" set to 14. The ParsedScreenStream
+        // is expected to filter the duplicate TimeAndDateSettingsHourScreen with the "13" hour.
+
+        runBlocking {
+            val displayFrameFlow = MutableSharedFlow<DisplayFrame>()
+
+            launch {
+                displayFrameFlow.emit(testTimeAndDateSettingsHourRussianScreen) // This screen frame has "1 PM" (= 13 in 24h format) as hour
+                displayFrameFlow.emit(testTimeAndDateSettingsHourTurkishScreen) // This screen frame has "1 PM" (= 13 in 24h format) as hour
+                displayFrameFlow.emit(testTimeAndDateSettingsHourPolishScreen) // This screen frame has "2 PM" (= 13 in 24h format) as hour
+            }
+
+            val parsedScreenStream = ParsedScreenStream(displayFrameFlow)
+
+            assertEquals(ParsedScreen.TimeAndDateSettingsHourScreen(hour = 13), parsedScreenStream.getNextParsedScreen())
+            assertEquals(ParsedScreen.TimeAndDateSettingsHourScreen(hour = 14), parsedScreenStream.getNextParsedScreen())
         }
     }
 }
