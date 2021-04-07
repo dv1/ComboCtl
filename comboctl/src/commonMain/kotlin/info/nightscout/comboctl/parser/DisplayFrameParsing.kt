@@ -79,7 +79,7 @@ sealed class ParsedScreen {
         val numUnits: Int
     ) : ParsedScreen()
 
-    data class TemporaryBasalRatePercentageScreen(val percentage: Int) : ParsedScreen()
+    data class TemporaryBasalRatePercentageScreen(val percentage: Int?) : ParsedScreen()
     data class TemporaryBasalRateDurationScreen(val hours: Int, val minutes: Int) : ParsedScreen()
 
     data class QuickinfoMainScreen(val availableUnits: Int, val reservoirState: ReservoirState) : ParsedScreen()
@@ -602,17 +602,21 @@ private fun parseTemporaryBasalRatePercentageScreen(matches: PatternMatches, num
         return null
     curMatchesOffset++
 
-    // The currently picked TBR percentage follows.
+    // The currently picked TBR percentage follows. The screen may currently
+    // not be showing the actual percentage (since it blinks). If so, then
+    // there are no integer digits before the percentage symbol. In that
+    // case we just continue to the percentage symbol check below.
     val percentageParseResult = parseInteger(matches, curMatchesOffset)
-    if (percentageParseResult == null)
-        return null
-    curMatchesOffset += percentageParseResult.numParsedPatternMatches
+    if (percentageParseResult != null)
+        curMatchesOffset += percentageParseResult.numParsedPatternMatches
 
     // Right after the TBR percentage there must be a LARGE_PERCENT symbol.
     if ((curMatchesOffset >= matches.size) || (matches[curMatchesOffset].glyph != Glyph.LargeSymbol(Symbol.LARGE_PERCENT)))
         return null
 
-    return ParsedScreen.TemporaryBasalRatePercentageScreen(percentage = percentageParseResult.value)
+    // Set percentage to the parsed integer value, or to null in case the
+    // percentage is currently blinking and not shown.
+    return ParsedScreen.TemporaryBasalRatePercentageScreen(percentage = percentageParseResult?.value)
 }
 
 private fun parseTemporaryBasalRateDurationScreen(matches: PatternMatches, numTitleCharacters: Int): ParsedScreen? {
@@ -896,7 +900,7 @@ private fun parseInteger(
 
     // If the end of the integer was found right at the
     // very first match, then there's no integer to parse.
-    if (integerEndOffset == 0)
+    if (integerEndOffset == matchesOffset)
         return null
 
     return ParsedValue(integer, numMatches)

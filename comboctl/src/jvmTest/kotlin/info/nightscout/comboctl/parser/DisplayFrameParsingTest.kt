@@ -263,6 +263,9 @@ class DisplayFrameParsingTest {
         val result110 = parseDisplayFrame(testFrameTemporaryBasalRatePercentage110Screen)
         assertEquals(ParsedScreen.TemporaryBasalRatePercentageScreen(percentage = 110), result110)
 
+        val resultNoPercentage = parseDisplayFrame(testFrameTemporaryBasalRateNoPercentageScreen)
+        assertEquals(ParsedScreen.TemporaryBasalRatePercentageScreen(percentage = null), resultNoPercentage)
+
         val testScreens = listOf(
             Pair(testFrameTbrPercentageEnglishScreen, ParsedScreen.TemporaryBasalRatePercentageScreen(percentage = 110)),
             Pair(testFrameTbrPercentageSpanishScreen, ParsedScreen.TemporaryBasalRatePercentageScreen(percentage = 110)),
