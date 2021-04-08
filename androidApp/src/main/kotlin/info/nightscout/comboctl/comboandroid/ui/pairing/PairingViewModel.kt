@@ -10,6 +10,8 @@ import info.nightscout.comboctl.comboandroid.App
 import info.nightscout.comboctl.main.PumpManager
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -19,6 +21,9 @@ class PairingViewModel : ViewModel() {
 
     private val _pwValidatedLiveData = MutableLiveData<Boolean>(false)
     val pwValidatedLiveData: LiveData<Boolean> = _pwValidatedLiveData
+
+    private val _progressLiveData = MutableLiveData(0)
+    val progressLiveData: LiveData<Int> = _progressLiveData
 
     private var pairingPINDeferred: CompletableDeferred<PairingPIN>? = null
     private var pairingJob: Job? = null
@@ -40,6 +45,9 @@ class PairingViewModel : ViewModel() {
         pairingPINDeferred = CompletableDeferred<PairingPIN>()
 
         pairingJob = viewModelScope.launch {
+            App.pumpManager.pairingProgressFlow.onEach {
+                _progressLiveData.value = if (it.numSteps > 0) (it.stepNumber * 100 / it.numSteps).coerceIn(0..100) else 0
+            }.launchIn(viewModelScope)
             val result = App.pumpManager.pairWithNewPump(
                 discoveryDuration = 300,
                 pumpPairingPINCallback = { _, _ ->
