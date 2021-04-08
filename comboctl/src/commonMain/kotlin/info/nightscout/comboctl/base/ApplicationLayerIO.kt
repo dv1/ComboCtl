@@ -1,8 +1,10 @@
 package info.nightscout.comboctl.base
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 private val logger = Logger.get("ApplicationLayerIO")
 
@@ -1909,8 +1911,13 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
         appLayerPacket: Packet,
         expectedResponseCommand: ApplicationLayerIO.Command? = null
     ): Packet = sendPacketWithResponseMutex.withLock {
-        sendPacketNoResponseInternal(appLayerPacket)
-        return receiveAppLayerPacket(expectedResponseCommand)
+        // TODO: It is not 100% certain if this is the correct approach.
+        // NonCancellable blocks can cause problems if they hang and
+        // really would need to be cancelled, after all.
+        return withContext(NonCancellable) {
+            sendPacketNoResponseInternal(appLayerPacket)
+            receiveAppLayerPacket(expectedResponseCommand)
+        }
     }
 
     /**
@@ -1950,8 +1957,10 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
         tpLayerPacketInfo: TransportLayerIO.OutgoingPacketInfo,
         expectedResponseCommand: TransportLayerIO.Command? = null
     ): TransportLayerIO.Packet = sendPacketWithResponseMutex.withLock {
-        transportLayerIO.sendPacket(tpLayerPacketInfo)
-        return receiveTpLayerPacket(expectedResponseCommand)
+        return withContext(NonCancellable) {
+            transportLayerIO.sendPacket(tpLayerPacketInfo)
+            receiveTpLayerPacket(expectedResponseCommand)
+        }
     }
 
     /**
