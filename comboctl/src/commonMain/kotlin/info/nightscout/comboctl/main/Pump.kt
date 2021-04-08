@@ -2,8 +2,10 @@ package info.nightscout.comboctl.main
 
 import info.nightscout.comboctl.base.ApplicationLayerIO
 import info.nightscout.comboctl.base.BasicProgressStage
+import info.nightscout.comboctl.base.BluetoothAddress
 import info.nightscout.comboctl.base.BluetoothDevice
 import info.nightscout.comboctl.base.DateTime
+import info.nightscout.comboctl.base.DisplayFrame
 import info.nightscout.comboctl.base.FramedComboIO
 import info.nightscout.comboctl.base.LogLevel
 import info.nightscout.comboctl.base.Logger
@@ -15,6 +17,8 @@ import info.nightscout.comboctl.base.ioDispatcher
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -85,14 +89,14 @@ class Pump(
     /**
      * The pump's Bluetooth address.
      */
-    val address = bluetoothDevice.address
+    val address: BluetoothAddress = bluetoothDevice.address
 
     /**
      * Read-only [SharedFlow] property that delivers newly assembled display frames.
      *
      * See [DisplayFrame] for details about these frames.
      */
-    val displayFrameFlow = pumpIO.displayFrameFlow
+    val displayFrameFlow: SharedFlow<DisplayFrame> = pumpIO.displayFrameFlow
 
     /**
      * Read-only [StateFlow] property that announces when the current [PumpIO.Mode] changed.
@@ -100,7 +104,7 @@ class Pump(
      * Note that, unlike most other flow types, a [StateFlow] is a _hot_ flow.
      * This means that its emitter runs independently of any collector.
      */
-    val currentModeFlow = pumpIO.currentModeFlow
+    val currentModeFlow: StateFlow<PumpIO.Mode?> = pumpIO.currentModeFlow
 
     /**
      * Returns whether or not this pump has already been paired.
@@ -120,7 +124,7 @@ class Pump(
      *
      * @return true if the pump is paired.
      */
-    fun isPaired() = pumpStateStore.hasPumpState(address)
+    fun isPaired(): Boolean = pumpStateStore.hasPumpState(address)
 
     /**
      * Performs a pairing procedure with the pump.

@@ -13,7 +13,10 @@ import info.nightscout.comboctl.base.PumpIO
 import info.nightscout.comboctl.comboandroid.App
 import info.nightscout.comboctl.comboandroid.utils.SingleLiveData
 import info.nightscout.comboctl.main.Pump
-import kotlinx.coroutines.flow.collect
+import info.nightscout.comboctl.parser.ParsedScreenStream
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 
 class SessionViewModel : ViewModel() {
@@ -85,10 +88,8 @@ class SessionViewModel : ViewModel() {
         viewModelScope.launch {
             if (modeLiveData.value == Mode.TERMINAL) {
                 pump?.switchMode(newMode = PumpIO.Mode.COMMAND)
-                _modeLiveData.value = Mode.COMMAND
             } else {
                 pump?.switchMode(newMode = PumpIO.Mode.REMOTE_TERMINAL)
-                _modeLiveData.value = Mode.TERMINAL
             }
         }
     }
@@ -126,7 +127,7 @@ class SessionViewModel : ViewModel() {
 
             _state.value = State.CONNECTED
 
-            pumpLocal.displayFrameFlow.collect {
+            pumpLocal.displayFrameFlow.onEach {
                 val bitmap = Bitmap.createBitmap(DISPLAY_FRAME_WIDTH, DISPLAY_FRAME_HEIGHT, Bitmap.Config.ARGB_8888)
                 val pixels = IntArray(NUM_DISPLAY_FRAME_PIXELS)
                 for (i in 0 until NUM_DISPLAY_FRAME_PIXELS) {
@@ -134,7 +135,25 @@ class SessionViewModel : ViewModel() {
                 }
                 bitmap.setPixels(pixels, 0, DISPLAY_FRAME_WIDTH, 0, 0, DISPLAY_FRAME_WIDTH, DISPLAY_FRAME_HEIGHT)
                 _screenLiveData.postValue(bitmap)
-            }
+            }.launchIn(viewModelScope)
+
+            pumpLocal.currentModeFlow.onEach {
+                when (it) {
+                    PumpIO.Mode.REMOTE_TERMINAL -> Mode.TERMINAL
+                    PumpIO.Mode.COMMAND -> Mode.COMMAND
+                    null -> Mode.TERMINAL
+                }.let { _modeLiveData.value = it }
+            }.launchIn(viewModelScope)
+
+            val parsedScreenStream = ParsedScreenStream(pumpLocal.displayFrameFlow)
+
+            flow {
+                while (true) {
+                    emit(parsedScreenStream.getNextParsedScreen())
+                }
+            }.onEach {
+                _parsedScreenLiveData.value = it.toString()
+            }.launchIn(viewModelScope)
         }
     }
 
