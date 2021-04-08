@@ -9,6 +9,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.transformWhile
 import kotlinx.coroutines.launch
@@ -119,7 +120,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
 
     // Whether we are in RT or COMMAND mode, or null at startup
     // before an initial mode was set.
-    private var currentMode: Mode? = null
+    private val mutableCurrentModeFlow = MutableStateFlow<Mode?>(null)
 
     /************************************
      *** PUBLIC FUNCTIONS AND CLASSES ***
@@ -134,6 +135,14 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      * See [DisplayFrame] for details about these frames.
      */
     val displayFrameFlow = mutableDisplayFrameFlow.asSharedFlow()
+
+    /**
+     * Read-only [StateFlow] property that announces when the current [Mode] changed.
+     *
+     * Note that, unlike most other flow types, a [StateFlow] is a _hot_ flow.
+     * This means that its emitter runs independently of any collector.
+     */
+    val currentModeFlow = mutableCurrentModeFlow.asStateFlow()
 
     /**
      * The mode the IO can operate in.
@@ -531,7 +540,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
         applicationLayerIO.stopIO(disconnectDeviceCallback)
 
         backgroundIOScope = null
-        currentMode = null
+        mutableCurrentModeFlow.value = null
 
         logger(LogLevel.DEBUG) { "Pump IO disconnected" }
     }
@@ -556,8 +565,8 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
         if (!isConnected())
             throw IllegalStateException("Cannot get current pump datetime because the background worker is not running")
 
-        if (currentMode != Mode.COMMAND)
-            throw IllegalStateException("Cannot get current pump datetime while being in $currentMode mode")
+        if (mutableCurrentModeFlow.value != Mode.COMMAND)
+            throw IllegalStateException("Cannot get current pump datetime while being in ${mutableCurrentModeFlow.value} mode")
 
         val packet = sendPacketWithResponse(
             ApplicationLayerIO.createCMDReadDateTimePacket(),
@@ -583,8 +592,8 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
         if (!isConnected())
             throw IllegalStateException("Cannot get pump status because the background worker is not running")
 
-        if (currentMode != Mode.COMMAND)
-            throw IllegalStateException("Cannot get pump status while being in $currentMode mode")
+        if (mutableCurrentModeFlow.value != Mode.COMMAND)
+            throw IllegalStateException("Cannot get pump status while being in ${mutableCurrentModeFlow.value} mode")
 
         val packet = sendPacketWithResponse(
             ApplicationLayerIO.createCMDReadPumpStatusPacket(),
@@ -608,8 +617,8 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
         if (!isConnected())
             throw IllegalStateException("Cannot get error/warning status because the background worker is not running")
 
-        if (currentMode != Mode.COMMAND)
-            throw IllegalStateException("Cannot get error/warning status while being in $currentMode mode")
+        if (mutableCurrentModeFlow.value != Mode.COMMAND)
+            throw IllegalStateException("Cannot get error/warning status while being in ${mutableCurrentModeFlow.value} mode")
 
         val packet = sendPacketWithResponse(
             ApplicationLayerIO.createCMDReadErrorWarningStatusPacket(),
@@ -659,8 +668,8 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
         if (!isConnected())
             throw IllegalStateException("Cannot get history delta because the background worker is not running")
 
-        if (currentMode != Mode.COMMAND)
-            throw IllegalStateException("Cannot get history delta while being in $currentMode mode")
+        if (mutableCurrentModeFlow.value != Mode.COMMAND)
+            throw IllegalStateException("Cannot get history delta while being in ${mutableCurrentModeFlow.value} mode")
 
         val historyDelta = mutableListOf<ApplicationLayerIO.CMDHistoryEvent>()
         var reachedEnd = false
@@ -735,8 +744,8 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
         if (!isConnected())
             throw IllegalStateException("Cannot get history delta because the background worker is not running")
 
-        if (currentMode != Mode.COMMAND)
-            throw IllegalStateException("Cannot get history delta while being in $currentMode mode")
+        if (mutableCurrentModeFlow.value != Mode.COMMAND)
+            throw IllegalStateException("Cannot get history delta while being in ${mutableCurrentModeFlow.value} mode")
 
         val packet = sendPacketWithResponse(
             ApplicationLayerIO.createCMDGetBolusStatusPacket(),
@@ -773,8 +782,8 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
         if (!isConnected())
             throw IllegalStateException("Cannot get history delta because the background worker is not running")
 
-        if (currentMode != Mode.COMMAND)
-            throw IllegalStateException("Cannot get history delta while being in $currentMode mode")
+        if (mutableCurrentModeFlow.value != Mode.COMMAND)
+            throw IllegalStateException("Cannot get history delta while being in ${mutableCurrentModeFlow.value} mode")
 
         val packet = sendPacketWithResponse(
             ApplicationLayerIO.createCMDDeliverBolusPacket(bolusAmount),
@@ -814,8 +823,8 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
         if (buttons.isEmpty())
             throw IllegalArgumentException("Cannot send short RT button press since the specified buttons list is empty")
 
-        if (currentMode != Mode.REMOTE_TERMINAL)
-            throw IllegalStateException("Cannot send short RT button press while being in $currentMode mode")
+        if (mutableCurrentModeFlow.value != Mode.REMOTE_TERMINAL)
+            throw IllegalStateException("Cannot send short RT button press while being in ${mutableCurrentModeFlow.value} mode")
 
         val buttonCodes = getCombinedButtonCodes(buttons)
 
@@ -882,8 +891,8 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
             return
         }
 
-        if (currentMode != Mode.REMOTE_TERMINAL)
-            throw IllegalStateException("Cannot send long RT button press while being in $currentMode mode")
+        if (mutableCurrentModeFlow.value != Mode.REMOTE_TERMINAL)
+            throw IllegalStateException("Cannot send long RT button press while being in ${mutableCurrentModeFlow.value} mode")
 
         try {
             sendLongRTButtonPress(buttons, true)
@@ -928,7 +937,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
 
         // If a long RT button press job is running, we must
         // be in the RT mode, otherwise something is wrong.
-        require(currentMode == Mode.REMOTE_TERMINAL)
+        require(mutableCurrentModeFlow.value == Mode.REMOTE_TERMINAL)
 
         // We use the Button.CHECK button code here, but it
         // actually does not matter what code we use, since
@@ -961,18 +970,18 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
         if (!isConnected())
             throw IllegalStateException("Cannot switch mode because the background worker is not running")
 
-        if (currentMode == newMode)
+        if (mutableCurrentModeFlow.value == newMode)
             return
 
-        logger(LogLevel.DEBUG) { "Switching mode from $currentMode to $newMode" }
+        logger(LogLevel.DEBUG) { "Switching mode from ${mutableCurrentModeFlow.value} to $newMode" }
 
         stopCMDPingBackgroundLoop()
         stopRTKeepAliveBackgroundLoop()
 
         // Send the command to switch the mode.
 
-        if (currentMode != null) {
-            val modeToDeactivate = currentMode!!
+        if (mutableCurrentModeFlow.value != null) {
+            val modeToDeactivate = mutableCurrentModeFlow.value!!
             logger(LogLevel.VERBOSE) { "Deactivating current service" }
             sendPacketWithResponse(
                 ApplicationLayerIO.createCTRLDeactivateServicePacket(
@@ -996,7 +1005,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
             ApplicationLayerIO.Command.CTRL_ACTIVATE_SERVICE_RESPONSE
         )
 
-        currentMode = newMode
+        mutableCurrentModeFlow.value = newMode
 
         if (runKeepAliveLoop) {
             logger(LogLevel.VERBOSE) { "(Re)starting keep-alive loop" }
