@@ -95,6 +95,14 @@ class Pump(
     val displayFrameFlow = pumpIO.displayFrameFlow
 
     /**
+     * Read-only [StateFlow] property that announces when the current [PumpIO.Mode] changed.
+     *
+     * Note that, unlike most other flow types, a [StateFlow] is a _hot_ flow.
+     * This means that its emitter runs independently of any collector.
+     */
+    val currentModeFlow = pumpIO.currentModeFlow
+
+    /**
      * Returns whether or not this pump has already been paired.
      *
      * "Pairing" refers to the custom Combo pairing here, not the
