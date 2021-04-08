@@ -1420,7 +1420,11 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
                     6, 14, 7, 15 -> {
                         // Bolus amount is recorded in the first 2 detail bytes as a 16-bit little endian integer.
                         val bolusAmount = (detailBytes[1].toPosInt() shl 8) or detailBytes[0].toPosInt()
-                        // Events with type IDs 6 and 7 indicate manual infusion. (TODO: What exactly does "manual" mean here?)
+                        // Events with type IDs 6 and 7 indicate manual infusion.
+                        // NOTE: "Manual" means that the user manually administered the bolus
+                        // on the pump itself, with the pump's buttons. So, manual == false
+                        // specifies that the bolus was given off programmatically (that is,
+                        // through the CMD_DELIVER_BOLUS command).
                         val manual = (eventTypeId == 6) || (eventTypeId == 7)
                         // Events with type IDs 6 and 14 indicate that a bolus was requested, while
                         // events with type IDs 7 and 15 indicate that a bolus was infused (= finished).

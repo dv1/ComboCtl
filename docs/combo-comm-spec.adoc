@@ -996,7 +996,7 @@ Command mode specific error codes:
 * 0xF60C: CMD history read EEPROM error
 * 0xF633: CMD history confirm FRAM not readable or writeable
 * 0xF635: CMD unknown bolus type
-* 0xF636: CMD bolus is not available at the moment
+* 0xF636: CMD bolus is not available at the moment (typically because the pump is stopped)
 * 0xF639: CMD incorrect CRC value
 * 0xF63A: CMD ch1 and ch2 values inconsistent
 * 0xF63C: CMD pump has internal error (RAM values changed)
@@ -1792,6 +1792,65 @@ the warning status. In both of these bytes, a value of 0xB7 means
 "occurred", and 0x48 means "not occurred". So, for example, if these
 two bytes are set to 0x48 0xB7, it means that no error occurred, but
 a warning did occur.
+
+
+=== `AL_CMD_DELIVER_BOLUS` :
+
+* Sent by: Client
+* Service ID: 0xB7
+* Command ID: 0x9669
+* Reliable: yes
+* Payload length: 22
+
+This administers a standard bolus (that is: neither extended nor multiwave bolus).
+The bolus amount is given in 0.1 IU units. For example, to administer 5.7 IU,
+the amount "57" is specified.
+
+The bolus amount is added twice to the payload, once as a 16-bit little-endian
+integer, once as a 32-bit little-endian floating point.
+
+The payload begins with two bytes 0x55 and 0x59. Their function is not understood,
+but without them, the command fails.
+
+Next come the two bytes that make up the 16-bit little-endian integer with the bolus
+amount inside.
+
+Two bytes follow (these appear to be related  to multi-wave and extended
+bolus types), and again followed by two bytes (related to the multi-wave bolus type).
+All four of these bytes currently have to be zero since their exact function is not
+understood.
+
+The four bytes of the 32-bit little-endian floating point with the bolus amount inside
+follow. Note that even though this is a floating-point value, the amount still is given
+in 0.1 IU units here, so in the example above, the floating-point value would still be
+57, and _not_ 5.7.
+
+2x4 bytes follow, which fulfill the same function as the 2x2 bytes before (that is:
+multi-wave and extended bolus functionality). All of these eight bytes are set to zero.
+
+Finally, 2 bytes are added that contain a 16-bit unsigned little-endian integer with
+a CRC-16-MCRF4XX checksum of all payload bytes (except the 2 checksum bytes).
+
+The Combo responds to this with the `AL_CMD_DELIVER_BOLUS_RESPONSE` command.
+
+
+=== `AL_CMD_DELIVER_BOLUS_RESPONSE` :
+
+* Sent by: Combo
+* Service ID: 0xB7
+* Command ID: 0xA669
+* Reliable: yes
+* Payload length: 3
+
+This is the Combo's response to the client's `AL_CMD_DELIVER_BOLUS` command.
+
+Like all the other reliable packets coming from the Combo, its
+first (and in this case, only) 2 bytes contain an error code.
+See the "Error codes in reliable application layer command payloads"
+section above for details.
+
+The last byte specifies whether or not the bolus actually started.
+If the byte is 0x48, bolus started. If it is 0xB7, it did not start.
 
 
 === `AL_RT_BUTTON_STATUS` :
