@@ -246,9 +246,15 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
             override fun applyAdditionalIncomingPacketProcessing(tpLayerPacket: TransportLayerIO.Packet) =
                 if (tpLayerPacket.command == TransportLayerIO.Command.DATA) {
                     val appLayerPacket = checkAndParseTransportLayerDataPacket(tpLayerPacket)
-                    if (appLayerPacket != null)
+
+                    if (appLayerPacket != null) {
+                        if (appLayerPacket.command == ApplicationLayerIO.Command.CTRL_ACTIVATE_SERVICE_RESPONSE) {
+                            logger(LogLevel.DEBUG) { "New service was activated; resetting RT sequence number" }
+                            currentRTSequence = 0
+                        }
+
                         processIncomingPacket(appLayerPacket)
-                    else
+                    } else
                         false
                 } else
                     true
