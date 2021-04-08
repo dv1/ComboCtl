@@ -11,6 +11,7 @@ import info.nightscout.comboctl.base.DISPLAY_FRAME_WIDTH
 import info.nightscout.comboctl.base.NUM_DISPLAY_FRAME_PIXELS
 import info.nightscout.comboctl.base.PumpIO
 import info.nightscout.comboctl.comboandroid.App
+import info.nightscout.comboctl.comboandroid.utils.SingleLiveData
 import info.nightscout.comboctl.main.Pump
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -22,6 +23,18 @@ class SessionViewModel : ViewModel() {
     private val _state = MutableLiveData(State.UNINITIALIZED)
     val state: LiveData<State> = _state
 
+    private val _modeLiveData = MutableLiveData<Mode>(Mode.TERMINAL)
+    val modeLiveData: LiveData<Mode> = _modeLiveData
+
+    private val _historyDeltaLiveData = MutableLiveData<String>()
+    val historyDeltaLiveData: LiveData<String> = _historyDeltaLiveData
+
+    private val _parsedScreenLiveData = MutableLiveData<String>()
+    val parsedScreenLiveData: LiveData<String> = _parsedScreenLiveData
+
+    private val _timeLiveData = SingleLiveData<String>()
+    val timeLiveData: LiveData<String> = _timeLiveData
+
     private var pump: Pump? = null
 
     fun onMenuClicked() {
@@ -29,29 +42,66 @@ class SessionViewModel : ViewModel() {
             pump?.sendShortRTButtonPress(PumpIO.Button.MENU)
         }
     }
+
     fun onCheckClicked() {
         viewModelScope.launch {
             pump?.sendShortRTButtonPress(PumpIO.Button.CHECK)
         }
     }
+
     fun onUpClicked() {
         viewModelScope.launch {
             pump?.sendShortRTButtonPress(PumpIO.Button.UP)
         }
     }
+
     fun onDownClicked() {
         viewModelScope.launch {
             pump?.sendShortRTButtonPress(PumpIO.Button.DOWN)
         }
     }
+
     fun onBackClicked() {
         viewModelScope.launch {
             pump?.sendShortRTButtonPress(listOf(PumpIO.Button.UP, PumpIO.Button.MENU))
         }
     }
+
     fun onUpDownClicked() {
         viewModelScope.launch {
             pump?.sendShortRTButtonPress(listOf(PumpIO.Button.UP, PumpIO.Button.DOWN))
+        }
+    }
+
+    fun onCMBolusClicked(amount: String) {
+        amount.toIntOrNull()?.let { amount ->
+            viewModelScope.launch {
+                pump?.deliverCMDStandardBolus(amount)
+            }
+        }
+    }
+
+    fun onToggleMode() {
+        viewModelScope.launch {
+            if (modeLiveData.value == Mode.TERMINAL) {
+                pump?.switchMode(newMode = PumpIO.Mode.COMMAND)
+                _modeLiveData.value = Mode.COMMAND
+            } else {
+                pump?.switchMode(newMode = PumpIO.Mode.REMOTE_TERMINAL)
+                _modeLiveData.value = Mode.TERMINAL
+            }
+        }
+    }
+
+    fun onHistoryDeltaReadClicked() {
+        viewModelScope.launch {
+            pump?.getCMDHistoryDelta()?.joinToString("\n")?.let { _historyDeltaLiveData.postValue(it) }
+        }
+    }
+
+    fun onReadTimeClicked() {
+        viewModelScope.launch {
+            pump?.readCMDDateTime()?.let { _timeLiveData.postValue(it.toString()) }
         }
     }
 
@@ -90,5 +140,9 @@ class SessionViewModel : ViewModel() {
 
     enum class State {
         UNINITIALIZED, CONNECTING, CONNECTED, NO_PUMP_FOUND
+    }
+
+    enum class Mode {
+        COMMAND, TERMINAL
     }
 }

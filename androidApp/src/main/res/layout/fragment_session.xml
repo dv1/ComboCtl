@@ -6,6 +6,8 @@
 
         <import type="info.nightscout.comboctl.comboandroid.ui.session.SessionViewModel.State" />
 
+        <import type="info.nightscout.comboctl.comboandroid.ui.session.SessionViewModel.Mode" />
+
 
         <variable
             name="vm"
@@ -50,15 +52,16 @@
             android:layout_width="0dp"
             android:layout_height="0dp"
             android:layout_margin="32dp"
+            android:scaleType="fitXY"
+            app:comboDrawable="@{vm.screenLiveData}"
             app:layout_constraintDimensionRatio="H,96:32"
             app:layout_constraintLeft_toLeftOf="parent"
             app:layout_constraintRight_toRightOf="parent"
             app:layout_constraintTop_toTopOf="parent"
-            android:scaleType="fitXY"
-            app:comboDrawable="@{vm.screenLiveData}"
             app:visibility="@{vm.state == State.CONNECTED}" />
 
         <LinearLayout
+            android:id="@+id/buttonPanel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
@@ -68,7 +71,8 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center_horizontal">
+                android:gravity="center_horizontal"
+                app:visibility="@{vm.modeLiveData == Mode.TERMINAL}">
 
                 <androidx.appcompat.widget.AppCompatButton
                     android:layout_width="wrap_content"
@@ -92,7 +96,8 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center_horizontal">
+                android:gravity="center_horizontal"
+                app:visibility="@{vm.modeLiveData == Mode.TERMINAL}">
 
                 <androidx.appcompat.widget.AppCompatButton
                     android:layout_width="wrap_content"
@@ -113,8 +118,66 @@
                     android:text="Up-down" />
             </LinearLayout>
 
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_horizontal"
+                app:visibility="@{vm.modeLiveData == Mode.COMMAND}">
+
+                <androidx.appcompat.widget.AppCompatButton
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:onClick='@{() -> vm.onCMBolusClicked("10")}'
+                    android:text="CMDBolus" />
+
+                <androidx.appcompat.widget.AppCompatButton
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:onClick="@{() -> vm.onHistoryDeltaReadClicked()}"
+                    android:text="History Delta" />
+
+                <androidx.appcompat.widget.AppCompatButton
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:onClick="@{() -> vm.onReadTimeClicked()}"
+                    android:text="Read Time" />
+            </LinearLayout>
+
+            <androidx.appcompat.widget.AppCompatButton
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:onClick="@{() -> vm.onToggleMode()}"
+                android:text="Toggle Command/Terminal Mode" />
 
         </LinearLayout>
+
+        <ScrollView
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintLeft_toLeftOf="parent"
+            app:layout_constraintRight_toRightOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/buttonPanel"
+            app:visibility="@{vm.state == State.CONNECTED}">
+
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent">
+
+                <androidx.appcompat.widget.AppCompatTextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@{vm.historyDeltaLiveData}"
+                    app:visibility="@{vm.modeLiveData == Mode.COMMAND}" />
+
+                <androidx.appcompat.widget.AppCompatTextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@{vm.parsedScreenLiveData}"
+                    app:visibility="@{vm.modeLiveData == Mode.TERMINAL}" />
+            </FrameLayout>
+        </ScrollView>
 
 
     </androidx.constraintlayout.widget.ConstraintLayout>

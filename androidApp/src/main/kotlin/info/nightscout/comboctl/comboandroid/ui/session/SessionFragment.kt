@@ -25,5 +25,8 @@ class SessionFragment : BaseFragment<FragmentSessionBinding, SessionViewModel>()
                 else -> Unit
             }
         }
+        viewModel.timeLiveData.observe(viewLifecycleOwner) {
+            Toast.makeText(requireContext(), it, Toast.LENGTH_LONG).show()
+        }
     }
 }
