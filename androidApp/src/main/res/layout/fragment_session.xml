@@ -35,10 +35,10 @@
 
         <ProgressBar
             android:id="@+id/progess"
-            style="?android:attr/progressBarStyle"
-            android:layout_width="60dp"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="200dp"
             android:layout_height="60dp"
-            android:indeterminate="true"
+            android:progress="@{vm.progressLiveData}"
             android:indeterminateTint="@color/black"
             android:indeterminateTintMode="src_atop"
             app:layout_constraintHorizontal_bias="0.5"

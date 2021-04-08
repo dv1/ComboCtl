@@ -38,6 +38,9 @@ class SessionViewModel : ViewModel() {
     private val _timeLiveData = SingleLiveData<String>()
     val timeLiveData: LiveData<String> = _timeLiveData
 
+    private val _progressLiveData = MutableLiveData(0)
+    val progressLiveData: LiveData<Int> = _progressLiveData
+
     private var pump: Pump? = null
 
     fun onMenuClicked() {
@@ -120,6 +123,9 @@ class SessionViewModel : ViewModel() {
                 return@launch
             }
             try {
+                pumpLocal.connectProgressFlow.onEach {
+                    _progressLiveData.value = if (it.numSteps > 0) (it.stepNumber * 100 / it.numSteps).coerceIn(0..100) else 0
+                }.launchIn(viewModelScope)
                 pumpLocal.connect(viewModelScope).join()
             } catch (e: Exception) {
                 _state.value = State.NO_PUMP_FOUND
