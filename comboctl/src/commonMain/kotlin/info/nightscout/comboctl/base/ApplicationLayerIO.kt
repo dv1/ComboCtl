@@ -1848,41 +1848,57 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
         // stateless, and we keep the currentRTSequence state change
         // isolated in here.
 
-        logger(LogLevel.VERBOSE) {
-            "Sending application layer packet via transport layer:  $appLayerPacket"
-        }
-
-        val outgoingPacketInfo = appLayerPacket.toTransportLayerPacketInfo()
-
-        if (appLayerPacket.command.serviceID == ServiceID.RT_MODE) {
-            if (outgoingPacketInfo.payload.size < (PAYLOAD_BYTES_OFFSET + 2)) {
-                throw InvalidPayloadException(
-                    appLayerPacket,
-                    "Cannot send application layer RT packet since there's no room in the payload for the RT sequence number"
-                )
+        // Run the code in a NonCancellable block. This avoids
+        // a corner case where the RT sequence number is incremented
+        // but the actual sendPacket call is cancelled. The next time
+        // an RT packet is sent, the RT sequence number is incremented
+        // again, leaving a "hole" in between sent sequence numbers.
+        // The Combo notices that "hole" and considers it an error.
+        // One way to fix this would be to decrement the number again
+        // if the send attempt did not go through. However, this would
+        // require knowing exactly _where_ the send call was cancelled.
+        // Depending on the moment of cancellation, the packet was
+        // either sent over Bluetooth, or it wasn't. Currently, it is
+        // unclear how to do that. So, instead, use NonCancellable to
+        // make sure the packet is sent and that cancellations happen
+        // only _after_ it was all completed.
+        withContext(NonCancellable) {
+            logger(LogLevel.VERBOSE) {
+                "Sending application layer packet via transport layer:  $appLayerPacket"
             }
 
-            logger(LogLevel.VERBOSE) { "Writing current RT sequence number $currentRTSequence into packet" }
+            val outgoingPacketInfo = appLayerPacket.toTransportLayerPacketInfo()
 
-            // The RT sequence is always stored in the
-            // first 2 bytes  of an RT packet's payload.
-            // 
-            // Also, we set the RT sequence in the outgoingPacketInfo,
-            // and not in appLayerPacket's payload, since the latter
-            // is a function argument, and modifying the payload of
-            // an outside value may lead to confusing behavior.
-            // By writing the RT sequence into outgoingPacketInfo
-            // instead, that change stays contained in here.
-            outgoingPacketInfo.payload[PAYLOAD_BYTES_OFFSET + 0] = ((currentRTSequence shr 0) and 0xFF).toByte()
-            outgoingPacketInfo.payload[PAYLOAD_BYTES_OFFSET + 1] = ((currentRTSequence shr 8) and 0xFF).toByte()
+            if (appLayerPacket.command.serviceID == ServiceID.RT_MODE) {
+                if (outgoingPacketInfo.payload.size < (PAYLOAD_BYTES_OFFSET + 2)) {
+                    throw InvalidPayloadException(
+                        appLayerPacket,
+                        "Cannot send application layer RT packet since there's no room in the payload for the RT sequence number"
+                    )
+                }
 
-            // After using the RT sequence, increment it to
-            // make sure the next RT packet doesn't use the
-            // same RT sequence.
-            incrementRTSequence()
+                logger(LogLevel.VERBOSE) { "Writing current RT sequence number $currentRTSequence into packet" }
+
+                // The RT sequence is always stored in the
+                // first 2 bytes  of an RT packet's payload.
+                //
+                // Also, we set the RT sequence in the outgoingPacketInfo,
+                // and not in appLayerPacket's payload, since the latter
+                // is a function argument, and modifying the payload of
+                // an outside value may lead to confusing behavior.
+                // By writing the RT sequence into outgoingPacketInfo
+                // instead, that change stays contained in here.
+                outgoingPacketInfo.payload[PAYLOAD_BYTES_OFFSET + 0] = ((currentRTSequence shr 0) and 0xFF).toByte()
+                outgoingPacketInfo.payload[PAYLOAD_BYTES_OFFSET + 1] = ((currentRTSequence shr 8) and 0xFF).toByte()
+
+                // After using the RT sequence, increment it to
+                // make sure the next RT packet doesn't use the
+                // same RT sequence.
+                incrementRTSequence()
+            }
+
+            transportLayerIO.sendPacket(outgoingPacketInfo)
         }
-
-        transportLayerIO.sendPacket(outgoingPacketInfo)
     }
 
     /**
@@ -1915,9 +1931,26 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
         appLayerPacket: Packet,
         expectedResponseCommand: ApplicationLayerIO.Command? = null
     ): Packet = sendPacketWithResponseMutex.withLock {
-        // TODO: It is not 100% certain if this is the correct approach.
-        // NonCancellable blocks can cause problems if they hang and
-        // really would need to be cancelled, after all.
+        // We must surround the send-receive calls with a NonCancellable
+        // block to make sure there is no cancellation in between them.
+        // This is essential, since otherwise, a later receive call
+        // (as part of a later sendPacketWithResponse call) receives
+        // _this_ response instead of the response it expects by then.
+        //
+        // Example: sendPacketWithResponse call A sends command X1 and
+        // expects response Y1. But, after sending X1, call A is cancelled
+        // and the receiveAppLayerPacket call that would have waited for
+        // Y1 is never called. Later, another sendPacketWithResponse call
+        // B is made. This one sends command X2 and expects response Y2.
+        // However, since the previous receiveAppLayerPacket call was
+        // never made, B's receiveAppLayerPacket receives response Y1
+        // instead, which is not the correct response -> error.
+        //
+        // NonCancellable blocks have to be used with caution, since they
+        // can cause code to hang. However, here, we still have a
+        // straightforward exit strategy, since as soon as the underlying
+        // Bluetooth socket is disconnected, any blocking send/receive
+        // calls will immediately unblock.
         return withContext(NonCancellable) {
             sendPacketNoResponseInternal(appLayerPacket)
             receiveAppLayerPacket(expectedResponseCommand)
