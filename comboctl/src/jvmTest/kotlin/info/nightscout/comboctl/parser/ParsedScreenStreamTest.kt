@@ -44,11 +44,13 @@ class ParsedScreenStreamTest {
             // We expect _one_ ParsedScreen.NormalMainScreen
             // (the other frame with the equal content must be filtered out).
             assertEquals(
-                ParsedScreen.NormalMainScreen(
-                    currentTimeHours = 10,
-                    currentTimeMinutes = 20,
-                    activeBasalRateNumber = 1,
-                    currentBasalRateFactor = 200
+                ParsedScreen.MainScreen(
+                    MainScreenContent.Normal(
+                        currentTimeHours = 10,
+                        currentTimeMinutes = 20,
+                        activeBasalRateNumber = 1,
+                        currentBasalRateFactor = 200
+                    )
                 ),
                 parsedScreenStream.getNextParsedScreen()
             )

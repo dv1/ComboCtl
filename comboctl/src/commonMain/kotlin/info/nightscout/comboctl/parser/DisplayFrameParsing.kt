@@ -21,6 +21,33 @@ enum class ReservoirState {
 }
 
 /**
+ * Possible contents of [ParsedScreen.MainScreen].
+ */
+sealed class MainScreenContent {
+    data class Normal(
+        val currentTimeHours: Int,
+        val currentTimeMinutes: Int,
+        val activeBasalRateNumber: Int,
+        val currentBasalRateFactor: Int
+    ) : MainScreenContent()
+
+    data class Stopped(
+        val currentTimeHours: Int,
+        val currentTimeMinutes: Int
+    ) : MainScreenContent()
+
+    data class Tbr(
+        val currentTimeHours: Int,
+        val currentTimeMinutes: Int,
+        val remainingTbrDurationHours: Int,
+        val remainingTbrDurationMinutes: Int,
+        val tbrPercentage: Int,
+        val activeBasalRateNumber: Int,
+        val currentBasalRateFactor: Int
+    ) : MainScreenContent()
+}
+
+/**
  * Result of a successful [parseDisplayFrame] call.
  *
  * Subclasses which have hour quantities use a 0..23 range for the hours.
@@ -32,25 +59,7 @@ enum class ReservoirState {
  * For example, "37.5" is encoded as 37500, "10" as 10000, "0.02" as 20 etc.
  */
 sealed class ParsedScreen {
-    data class NormalMainScreen(
-        val currentTimeHours: Int,
-        val currentTimeMinutes: Int,
-        val activeBasalRateNumber: Int,
-        val currentBasalRateFactor: Int
-    ) : ParsedScreen()
-    data class StoppedMainScreen(
-        val currentTimeHours: Int,
-        val currentTimeMinutes: Int
-    ) : ParsedScreen()
-    data class TbrMainScreen(
-        val currentTimeHours: Int,
-        val currentTimeMinutes: Int,
-        val remainingTbrDurationHours: Int,
-        val remainingTbrDurationMinutes: Int,
-        val tbrPercentage: Int,
-        val activeBasalRateNumber: Int,
-        val currentBasalRateFactor: Int
-    ) : ParsedScreen()
+    data class MainScreen(val content: MainScreenContent) : ParsedScreen()
 
     object BasalRateProfileSelectionMenuScreen : ParsedScreen()
     object BluetoothSettingsMenuScreen : ParsedScreen()
@@ -58,7 +67,11 @@ sealed class ParsedScreen {
     object MultiwaveBolusMenuScreen : ParsedScreen()
     object MenuSettingsMenuScreen : ParsedScreen()
     object MyDataMenuScreen : ParsedScreen()
-    data class BasalRateProgrammingMenuScreen(val basalRateNumber: Int) : ParsedScreen()
+    object BasalRate1ProgrammingMenuScreen : ParsedScreen()
+    object BasalRate2ProgrammingMenuScreen : ParsedScreen()
+    object BasalRate3ProgrammingMenuScreen : ParsedScreen()
+    object BasalRate4ProgrammingMenuScreen : ParsedScreen()
+    object BasalRate5ProgrammingMenuScreen : ParsedScreen()
     object PumpSettingsMenuScreen : ParsedScreen()
     object ReminderSettingsMenuScreen : ParsedScreen()
     object TimeAndDateSettingsMenuScreen : ParsedScreen()
@@ -216,7 +229,14 @@ private fun tryParseMenuScreen(matches: PatternMatches): ParsedScreen? {
     if ((matches.size >= 2) &&
         (lastGlyph is Glyph.LargeDigit) &&
         (matches[matches.size - 2].glyph == Glyph.LargeSymbol(Symbol.LARGE_BASAL))) {
-        return ParsedScreen.BasalRateProgrammingMenuScreen(lastGlyph.digit)
+        return when (lastGlyph.digit) {
+            1 -> ParsedScreen.BasalRate1ProgrammingMenuScreen
+            2 -> ParsedScreen.BasalRate2ProgrammingMenuScreen
+            3 -> ParsedScreen.BasalRate3ProgrammingMenuScreen
+            4 -> ParsedScreen.BasalRate4ProgrammingMenuScreen
+            5 -> ParsedScreen.BasalRate5ProgrammingMenuScreen
+            else -> null
+        }
     }
 
     return null
@@ -411,9 +431,11 @@ private fun tryParseMainScreen(displayFrame: DisplayFrame, matches: PatternMatch
             // If there is a stop symbol at the center, this is the
             // stopped variant of the main screen.
 
-            return ParsedScreen.StoppedMainScreen(
-                currentTimeHours = hours,
-                currentTimeMinutes = minutes
+            return ParsedScreen.MainScreen(
+                MainScreenContent.Stopped(
+                    currentTimeHours = hours,
+                    currentTimeMinutes = minutes
+                )
             )
         }
         matches[curMatchesOffset].glyph == Glyph.SmallSymbol(Symbol.SMALL_ARROW) -> {
@@ -470,11 +492,13 @@ private fun tryParseNormalMainScreen(
             displayFrame
         )
 
-    return ParsedScreen.NormalMainScreen(
-        currentTimeHours = hours,
-        currentTimeMinutes = minutes,
-        activeBasalRateNumber = activeBasalRateNumber,
-        currentBasalRateFactor = currentBasalRateFactorParseResult.value
+    return ParsedScreen.MainScreen(
+        MainScreenContent.Normal(
+            currentTimeHours = hours,
+            currentTimeMinutes = minutes,
+            activeBasalRateNumber = activeBasalRateNumber,
+            currentBasalRateFactor = currentBasalRateFactorParseResult.value
+        )
     )
 }
 
@@ -536,14 +560,16 @@ private fun tryParseMainScreenWithTbrInfo(
     // The current basal rate factor follows.
     val currentBasalRateFactorParseResult = parseDecimal(matches, curMatchesOffset) ?: return null
 
-    return ParsedScreen.TbrMainScreen(
-        currentTimeHours = hours,
-        currentTimeMinutes = minutes,
-        remainingTbrDurationHours = remainingTbrDurationParseResult.value.hours,
-        remainingTbrDurationMinutes = remainingTbrDurationParseResult.value.minutes,
-        tbrPercentage = tbrPercentageParseResult.value,
-        activeBasalRateNumber = activeBasalRateNumber,
-        currentBasalRateFactor = currentBasalRateFactorParseResult.value
+    return ParsedScreen.MainScreen(
+        MainScreenContent.Tbr(
+            currentTimeHours = hours,
+            currentTimeMinutes = minutes,
+            remainingTbrDurationHours = remainingTbrDurationParseResult.value.hours,
+            remainingTbrDurationMinutes = remainingTbrDurationParseResult.value.minutes,
+            tbrPercentage = tbrPercentageParseResult.value,
+            activeBasalRateNumber = activeBasalRateNumber,
+            currentBasalRateFactor = currentBasalRateFactorParseResult.value
+        )
     )
 }
 

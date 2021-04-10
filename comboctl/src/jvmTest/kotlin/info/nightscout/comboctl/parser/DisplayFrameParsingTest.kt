@@ -72,22 +72,26 @@ class DisplayFrameParsingTest {
     fun checkMainScreenParsing() {
         val resultWithSeparator = parseDisplayFrame(testFrameMainScreenWithTimeSeparator)
         assertEquals(
-            ParsedScreen.NormalMainScreen(
-                currentTimeHours = 10,
-                currentTimeMinutes = 20,
-                activeBasalRateNumber = 1,
-                currentBasalRateFactor = 200
+            ParsedScreen.MainScreen(
+                MainScreenContent.Normal(
+                    currentTimeHours = 10,
+                    currentTimeMinutes = 20,
+                    activeBasalRateNumber = 1,
+                    currentBasalRateFactor = 200
+                )
             ),
             resultWithSeparator
         )
 
         val resultWithoutSeparator = parseDisplayFrame(testFrameMainScreenWithoutTimeSeparator)
         assertEquals(
-            ParsedScreen.NormalMainScreen(
-                currentTimeHours = 10,
-                currentTimeMinutes = 20,
-                activeBasalRateNumber = 1,
-                currentBasalRateFactor = 200
+            ParsedScreen.MainScreen(
+                MainScreenContent.Normal(
+                    currentTimeHours = 10,
+                    currentTimeMinutes = 20,
+                    activeBasalRateNumber = 1,
+                    currentBasalRateFactor = 200
+                )
             ),
             resultWithoutSeparator
         )
@@ -97,18 +101,22 @@ class DisplayFrameParsingTest {
     fun checkMainScreenStoppedParsing() {
         val resultWithSeparator = parseDisplayFrame(testFrameMainScreenStoppedWithTimeSeparator)
         assertEquals(
-            ParsedScreen.StoppedMainScreen(
-                currentTimeHours = 10,
-                currentTimeMinutes = 20
+            ParsedScreen.MainScreen(
+                MainScreenContent.Stopped(
+                    currentTimeHours = 10,
+                    currentTimeMinutes = 20
+                )
             ),
             resultWithSeparator
         )
 
         val resultWithoutSeparator = parseDisplayFrame(testFrameMainScreenStoppedWithoutTimeSeparator)
         assertEquals(
-            ParsedScreen.StoppedMainScreen(
-                currentTimeHours = 10,
-                currentTimeMinutes = 20
+            ParsedScreen.MainScreen(
+                MainScreenContent.Stopped(
+                    currentTimeHours = 10,
+                    currentTimeMinutes = 20
+                )
             ),
             resultWithoutSeparator
         )
@@ -118,14 +126,16 @@ class DisplayFrameParsingTest {
     fun checkMainScreenWithTbrInfoParsing() {
         val result = parseDisplayFrame(testFrameMainScreenWithTbrInfo)
         assertEquals(
-            ParsedScreen.TbrMainScreen(
-                currentTimeHours = 10,
-                currentTimeMinutes = 21,
-                remainingTbrDurationHours = 0,
-                remainingTbrDurationMinutes = 30,
-                tbrPercentage = 110,
-                activeBasalRateNumber = 1,
-                currentBasalRateFactor = 220
+            ParsedScreen.MainScreen(
+                MainScreenContent.Tbr(
+                    currentTimeHours = 10,
+                    currentTimeMinutes = 21,
+                    remainingTbrDurationHours = 0,
+                    remainingTbrDurationMinutes = 30,
+                    tbrPercentage = 110,
+                    activeBasalRateNumber = 1,
+                    currentBasalRateFactor = 220
+                )
             ),
             result
         )
@@ -186,7 +196,17 @@ class DisplayFrameParsingTest {
                 else -> fail("No test frame for index  $i")
             }
             val result = parseDisplayFrame(testFrame)
-            assertEquals(ParsedScreen.BasalRateProgrammingMenuScreen(i), result)
+            assertEquals(
+                when (i) {
+                    1 -> ParsedScreen.BasalRate1ProgrammingMenuScreen
+                    2 -> ParsedScreen.BasalRate2ProgrammingMenuScreen
+                    3 -> ParsedScreen.BasalRate3ProgrammingMenuScreen
+                    4 -> ParsedScreen.BasalRate4ProgrammingMenuScreen
+                    5 -> ParsedScreen.BasalRate5ProgrammingMenuScreen
+                    else -> fail("Invalid index  $i")
+                },
+                result
+            )
         }
     }
 
