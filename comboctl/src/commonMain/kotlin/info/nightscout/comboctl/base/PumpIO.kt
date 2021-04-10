@@ -872,12 +872,37 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      * example. The buttons in the specified list are combined to
      * form a code that is transmitted to the pump.
      *
+     * Internally, a coroutine is launched that repeatedly transmits
+     * a confirmation command to the Combo that the buttons are still
+     * being held down. This loop continues until either the keepGoing
+     * predicate returns true (if that predicate isn't null) or until
+     * [stopLongRTButtonPress] is called. In both cases, a command is
+     * sent to the Combo to signal that the user "released" the buttons.
+     *
+     * If the keepGoing predicate is set, it is called before sending
+     * each confirmation command. This is particularly useful for
+     * aborting the loop at just the right time. In the Combo, this
+     * command triggers updates associated with the button(s) and the
+     * current screen. For example, in the bolus screen, if the UP
+     * button is pressed, such a command will cause the bolus amount
+     * to be incremented. Therefore, if the code in keepGoing waits
+     * for received [DisplayFrame] instances to check their contents
+     * before deciding whether to return true or false, it becomes
+     * possible to stop the bolus increment at precisely the correct
+     * moment (= when the target amount is reached). If however the
+     * confirmation commands are set _too_ quickly, the user would see
+     * that the bolus amount is incremented even after "releasing" the
+     * button.
+     *
      * @param buttons What button(s) to long-press.
+     * @param keepGoing Predicate for deciding whether or not to
+     *        continue the internal loop. If this is set to null,
+     *        the loop behaves as if this returned true all the time.
      * @throws IllegalArgumentException If the buttons list is empty.
      * @throws IllegalStateException if the pump is not in the RT mode
      *         or the worker has failed (see [connect]).
      */
-    suspend fun startLongRTButtonPress(buttons: List<Button>) {
+    suspend fun startLongRTButtonPress(buttons: List<Button>, keepGoing: (suspend () -> Boolean)? = null) {
         if (!isConnected())
             throw IllegalStateException("Cannot send long RT button press because the background worker is not running")
 
@@ -895,7 +920,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
             throw IllegalStateException("Cannot send long RT button press while being in ${mutableCurrentModeFlow.value} mode")
 
         try {
-            sendLongRTButtonPress(buttons, true)
+            sendLongRTButtonPress(buttons, keepGoing, pressing = true)
         } catch (e: Exception) {
             // In case of an exception, we abort by stopping
             // the long RT button press attempt, then rethrow.
@@ -910,8 +935,8 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      * This overload is for convenience in case exactly one button
      * is to be pressed.
      */
-    suspend fun startLongRTButtonPress(button: Button) =
-        startLongRTButtonPress(listOf(button))
+    suspend fun startLongRTButtonPress(button: Button, keepGoing: (suspend () -> Boolean)? = null) =
+        startLongRTButtonPress(listOf(button), keepGoing)
 
     /**
      * Stops an ongoing RT button press, imitating buttons being released.
@@ -944,8 +969,21 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
         // the "pressing" argument is set to false, in which
         // case the function will always transmit the NO_BUTTON
         // RT button code to the Combo.
-        sendLongRTButtonPress(listOf(Button.CHECK), false)
+        sendLongRTButtonPress(listOf(Button.CHECK), keepGoing = null, pressing = false)
     }
+
+    /**
+     * Waits for the coroutine that drives the long RT button press loop to finish.
+     *
+     * This finishes when either the keepAlive predicate in [startLongRTButtonPress]
+     * returns false or [stopLongRTButtonPress] is called. The former is the more
+     * common use case for this function.
+     *
+     * If no long RT button press is ongoing, this function does nothing,
+     * and just exits immediately.
+     */
+    suspend fun waitForLongRTButtonPressToFinish() =
+        currentLongRTPressJob?.join()
 
     /**
      * Switches the Combo to a different mode.
@@ -1178,7 +1216,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
 
     private fun isRTKeepAliveBackgroundLoopRunning() = (rtKeepAliveJob != null)
 
-    private suspend fun sendLongRTButtonPress(buttons: List<Button>, pressing: Boolean) {
+    private suspend fun sendLongRTButtonPress(buttons: List<Button>, keepGoing: (suspend () -> Boolean)?, pressing: Boolean) {
         if (!pressing) {
             logger(LogLevel.DEBUG) {
                 "Releasing RTs button(s) ${toString(currentLongRTPressedButtons)}"
@@ -1271,6 +1309,15 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
                             logger(LogLevel.VERBOSE) { "Waiting for button confirmation" }
                             rtButtonConfirmationBarrier.receive()
                             logger(LogLevel.VERBOSE) { "Got button confirmation" }
+
+                            if (keepGoing != null) {
+                                if (!keepGoing()) {
+                                    logger(LogLevel.DEBUG) { "Aborting long RT button press flow" }
+                                    currentLongRTPressInnerFlow.value = false
+                                    currentLongRTPressJob = null
+                                    break
+                                }
+                            }
 
                             // The next time we send the button status, we must
                             // send NOT_CHANGED to the Combo.

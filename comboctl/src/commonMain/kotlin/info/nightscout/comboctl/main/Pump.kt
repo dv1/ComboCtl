@@ -647,19 +647,24 @@ class Pump(
      * Internally, this calls [PumpIO.startLongRTButtonPress],
      * but also disconnects if this call throws an exception.
      * It also switches to the RT mode before issuing the call.
+     * Consult the [PumpIO.startLongRTButtonPress] documentation
+     * for additional details.
      *
      * @param buttons What button(s) to long-press.
+     * @param keepGoing Predicate for deciding whether or not to
+     *        continue the internal loop. If this is set to null,
+     *        the loop behaves as if this returned true all the time.
      * @throws IllegalArgumentException If the buttons list is empty.
      * @throws IllegalStateException if the pump is not in the RT mode,
      *         or the worker has failed (see [connect]), or the pump
      *         is not connected.
      */
-    suspend fun startLongRTButtonPress(buttons: List<PumpIO.Button>) {
+    suspend fun startLongRTButtonPress(buttons: List<PumpIO.Button>, keepGoing: (suspend () -> Boolean)? = null) {
         if (!pumpIO.isConnected())
             throw IllegalStateException("Not connected to Combo")
 
         runChecked {
-            pumpIO.startLongRTButtonPress(buttons)
+            pumpIO.startLongRTButtonPress(buttons, keepGoing)
         }
     }
 
@@ -669,8 +674,8 @@ class Pump(
      * This overload is for convenience in case exactly one button
      * is to be pressed.
      */
-    suspend fun startLongRTButtonPress(button: PumpIO.Button) =
-        startLongRTButtonPress(listOf(button))
+    suspend fun startLongRTButtonPress(button: PumpIO.Button, keepGoing: (suspend () -> Boolean)? = null) =
+        startLongRTButtonPress(listOf(button), keepGoing)
 
     /**
      * Stops an ongoing RT button press, imitating buttons being released.
@@ -696,6 +701,19 @@ class Pump(
             pumpIO.stopLongRTButtonPress()
         }
     }
+
+    /**
+     * Waits for the coroutine that drives the long RT button press loop to finish.
+     *
+     * This finishes when either the keepAlive predicate in [startLongRTButtonPress]
+     * returns false or [stopLongRTButtonPress] is called. The former is the more
+     * common use case for this function.
+     *
+     * If no long RT button press is ongoing, this function does nothing,
+     * and just exits immediately.
+     */
+    suspend fun waitForLongRTButtonPressToFinish() =
+        pumpIO.waitForLongRTButtonPressToFinish()
 
     /**
      * Switches the operating mode of the pump.
