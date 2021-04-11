@@ -89,7 +89,7 @@ sealed class ParsedScreen {
         val beginMinutes: Int,
         val endHours: Int,
         val endMinutes: Int,
-        val numUnits: Int
+        val numUnits: Int?
     ) : ParsedScreen()
 
     data class TemporaryBasalRatePercentageScreen(val percentage: Int?) : ParsedScreen()
@@ -385,10 +385,10 @@ private fun tryParseBasalRateFactorSettingScreen(matches: PatternMatches): Parse
     curMatchesOffset++
 
     // The number of IUs per hour for the current factor follow.
-    val numUnitsParseResult = parseDecimal(matches, curMatchesOffset) ?: return null
-    curMatchesOffset += numUnitsParseResult.numParsedPatternMatches
+    val numUnitsParseResult = parseDecimal(matches, curMatchesOffset)
+    curMatchesOffset += numUnitsParseResult?.numParsedPatternMatches ?: 0
 
-    // Finallly, there is an U/h symbol.
+    // Finally, there is an U/h symbol.
     if ((curMatchesOffset >= matches.size) || (matches[curMatchesOffset].glyph != Glyph.LargeSymbol(Symbol.LARGE_UNITS_PER_HOUR)))
         return null
 
@@ -397,7 +397,7 @@ private fun tryParseBasalRateFactorSettingScreen(matches: PatternMatches): Parse
         beginMinutes = beginTimeParseResult.value.minutes,
         endHours = endTimeParseResult.value.hours,
         endMinutes = endTimeParseResult.value.minutes,
-        numUnits = numUnitsParseResult.value
+        numUnits = numUnitsParseResult?.value
     )
 }
 
@@ -981,7 +981,7 @@ private fun parseDecimal(matches: PatternMatches, matchesOffset: Int): ParsedVal
 
     // If the end of the decimal was found right at the
     // very first match, then there's no decimal to parse.
-    if (decimalEndOffset == 0)
+    if (decimalEndOffset == matchesOffset)
         return null
 
     // This happens if the end of the matches list was reached.

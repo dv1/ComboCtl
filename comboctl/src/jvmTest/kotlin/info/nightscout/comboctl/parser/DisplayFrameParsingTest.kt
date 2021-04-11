@@ -7,6 +7,18 @@ import kotlin.test.fail
 class DisplayFrameParsingTest {
     @Test
     fun checkFrameBasalRateFactorSettingParsing() {
+        val resultNoFactor = parseDisplayFrame(testFrameBasalRateFactorSettingNoFactorScreen)
+        assertEquals(
+            ParsedScreen.BasalRateFactorSettingScreen(
+                beginHours = 2,
+                beginMinutes = 0,
+                endHours = 3,
+                endMinutes = 0,
+                numUnits = null
+            ),
+            resultNoFactor
+        )
+
         val result0 = parseDisplayFrame(testFrameBasalRateFactorSettingScreen0)
         assertEquals(
             ParsedScreen.BasalRateFactorSettingScreen(
