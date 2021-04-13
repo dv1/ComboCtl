@@ -1,7 +1,10 @@
 package info.nightscout.comboctl.base
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
@@ -85,7 +88,9 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
     // messages until the user "releases" the buttons.
     // (We use a list of Button values in case multiple buttons are being
     // held down at the same time.)
-    private var currentLongRTPressJob: Job? = null
+    // We use a Deferred instance instead of Job to be able to catch
+    // and store exceptions & rethrow them later.
+    private var currentLongRTPressJob: Deferred<Unit>? = null
     private var currentLongRTPressedButtons = listOf<Button>()
     // This runs the inner loop that repeatedly sends long RT button
     // press commands to the Combo. It is separate to allow for orderly
@@ -948,6 +953,8 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      *
      * @throws IllegalStateException if the pump is not in the RT mode
      *         or the worker has failed (see [connect]).
+     * @throws Exception Exceptions that were thrown in the keepGoing callback
+     *         that was passed to [startLongRTButtonPress].
      */
     suspend fun stopLongRTButtonPress() {
         if (!isConnected())
@@ -981,9 +988,16 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      *
      * If no long RT button press is ongoing, this function does nothing,
      * and just exits immediately.
+     *
+     * @throws Exception Exceptions that were thrown in the keepGoing callback
+     *         that was passed to [startLongRTButtonPress].
      */
     suspend fun waitForLongRTButtonPressToFinish() =
-        currentLongRTPressJob?.join()
+        try {
+            currentLongRTPressJob?.await()
+        } finally {
+            currentLongRTPressJob = null
+        }
 
     /**
      * Switches the Combo to a different mode.
@@ -1225,10 +1239,14 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
             // This wakes up the ongoing flow and cancels it.
             currentLongRTPressInnerFlow.value = false
 
-            if (currentLongRTPressJob != null) {
-                currentLongRTPressJob!!.join()
+            // Wait for job completion by using await(). This will
+            // also re-throw any exceptions caught in that coroutine.
+            try {
+                currentLongRTPressJob?.await()
+            } finally {
                 currentLongRTPressJob = null
             }
+
             return
         }
 
@@ -1245,7 +1263,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
         // will keep running until the flow is cancelled. We do
         // _not_ cancel the currentLongRTPressJob coroutine directly.
         // See the code below for the reason why.
-        currentLongRTPressJob = backgroundIOScope!!.launch {
+        currentLongRTPressJob = backgroundIOScope!!.async {
             try {
                 applicationLayerIO.runInSingleThreadedDispatcher {
                     // Run the inner long press button loop in the single
@@ -1311,12 +1329,25 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
                             logger(LogLevel.VERBOSE) { "Got button confirmation" }
 
                             if (keepGoing != null) {
-                                if (!keepGoing()) {
-                                    logger(LogLevel.DEBUG) { "Aborting long RT button press flow" }
-                                    currentLongRTPressInnerFlow.value = false
-                                    currentLongRTPressJob = null
-                                    break
+                                var keepButtonPressGoing = false
+
+                                try {
+                                    keepButtonPressGoing = keepGoing()
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    logger(LogLevel.DEBUG) { "keepGoing callback threw exception: $e" }
+                                    throw e
+                                } finally {
+                                    if (!keepButtonPressGoing) {
+                                        logger(LogLevel.DEBUG) { "Aborting long RT button press flow" }
+                                        currentLongRTPressInnerFlow.value = false
+                                        currentLongRTPressJob = null
+                                    }
                                 }
+
+                                if (!keepButtonPressGoing)
+                                    break
                             }
 
                             // The next time we send the button status, we must
