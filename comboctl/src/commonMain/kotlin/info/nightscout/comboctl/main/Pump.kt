@@ -366,7 +366,7 @@ class Pump(
             // Do this in a separate coroutine with an IO dispatcher
             // since the connection setup may block.
             withContext(ioDispatcher()) {
-                bluetoothDevice.connect()
+                bluetoothDevice.connect(connectProgressReporter)
             }
 
             // Establish the regular connection. Also call join() here
