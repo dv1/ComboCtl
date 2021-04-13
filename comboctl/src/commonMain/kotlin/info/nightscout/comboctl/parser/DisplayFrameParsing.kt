@@ -93,7 +93,7 @@ sealed class ParsedScreen {
     ) : ParsedScreen()
 
     data class TemporaryBasalRatePercentageScreen(val percentage: Int?) : ParsedScreen()
-    data class TemporaryBasalRateDurationScreen(val hours: Int, val minutes: Int) : ParsedScreen()
+    data class TemporaryBasalRateDurationScreen(val durationInMinutes: Int?) : ParsedScreen()
 
     data class QuickinfoMainScreen(val availableUnits: Int, val reservoirState: ReservoirState) : ParsedScreen()
 
@@ -656,11 +656,13 @@ private fun parseTemporaryBasalRateDurationScreen(matches: PatternMatches, numTi
     curMatchesOffset++
 
     // Next comes the currently picked TBR duration.
-    val durationParseResult = parseTime(matches, curMatchesOffset) ?: return null
+    val durationParseResult = parseTime(matches, curMatchesOffset)
 
     return ParsedScreen.TemporaryBasalRateDurationScreen(
-        hours = durationParseResult.value.hours,
-        minutes = durationParseResult.value.minutes
+        durationInMinutes = if (durationParseResult != null)
+            durationParseResult.value.hours * 60 + durationParseResult.value.minutes
+        else
+            null
     )
 }
 

@@ -329,27 +329,30 @@ class DisplayFrameParsingTest {
 
     @Test
     fun checkTemporaryBasalRateDurationParsing() {
+        val resultNoDuration = parseDisplayFrame(testFrameTbrDurationNoDurationScreen)
+        assertEquals(ParsedScreen.TemporaryBasalRateDurationScreen(durationInMinutes = null), resultNoDuration)
+
         val testScreens = listOf(
-            Pair(testFrameTbrDurationEnglishScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationSpanishScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationFrenchScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationItalianScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationRussianScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationTurkishScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationPolishScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationCzechScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationHungarianScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationSlovakScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationRomanianScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationCroatianScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationDutchScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationGreekScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationFinnishScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationNorwegianScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationPortugueseScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationSwedishScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationDanishScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30)),
-            Pair(testFrameTbrDurationGermanScreen, ParsedScreen.TemporaryBasalRateDurationScreen(hours = 0, minutes = 30))
+            Pair(testFrameTbrDurationEnglishScreen, ParsedScreen.TemporaryBasalRateDurationScreen(durationInMinutes = 30)),
+            Pair(testFrameTbrDurationSpanishScreen, ParsedScreen.TemporaryBasalRateDurationScreen(durationInMinutes = 30)),
+            Pair(testFrameTbrDurationFrenchScreen, ParsedScreen.TemporaryBasalRateDurationScreen(durationInMinutes = 30)),
+            Pair(testFrameTbrDurationItalianScreen, ParsedScreen.TemporaryBasalRateDurationScreen(durationInMinutes = 30)),
+            Pair(testFrameTbrDurationRussianScreen, ParsedScreen.TemporaryBasalRateDurationScreen(durationInMinutes = 30)),
+            Pair(testFrameTbrDurationTurkishScreen, ParsedScreen.TemporaryBasalRateDurationScreen(durationInMinutes = 30)),
+            Pair(testFrameTbrDurationPolishScreen, ParsedScreen.TemporaryBasalRateDurationScreen(durationInMinutes = 30)),
+            Pair(testFrameTbrDurationCzechScreen, ParsedScreen.TemporaryBasalRateDurationScreen(durationInMinutes = 30)),
+            Pair(testFrameTbrDurationHungarianScreen, ParsedScreen.TemporaryBasalRateDurationScreen(durationInMinutes = 30)),
+            Pair(testFrameTbrDurationSlovakScreen, ParsedScreen.TemporaryBasalRateDurationScreen(durationInMinutes = 30)),
+            Pair(testFrameTbrDurationRomanianScreen, ParsedScreen.TemporaryBasalRateDurationScreen(durationInMinutes = 30)),
+            Pair(testFrameTbrDurationCroatianScreen, ParsedScreen.TemporaryBasalRateDurationScreen(durationInMinutes = 30)),
+            Pair(testFrameTbrDurationDutchScreen, ParsedScreen.TemporaryBasalRateDurationScreen(durationInMinutes = 30)),
+            Pair(testFrameTbrDurationGreekScreen, ParsedScreen.TemporaryBasalRateDurationScreen(durationInMinutes = 30)),
+            Pair(testFrameTbrDurationFinnishScreen, ParsedScreen.TemporaryBasalRateDurationScreen(durationInMinutes = 30)),
+            Pair(testFrameTbrDurationNorwegianScreen, ParsedScreen.TemporaryBasalRateDurationScreen(durationInMinutes = 30)),
+            Pair(testFrameTbrDurationPortugueseScreen, ParsedScreen.TemporaryBasalRateDurationScreen(durationInMinutes = 30)),
+            Pair(testFrameTbrDurationSwedishScreen, ParsedScreen.TemporaryBasalRateDurationScreen(durationInMinutes = 30)),
+            Pair(testFrameTbrDurationDanishScreen, ParsedScreen.TemporaryBasalRateDurationScreen(durationInMinutes = 30)),
+            Pair(testFrameTbrDurationGermanScreen, ParsedScreen.TemporaryBasalRateDurationScreen(durationInMinutes = 30))
         )
 
         for ((testScreen, expectedResult) in testScreens) {
