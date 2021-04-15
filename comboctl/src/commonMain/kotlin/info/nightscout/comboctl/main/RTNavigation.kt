@@ -230,6 +230,36 @@ suspend fun cycleToRTScreen(
 }
 
 /**
+ * Suspends until the desired screen type shows up.
+ *
+ * This is useful for when an RT button was pressed programmatically, and
+ * execution has to wait until the effect of that is seen (when pressing said
+ * button is supposed to change to another screen).
+ *
+ * This is almost identical to [cycleToRTScreen], except that that function
+ * repeatedly presses an RT button after newly received parsed screen, while
+ * this function just waits for the required screen to eventually show up.
+ *
+ * @param rtNavigationContext RT navigation context to use for waiting for the screen.
+ * @param targetScreenType Type of the screen to wait for.
+ * @throws CouldNotFindRTScreenException if no screen with the given type appeared.
+ */
+suspend fun waitUntilScreenAppears(rtNavigationContext: RTNavigationContext, targetScreenType: KClassifier) {
+    for (numSeenScreens in 0 until rtNavigationContext.maxNumCycleAttempts) {
+        val parsedScreen = rtNavigationContext.getParsedScreen()
+
+        if (parsedScreen != null) {
+            if (parsedScreen::class == targetScreenType)
+                return
+        }
+
+        rtNavigationContext.parsedScreenDone()
+    }
+
+    throw CouldNotFindRTScreenException(targetScreenType)
+}
+
+/**
  * Navigates through screens, entering and exiting subsections, until the target is reached.
  *
  * This differs from [cycleToRTScreen] in that only a target screen type is given.
