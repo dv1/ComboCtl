@@ -48,6 +48,19 @@ sealed class MainScreenContent {
 }
 
 /**
+ * Possible contents of alert (= warning/error) screens.
+ */
+sealed class AlertScreenContent {
+    data class Warning(val code: Int) : AlertScreenContent()
+    data class Error(val code: Int) : AlertScreenContent()
+
+    /**
+     * "Content" while the alert symbol & code currently are "blinked out".
+     */
+    object None : AlertScreenContent()
+}
+
+/**
  * Result of a successful [parseDisplayFrame] call.
  *
  * Subclasses which have hour quantities use a 0..23 range for the hours.
@@ -80,8 +93,7 @@ sealed class ParsedScreen {
     object TemporaryBasalRateMenuScreen : ParsedScreen()
     object TherapySettingsMenuScreen : ParsedScreen()
 
-    data class WarningScreen(val warningNumber: Int) : ParsedScreen()
-    data class ErrorScreen(val errorNumber: Int) : ParsedScreen()
+    data class AlertScreen(val content: AlertScreenContent) : ParsedScreen()
 
     data class BasalRateTotalScreen(val totalNumUnits: Int) : ParsedScreen()
     data class BasalRateFactorSettingScreen(
@@ -154,7 +166,7 @@ fun parseDisplayFrame(displayFrame: DisplayFrame): ParsedScreen? {
         return titleResult
 
     // Check if this is a warning / error screen.
-    result = tryParseWarningOrMenuScreen(matches, numTitlePatternMatches)
+    result = tryParseAlertScreen(matches, numTitlePatternMatches)
     if (result != null)
         return result
 
@@ -268,7 +280,7 @@ private fun tryParseScreenByTitle(displayFrame: DisplayFrame, matches: PatternMa
     return ParsedValue(result, numTitleCharacters)
 }
 
-private fun tryParseWarningOrMenuScreen(matches: PatternMatches, numTitlePatternMatches: Int): ParsedScreen? {
+private fun tryParseAlertScreen(matches: PatternMatches, numTitlePatternMatches: Int): ParsedScreen? {
     // Start at an offset that is past the screen title. The
     // warning and error screens have multiple possible titles
     // depending on the exact nature of the warning / error.
@@ -276,9 +288,9 @@ private fun tryParseWarningOrMenuScreen(matches: PatternMatches, numTitlePattern
     // require a significant amount of translations done in
     // the knownScreenTitles table. But we do not need that,
     // since these screens can simply be identified by the
-    // warning / error symbols instead. So, we ignore the
-    // title, and move straight to the large symbol at the
-    // center left of the screen.
+    // alert symbols instead. So, we ignore the title, and
+    // move straight to the large symbol at the center left
+    // of the screen.
     var curMatchesOffset = numTitlePatternMatches
 
     // If the screen consists of only the title,
@@ -288,32 +300,36 @@ private fun tryParseWarningOrMenuScreen(matches: PatternMatches, numTitlePattern
 
     // Identify the symbol at the center left. Exit if
     // it is not a large symbol, or not one we expect.
-    val warningOrErrorSymbol: Symbol = when (matches[curMatchesOffset].glyph) {
+    val alertSymbol: Symbol? = when (matches[curMatchesOffset].glyph) {
         Glyph.LargeSymbol(Symbol.LARGE_WARNING),
         Glyph.LargeSymbol(Symbol.LARGE_ERROR) -> (matches[curMatchesOffset].glyph as Glyph.LargeSymbol).symbol
-        else -> return null
+        else -> null
     }
 
-    // Move to the next match. There must be matches
-    // left after the symbol.
-    curMatchesOffset++
-    if (curMatchesOffset >= matches.size)
-        return null
+    lateinit var alertNumberParseResult: ParsedValue<Int>
 
-    // The next match is a large character, either a "W"
-    // or an "E". The former identifies a warning, the
-    // latter an error.
-    when (matches[curMatchesOffset].glyph) {
-        Glyph.LargeCharacter('W'),
-        Glyph.LargeCharacter('E') -> Unit
-        else -> return null
+    if (alertSymbol != null) {
+        // Move to the next match. There must be matches
+        // left after the symbol.
+        curMatchesOffset++
+        if (curMatchesOffset >= matches.size)
+            return null
+
+        // The next match is a large character, either a "W"
+        // or an "E". The former identifies a warning, the
+        // latter an error.
+        when (matches[curMatchesOffset].glyph) {
+            Glyph.LargeCharacter('W'),
+            Glyph.LargeCharacter('E') -> Unit
+            else -> return null
+        }
+        curMatchesOffset++
+
+        // Past the large character, we can find the
+        // number of the alert.
+        alertNumberParseResult = parseInteger(matches, curMatchesOffset) ?: return null
+        curMatchesOffset += alertNumberParseResult.numParsedPatternMatches
     }
-    curMatchesOffset++
-
-    // Past the large character, we can find the number
-    // of the warning / error.
-    val warningOrErrorNumberParseResult = parseInteger(matches, curMatchesOffset) ?: return null
-    curMatchesOffset += warningOrErrorNumberParseResult.numParsedPatternMatches
 
     // In the warning / error screens, there are some
     // matches left after the warning / error number.
@@ -323,11 +339,21 @@ private fun tryParseWarningOrMenuScreen(matches: PatternMatches, numTitlePattern
     // isn't there, this is not a warning / error screen.
     if ((curMatchesOffset >= matches.size) || (matches[curMatchesOffset].glyph != Glyph.SmallSymbol(Symbol.SMALL_CHECK)))
         return null
+    curMatchesOffset++
 
-    return when (warningOrErrorSymbol) {
-        Symbol.LARGE_WARNING -> ParsedScreen.WarningScreen(warningOrErrorNumberParseResult.value)
-        Symbol.LARGE_ERROR -> ParsedScreen.ErrorScreen(warningOrErrorNumberParseResult.value)
-        else -> null
+    // Right after the check symbol there should be
+    // some text. We do not care about the actual text,
+    // just that there is some present.
+    if ((curMatchesOffset >= matches.size) || (matches[curMatchesOffset].glyph !is Glyph.SmallCharacter))
+        return null
+
+    return when (alertSymbol) {
+        Symbol.LARGE_WARNING ->
+            ParsedScreen.AlertScreen(AlertScreenContent.Warning(alertNumberParseResult.value))
+        Symbol.LARGE_ERROR ->
+            ParsedScreen.AlertScreen(AlertScreenContent.Error(alertNumberParseResult.value))
+        else ->
+            ParsedScreen.AlertScreen(AlertScreenContent.None)
     }
 }
 

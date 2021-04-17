@@ -1,13 +1,18 @@
 package info.nightscout.comboctl.main
 
 import info.nightscout.comboctl.base.ComboException
+import info.nightscout.comboctl.base.LogLevel
+import info.nightscout.comboctl.base.Logger
 import info.nightscout.comboctl.base.PumpIO
 import info.nightscout.comboctl.base.ShortestPathHalf
 import info.nightscout.comboctl.base.Tree
 import info.nightscout.comboctl.base.findShortestPath
+import info.nightscout.comboctl.parser.AlertScreenContent
 import info.nightscout.comboctl.parser.ParsedScreen
 import info.nightscout.comboctl.parser.ParsedScreenStream
 import kotlin.reflect.KClassifier
+
+private val logger = Logger.get("RTNavigation")
 
 /**
  * RT navigation buttons.
@@ -114,6 +119,14 @@ class CouldNotFindRTScreenException(val targetScreenType: KClassifier) : RTNavig
 class NoUsableRTScreenException() : RTNavigationException("No usable RT screen available")
 
 /**
+ * Exception thrown when an alert screen appears while navigating through RT screens.
+ *
+ * @property alertScreenContent The content of the alert screen.
+ */
+class AlertScreenException(val alertScreenContent: AlertScreenContent) :
+    RTNavigationException("RT alert screen appeared with contents: $alertScreenContent")
+
+/**
  * Context object for navigating through remote terminal (RT) screens.
  *
  * This stores all common states that are used during navigation. In particular,
@@ -160,10 +173,32 @@ class RTNavigationContext(
      * Note that "null" is _also_ a valid ParsedScreen. It means that
      * a display frame was received that could not be parsed because
      * its contents are unrecognizable.
+     *
+     * @throws AlertScreenException if an alert screen appears. If this
+     *         happens, that screen is implicitly marked as processed
+     *         as if [parsedScreenDone] had been called.
      */
     suspend fun getParsedScreen(): ParsedScreen? {
         if (!parsedScreenSet) {
             parsedScreen = parsedScreenStream.getNextParsedScreen()
+
+            if (parsedScreen is ParsedScreen.AlertScreen) {
+                // We handle AlertScreen _before_ setting parsedScreenSet
+                // to true. That way, we implicitly mark this alert screen
+                // as processed.
+                when (val alertScreenContent = (parsedScreen!! as ParsedScreen.AlertScreen).content) {
+                    is AlertScreenContent.Warning -> {
+                        logger(LogLevel.WARN) { "Got warning screen with code ${alertScreenContent.code}" }
+                        throw AlertScreenException(alertScreenContent)
+                    }
+                    is AlertScreenContent.Error -> {
+                        logger(LogLevel.ERROR) { "Got error screen with code ${alertScreenContent.code}" }
+                        throw AlertScreenException(alertScreenContent)
+                    }
+                    else -> Unit
+                }
+            }
+
             parsedScreenSet = true
         }
         return parsedScreen

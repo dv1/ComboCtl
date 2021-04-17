@@ -267,24 +267,24 @@ class DisplayFrameParsingTest {
     @Test
     fun checkWarningScreenParsing() {
         val resultTbr = parseDisplayFrame(testFrameW6CancelTbrWarningScreen)
-        assertEquals(ParsedScreen.WarningScreen(warningNumber = 6), resultTbr)
+        assertEquals(ParsedScreen.AlertScreen(AlertScreenContent.Warning(6)), resultTbr)
 
         // The main contents of the warning screen blink. During
         // the phase where the main contents aren't visible, we
         // cannot parse anything useful, so we do not expect a
         // result during that phase.
         val resultBolus0 = parseDisplayFrame(testFrameW8CancelBolusWarningScreen0)
-        assertEquals(null, resultBolus0)
+        assertEquals(ParsedScreen.AlertScreen(AlertScreenContent.None), resultBolus0)
 
         val resultBolus1 = parseDisplayFrame(testFrameW8CancelBolusWarningScreen1)
-        assertEquals(ParsedScreen.WarningScreen(warningNumber = 8), resultBolus1)
+        assertEquals(ParsedScreen.AlertScreen(AlertScreenContent.Warning(8)), resultBolus1)
 
         // Same as above with regards to the blinking.
         val resultBolus2 = parseDisplayFrame(testFrameW8CancelBolusWarningScreen2)
-        assertEquals(null, resultBolus2)
+        assertEquals(ParsedScreen.AlertScreen(AlertScreenContent.None), resultBolus2)
 
         val resultBolus3 = parseDisplayFrame(testFrameW8CancelBolusWarningScreen3)
-        assertEquals(ParsedScreen.WarningScreen(warningNumber = 8), resultBolus3)
+        assertEquals(ParsedScreen.AlertScreen(AlertScreenContent.Warning(8)), resultBolus3)
     }
 
     @Test
