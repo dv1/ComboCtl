@@ -363,7 +363,7 @@ suspend fun setTemporaryBasalRate(
                 if (initialQuantityDistance == null) {
                     initialQuantityDistance = currentPercentage - percentage
                 } else {
-                    var settingProgress = if (initialQuantityDistance == 0) {
+                    val settingProgress = if (initialQuantityDistance == 0) {
                         100
                     } else {
                         val currentQuantityDistance = currentPercentage - percentage
@@ -395,7 +395,7 @@ suspend fun setTemporaryBasalRate(
                     if (initialQuantityDistance == null) {
                         initialQuantityDistance = currentDuration - durationInMinutes
                     } else {
-                        var settingProgress = if (initialQuantityDistance == 0) {
+                        val settingProgress = if (initialQuantityDistance == 0) {
                             100
                         } else {
                             val currentQuantityDistance = currentDuration - durationInMinutes
