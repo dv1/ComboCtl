@@ -72,6 +72,8 @@ sealed class AlertScreenContent {
  * For example, "37.5" is encoded as 37500, "10" as 10000, "0.02" as 20 etc.
  */
 sealed class ParsedScreen {
+    object UnrecognizedScreen : ParsedScreen()
+
     data class MainScreen(val content: MainScreenContent) : ParsedScreen()
 
     object BasalRateProfileSelectionMenuScreen : ParsedScreen()
@@ -128,12 +130,13 @@ class DisplayFrameParseException(message: String, val displayFrame: DisplayFrame
  * Parses a given display frame, tries to recognize the frame, and extract information from it.
  *
  * @param displayFrame The display frame to parse.
- * @return The [ParsedScreen] of the parsing process, or null if the screen wasn't recognized.
+ * @return The [ParsedScreen] of the parsing process, or [ParsedScreen.UnrecognizedScreen]
+ *         if the screen wasn't recognized.
  * @throws DisplayFrameParseException if the display frame was recognized but something
  *         in the frame is bogus/invalid (suspiciously high insulin amounts for example).
  */
-fun parseDisplayFrame(displayFrame: DisplayFrame): ParsedScreen? {
-    var result: ParsedScreen?
+fun parseDisplayFrame(displayFrame: DisplayFrame): ParsedScreen {
+    var result: ParsedScreen
 
     // Find the pattern matches first. We'll parse the
     // resulting list to try to recognize the screen type.
@@ -143,7 +146,7 @@ fun parseDisplayFrame(displayFrame: DisplayFrame): ParsedScreen? {
     // the top left corner. This is easy and quick to
     // check, and only a few screens have it.
     result = tryParseTopLeftClockScreens(displayFrame, matches)
-    if (result != null)
+    if (result !is ParsedScreen.UnrecognizedScreen)
         return result
 
     // Next, try to parse menu screens. These are
@@ -151,7 +154,7 @@ fun parseDisplayFrame(displayFrame: DisplayFrame): ParsedScreen? {
     // center of the screen, and thus are easy and
     // quick to recognize.
     result = tryParseMenuScreen(matches)
-    if (result != null)
+    if (result !is ParsedScreen.UnrecognizedScreen)
         return result
 
     // Next, try to parse the menu title at the top
@@ -162,51 +165,51 @@ fun parseDisplayFrame(displayFrame: DisplayFrame): ParsedScreen? {
     // be recognized and subsequent screen parse
     // functions need to skip the title.
     val (titleResult, numTitlePatternMatches) = tryParseScreenByTitle(displayFrame, matches)
-    if (titleResult != null)
+    if (titleResult !is ParsedScreen.UnrecognizedScreen)
         return titleResult
 
     // Check if this is a warning / error screen.
     result = tryParseAlertScreen(matches, numTitlePatternMatches)
-    if (result != null)
+    if (result !is ParsedScreen.UnrecognizedScreen)
         return result
 
     // Finally, try to parse miscellaneous screens.
     result = tryParseBasalRateTotalScreen(matches, numTitlePatternMatches)
-    if (result != null)
+    if (result !is ParsedScreen.UnrecognizedScreen)
         return result
 
-    return null
+    return ParsedScreen.UnrecognizedScreen
 }
 
 /************* Parsers for main screen categories and misc screens *************/
 
-private fun tryParseTopLeftClockScreens(displayFrame: DisplayFrame, matches: PatternMatches): ParsedScreen? {
-    var result: ParsedScreen?
+private fun tryParseTopLeftClockScreens(displayFrame: DisplayFrame, matches: PatternMatches): ParsedScreen {
+    var result: ParsedScreen
 
     if (matches.isEmpty())
-        return null
+        return ParsedScreen.UnrecognizedScreen
 
     // Verify that the very first matched pattern (the clock symbol
     // at the top left) is actually present.
     if (matches[0].glyph != Glyph.SmallSymbol(Symbol.SMALL_CLOCK))
-        return null
+        return ParsedScreen.UnrecognizedScreen
 
     // First attempt - perhaps this is a screen where one of the basal
     // rate factors is set. Check if it can be recognized as such-
     result = tryParseBasalRateFactorSettingScreen(matches)
-    if (result != null)
+    if (result !is ParsedScreen.UnrecognizedScreen)
         return result
 
     // Next, try the main screen (the one the user sees first
     // when the pump's LCD switches on).
     result = tryParseMainScreen(displayFrame, matches)
-    if (result != null)
+    if (result !is ParsedScreen.UnrecognizedScreen)
         return result
 
-    return null
+    return ParsedScreen.UnrecognizedScreen
 }
 
-private fun tryParseMenuScreen(matches: PatternMatches): ParsedScreen? {
+private fun tryParseMenuScreen(matches: PatternMatches): ParsedScreen {
     // Menu screens are characterized by one icon at the bottom center
     // that identifies what menu screen this is. There is also a title
     // at the top, but that one is redundant for parsing purposes,
@@ -214,7 +217,7 @@ private fun tryParseMenuScreen(matches: PatternMatches): ParsedScreen? {
 
     // Need at least the menu icon.
     if (matches.isEmpty())
-        return null
+        return ParsedScreen.UnrecognizedScreen
 
     val lastGlyph = matches.last().glyph
 
@@ -247,14 +250,14 @@ private fun tryParseMenuScreen(matches: PatternMatches): ParsedScreen? {
             3 -> ParsedScreen.BasalRate3ProgrammingMenuScreen
             4 -> ParsedScreen.BasalRate4ProgrammingMenuScreen
             5 -> ParsedScreen.BasalRate5ProgrammingMenuScreen
-            else -> null
+            else -> ParsedScreen.UnrecognizedScreen
         }
     }
 
-    return null
+    return ParsedScreen.UnrecognizedScreen
 }
 
-private fun tryParseScreenByTitle(displayFrame: DisplayFrame, matches: PatternMatches): ParsedValue<ParsedScreen?> {
+private fun tryParseScreenByTitle(displayFrame: DisplayFrame, matches: PatternMatches): ParsedValue<ParsedScreen> {
     // Try to parse the title. If the frame contains a screen with
     // a title, then the first N matches will contain small character
     // glyphs that make up said title.
@@ -274,13 +277,13 @@ private fun tryParseScreenByTitle(displayFrame: DisplayFrame, matches: PatternMa
         TitleID.MONTH,
         TitleID.DAY -> parseTimeAndDateSettingsScreen(displayFrame, matches, titleId, numTitleCharacters)
 
-        else -> null
+        else -> ParsedScreen.UnrecognizedScreen
     }
 
     return ParsedValue(result, numTitleCharacters)
 }
 
-private fun tryParseAlertScreen(matches: PatternMatches, numTitlePatternMatches: Int): ParsedScreen? {
+private fun tryParseAlertScreen(matches: PatternMatches, numTitlePatternMatches: Int): ParsedScreen {
     // Start at an offset that is past the screen title. The
     // warning and error screens have multiple possible titles
     // depending on the exact nature of the warning / error.
@@ -296,7 +299,7 @@ private fun tryParseAlertScreen(matches: PatternMatches, numTitlePatternMatches:
     // If the screen consists of only the title,
     // it is not a warning / error screen.
     if (curMatchesOffset >= matches.size)
-        return null
+        return ParsedScreen.UnrecognizedScreen
 
     // Identify the symbol at the center left. Exit if
     // it is not a large symbol, or not one we expect.
@@ -313,7 +316,7 @@ private fun tryParseAlertScreen(matches: PatternMatches, numTitlePatternMatches:
         // left after the symbol.
         curMatchesOffset++
         if (curMatchesOffset >= matches.size)
-            return null
+            return ParsedScreen.UnrecognizedScreen
 
         // The next match is a large character, either a "W"
         // or an "E". The former identifies a warning, the
@@ -321,13 +324,13 @@ private fun tryParseAlertScreen(matches: PatternMatches, numTitlePatternMatches:
         when (matches[curMatchesOffset].glyph) {
             Glyph.LargeCharacter('W'),
             Glyph.LargeCharacter('E') -> Unit
-            else -> return null
+            else -> return ParsedScreen.UnrecognizedScreen
         }
         curMatchesOffset++
 
         // Past the large character, we can find the
         // number of the alert.
-        alertNumberParseResult = parseInteger(matches, curMatchesOffset) ?: return null
+        alertNumberParseResult = parseInteger(matches, curMatchesOffset) ?: return ParsedScreen.UnrecognizedScreen
         curMatchesOffset += alertNumberParseResult.numParsedPatternMatches
     }
 
@@ -338,14 +341,14 @@ private fun tryParseAlertScreen(matches: PatternMatches, numTitlePatternMatches:
     // is not of interest to us). If the check symbol
     // isn't there, this is not a warning / error screen.
     if ((curMatchesOffset >= matches.size) || (matches[curMatchesOffset].glyph != Glyph.SmallSymbol(Symbol.SMALL_CHECK)))
-        return null
+        return ParsedScreen.UnrecognizedScreen
     curMatchesOffset++
 
     // Right after the check symbol there should be
     // some text. We do not care about the actual text,
     // just that there is some present.
     if ((curMatchesOffset >= matches.size) || (matches[curMatchesOffset].glyph !is Glyph.SmallCharacter))
-        return null
+        return ParsedScreen.UnrecognizedScreen
 
     return when (alertSymbol) {
         Symbol.LARGE_WARNING ->
@@ -357,7 +360,7 @@ private fun tryParseAlertScreen(matches: PatternMatches, numTitlePatternMatches:
     }
 }
 
-private fun tryParseBasalRateTotalScreen(matches: PatternMatches, numTitlePatternMatches: Int): ParsedScreen? {
+private fun tryParseBasalRateTotalScreen(matches: PatternMatches, numTitlePatternMatches: Int): ParsedScreen {
     // Start at an offset that is past the screen title.
     // We can identify this screen without having to
     // resort to the title.
@@ -366,48 +369,48 @@ private fun tryParseBasalRateTotalScreen(matches: PatternMatches, numTitlePatter
     // There must be a LARGE_BASAL_SET symbol glyph after
     // the title in the matches list.
     if ((curMatchesOffset >= matches.size) || (matches[curMatchesOffset].glyph != Glyph.LargeSymbol(Symbol.LARGE_BASAL_SET)))
-        return null
+        return ParsedScreen.UnrecognizedScreen
     curMatchesOffset++
 
     // Following the icon, we can find the total number
     // of IUs in the basal rate.
-    val totalNumUnitsParseResult = parseDecimal(matches, curMatchesOffset) ?: return null
+    val totalNumUnitsParseResult = parseDecimal(matches, curMatchesOffset) ?: return ParsedScreen.UnrecognizedScreen
     curMatchesOffset += totalNumUnitsParseResult.numParsedPatternMatches
 
     // Past the total amount of IUs, there's a small check
     // symbol. If it doesn't exist, this is not a basal
     // rate total screen.
     if ((curMatchesOffset >= matches.size) || (matches[curMatchesOffset].glyph != Glyph.LargeCharacter('u')))
-        return null
+        return ParsedScreen.UnrecognizedScreen
 
     return ParsedScreen.BasalRateTotalScreen(totalNumUnits = totalNumUnitsParseResult.value)
 }
 
 /************* Parsers for top-left clock screens *************/
 
-private fun tryParseBasalRateFactorSettingScreen(matches: PatternMatches): ParsedScreen? {
+private fun tryParseBasalRateFactorSettingScreen(matches: PatternMatches): ParsedScreen {
     // Start at 1 to skip the clock symbol. This functio is called
     // by tryParseTopLeftClockScreens() precisely _because_ that
     // function already checked for that clock symbol.
     var curMatchesOffset = 1
 
     // Parse the begin time of the basal rate factor.
-    val beginTimeParseResult = parseTime(matches, curMatchesOffset) ?: return null
+    val beginTimeParseResult = parseTime(matches, curMatchesOffset) ?: return ParsedScreen.UnrecognizedScreen
     curMatchesOffset += beginTimeParseResult.numParsedPatternMatches
 
     // There is a minus symbol between the begin and end times
     // that keeps them visually separated.
     if ((curMatchesOffset >= matches.size) || (matches[curMatchesOffset].glyph != Glyph.SmallSymbol(Symbol.SMALL_MINUS)))
-        return null
+        return ParsedScreen.UnrecognizedScreen
     curMatchesOffset++
 
     // Parse the end time of the basal rate factor.
-    val endTimeParseResult = parseTime(matches, curMatchesOffset) ?: return null
+    val endTimeParseResult = parseTime(matches, curMatchesOffset) ?: return ParsedScreen.UnrecognizedScreen
     curMatchesOffset += endTimeParseResult.numParsedPatternMatches
 
     // Next, wee expect a LARGE_BASAL symbol.
     if ((curMatchesOffset >= matches.size) || (matches[curMatchesOffset].glyph != Glyph.LargeSymbol(Symbol.LARGE_BASAL)))
-        return null
+        return ParsedScreen.UnrecognizedScreen
     curMatchesOffset++
 
     // The number of IUs per hour for the current factor follow.
@@ -416,7 +419,7 @@ private fun tryParseBasalRateFactorSettingScreen(matches: PatternMatches): Parse
 
     // Finally, there is an U/h symbol.
     if ((curMatchesOffset >= matches.size) || (matches[curMatchesOffset].glyph != Glyph.LargeSymbol(Symbol.LARGE_UNITS_PER_HOUR)))
-        return null
+        return ParsedScreen.UnrecognizedScreen
 
     return ParsedScreen.BasalRateFactorSettingScreen(
         beginHours = beginTimeParseResult.value.hours,
@@ -427,7 +430,7 @@ private fun tryParseBasalRateFactorSettingScreen(matches: PatternMatches): Parse
     )
 }
 
-private fun tryParseMainScreen(displayFrame: DisplayFrame, matches: PatternMatches): ParsedScreen? {
+private fun tryParseMainScreen(displayFrame: DisplayFrame, matches: PatternMatches): ParsedScreen {
     // Start at 1 to skip the clock symbol. This functio is called
     // by tryParseTopLeftClockScreens() precisely _because_ that
     // function already checked for that clock symbol.
@@ -435,10 +438,10 @@ private fun tryParseMainScreen(displayFrame: DisplayFrame, matches: PatternMatch
 
     // Right after the clock symbol, the main screen shows
     // the current time. Parse that one and move past it.
-    val currentTimeParseResult = parseTime(matches, curMatchesOffset) ?: return null
+    val currentTimeParseResult = parseTime(matches, curMatchesOffset) ?: return ParsedScreen.UnrecognizedScreen
     curMatchesOffset += currentTimeParseResult.numParsedPatternMatches
     if (curMatchesOffset >= matches.size)
-        return null
+        return ParsedScreen.UnrecognizedScreen
 
     val hours = currentTimeParseResult.value.hours
     val minutes = currentTimeParseResult.value.minutes
@@ -446,7 +449,7 @@ private fun tryParseMainScreen(displayFrame: DisplayFrame, matches: PatternMatch
     // There must always be some more matches after the time.
     // If not, then this is not a valid main screen.
     if (curMatchesOffset >= matches.size)
-        return null
+        return ParsedScreen.UnrecognizedScreen
 
     // There are variations of the "default" main screen. One is
     // a main screen that shows the LARGE_STOP symbol. That one is
@@ -487,7 +490,7 @@ private fun tryParseNormalMainScreen(
     matchesOffset: Int,
     hours: Int,
     minutes: Int
-): ParsedScreen? {
+): ParsedScreen {
     // Start parsing right after the SMALL_ARROW symbol (tryParseMainScreen()
     // takes care of checking for that symbol glyph already.)
     var curMatchesOffset = matchesOffset
@@ -495,22 +498,22 @@ private fun tryParseNormalMainScreen(
     // Directly past the SMALL_ARROW symbol there is the LARGE_BASAL symbol.
     // On the screen, it is located at the center left.
     if ((curMatchesOffset >= matches.size) || (matches[curMatchesOffset].glyph != Glyph.LargeSymbol(Symbol.LARGE_BASAL)))
-        return null
+        return ParsedScreen.UnrecognizedScreen
     curMatchesOffset++
 
     // The current basal rate factor follows.
-    val currentBasalRateFactorParseResult = parseDecimal(matches, curMatchesOffset) ?: return null
+    val currentBasalRateFactorParseResult = parseDecimal(matches, curMatchesOffset) ?: return ParsedScreen.UnrecognizedScreen
     curMatchesOffset += currentBasalRateFactorParseResult.numParsedPatternMatches
 
     // Next comes an U/h symbol.
     if ((curMatchesOffset >= matches.size) || (matches[curMatchesOffset].glyph != Glyph.LargeSymbol(Symbol.LARGE_UNITS_PER_HOUR)))
-        return null
+        return ParsedScreen.UnrecognizedScreen
     curMatchesOffset++
 
     // Next comes a small digit that indicates which one of the basal rates
     // is currently active. This is a value from 1 to 5.
     if ((curMatchesOffset >= matches.size) || (matches[curMatchesOffset].glyph !is Glyph.SmallDigit))
-        return null
+        return ParsedScreen.UnrecognizedScreen
     val activeBasalRateNumber = (matches[curMatchesOffset].glyph as Glyph.SmallDigit).digit
     if ((activeBasalRateNumber < 1) || (activeBasalRateNumber > 5))
         throw DisplayFrameParseException(
@@ -534,19 +537,19 @@ private fun tryParseMainScreenWithTbrInfo(
     matchesOffset: Int,
     hours: Int,
     minutes: Int
-): ParsedScreen? {
+): ParsedScreen {
     // Start parsing right after the SMALL_ARROW symbol (tryParseMainScreen()
     // takes care of checking for that symbol glyph already.)
     var curMatchesOffset = matchesOffset
 
     // Directly past the SMALL_ARROW symbol there is the remaining TBR duration.
-    val remainingTbrDurationParseResult = parseTime(matches, curMatchesOffset) ?: return null
+    val remainingTbrDurationParseResult = parseTime(matches, curMatchesOffset) ?: return ParsedScreen.UnrecognizedScreen
     curMatchesOffset += remainingTbrDurationParseResult.numParsedPatternMatches
 
     // After the TBR duration the next match should be the LARGE_BASAL symbol.
     // On the screen, it is located at the center left.
     if ((curMatchesOffset >= matches.size) || (matches[curMatchesOffset].glyph != Glyph.LargeSymbol(Symbol.LARGE_BASAL)))
-        return null
+        return ParsedScreen.UnrecognizedScreen
     curMatchesOffset++
 
     // Directly after the LARGE_BASAL symbol there is a small arrow that points
@@ -554,27 +557,27 @@ private fun tryParseMainScreenWithTbrInfo(
     // <100%. We do check for these symbols to verify that this inded is
     // a main screen with TBR info.
     if (curMatchesOffset >= matches.size)
-        return null
+        return ParsedScreen.UnrecognizedScreen
     when (matches[curMatchesOffset].glyph) {
         Glyph.SmallSymbol(Symbol.SMALL_UP),
         Glyph.SmallSymbol(Symbol.SMALL_DOWN) -> Unit
-        else -> return null
+        else -> return ParsedScreen.UnrecognizedScreen
     }
     curMatchesOffset++
 
     // The TBR percentage follows.
-    val tbrPercentageParseResult = parseInteger(matches, curMatchesOffset) ?: return null
+    val tbrPercentageParseResult = parseInteger(matches, curMatchesOffset) ?: return ParsedScreen.UnrecognizedScreen
     curMatchesOffset += tbrPercentageParseResult.numParsedPatternMatches
 
     // After the percentage integere, there must be a large percent symbol.
     if ((curMatchesOffset >= matches.size) || (matches[curMatchesOffset].glyph != Glyph.LargeSymbol(Symbol.LARGE_PERCENT)))
-        return null
+        return ParsedScreen.UnrecognizedScreen
     curMatchesOffset++
 
     // Next comes a small digit that indicates which one of the basal rates
     // is currently active. This is a value from 1 to 5.
     if ((curMatchesOffset >= matches.size) || (matches[curMatchesOffset].glyph !is Glyph.SmallDigit))
-        return null
+        return ParsedScreen.UnrecognizedScreen
     val activeBasalRateNumber = (matches[curMatchesOffset].glyph as Glyph.SmallDigit).digit
     if ((activeBasalRateNumber < 1) || (activeBasalRateNumber > 5))
         throw DisplayFrameParseException(
@@ -584,7 +587,7 @@ private fun tryParseMainScreenWithTbrInfo(
     curMatchesOffset++
 
     // The current basal rate factor follows.
-    val currentBasalRateFactorParseResult = parseDecimal(matches, curMatchesOffset) ?: return null
+    val currentBasalRateFactorParseResult = parseDecimal(matches, curMatchesOffset) ?: return ParsedScreen.UnrecognizedScreen
 
     return ParsedScreen.MainScreen(
         MainScreenContent.Tbr(
@@ -605,12 +608,12 @@ private fun parseQuickinfoScreen(
     displayFrame: DisplayFrame,
     matches: PatternMatches,
     numTitleCharacters: Int
-): ParsedScreen.QuickinfoMainScreen? {
+): ParsedScreen {
     // A quickinfo screen always contains at least the title string,
     // the reservoir state symbol, and at least one digit (the number
     // of units in the reservoir).
     if (matches.size < (numTitleCharacters + 2))
-        return null
+        return ParsedScreen.UnrecognizedScreen
 
     // Start to parse right after the matches that make up the title.
     val curMatchesOffset = numTitleCharacters
@@ -620,13 +623,13 @@ private fun parseQuickinfoScreen(
         Glyph.LargeSymbol(Symbol.LARGE_RESERVOIR_EMPTY) -> ReservoirState.EMPTY
         Glyph.LargeSymbol(Symbol.LARGE_RESERVOIR_LOW) -> ReservoirState.LOW
         Glyph.LargeSymbol(Symbol.LARGE_RESERVOIR_FULL) -> ReservoirState.FULL
-        else -> return null
+        else -> return ParsedScreen.UnrecognizedScreen
     }
 
     // Next, parse the number of IUs available in the reservoir.
     val availableUnitsParseResult = parseInteger(matches, curMatchesOffset + 1)
     if (availableUnitsParseResult == null)
-        return null
+        return ParsedScreen.UnrecognizedScreen
 
     // Sanity check. Reservoirs cannot handle more than 350 IU.
     // TODO: This needs to be adjusted in case the Combo can be
@@ -644,14 +647,14 @@ private fun parseQuickinfoScreen(
     )
 }
 
-private fun parseTemporaryBasalRatePercentageScreen(matches: PatternMatches, numTitleCharacters: Int): ParsedScreen? {
+private fun parseTemporaryBasalRatePercentageScreen(matches: PatternMatches, numTitleCharacters: Int): ParsedScreen {
     // Start to parse right after the matches that make up the title.
     var curMatchesOffset = numTitleCharacters
 
     // Next, we expect the LARGE_BASAL symbol to be there.
     // It is located at the center left.
     if ((curMatchesOffset >= matches.size) || (matches[curMatchesOffset].glyph != Glyph.LargeSymbol(Symbol.LARGE_BASAL)))
-        return null
+        return ParsedScreen.UnrecognizedScreen
     curMatchesOffset++
 
     // The currently picked TBR percentage follows. The screen may currently
@@ -664,21 +667,21 @@ private fun parseTemporaryBasalRatePercentageScreen(matches: PatternMatches, num
 
     // Right after the TBR percentage there must be a LARGE_PERCENT symbol.
     if ((curMatchesOffset >= matches.size) || (matches[curMatchesOffset].glyph != Glyph.LargeSymbol(Symbol.LARGE_PERCENT)))
-        return null
+        return ParsedScreen.UnrecognizedScreen
 
     // Set percentage to the parsed integer value, or to null in case the
     // percentage is currently blinking and not shown.
     return ParsedScreen.TemporaryBasalRatePercentageScreen(percentage = percentageParseResult?.value)
 }
 
-private fun parseTemporaryBasalRateDurationScreen(matches: PatternMatches, numTitleCharacters: Int): ParsedScreen? {
+private fun parseTemporaryBasalRateDurationScreen(matches: PatternMatches, numTitleCharacters: Int): ParsedScreen {
     // Start to parse right after the matches that make up the title.
     var curMatchesOffset = numTitleCharacters
 
     // Next, we expect the LARGE_ARROW symbol to be there.
     // It is located at the center left.
     if ((curMatchesOffset >= matches.size) || (matches[curMatchesOffset].glyph != Glyph.LargeSymbol(Symbol.LARGE_ARROW)))
-        return null
+        return ParsedScreen.UnrecognizedScreen
     curMatchesOffset++
 
     // Next comes the currently picked TBR duration.
@@ -697,14 +700,14 @@ private fun parseTimeAndDateSettingsScreen(
     matches: PatternMatches,
     titleID: TitleID,
     numTitleCharacters: Int
-): ParsedScreen? {
+): ParsedScreen {
     // Start to parse right after the matches that make up the title.
     var curMatchesOffset = numTitleCharacters
 
     // We do expect more content after the title. If there isn't
     // any, then this is not a TimeAndDate screen.
     if (curMatchesOffset >= matches.size)
-        return null
+        return ParsedScreen.UnrecognizedScreen
 
     // This screen is special in that it contains multiple types
     // of information, but only one can be visible at the same time.
@@ -717,7 +720,7 @@ private fun parseTimeAndDateSettingsScreen(
     when (matches[curMatchesOffset].glyph) {
         Glyph.LargeSymbol(Symbol.LARGE_CLOCK),
         Glyph.LargeSymbol(Symbol.LARGE_CALENDAR) -> Unit
-        else -> return null
+        else -> return ParsedScreen.UnrecognizedScreen
     }
 
     curMatchesOffset++
@@ -727,7 +730,7 @@ private fun parseTimeAndDateSettingsScreen(
     // do not need to care about that one). The partcular
     // meaning of this integer depends on the sub-screen.
     val integerParseResult = parseInteger(matches, curMatchesOffset, ParseIntegerMode.LARGE_DIGITS_ONLY)
-        ?: return null
+        ?: return ParsedScreen.UnrecognizedScreen
     curMatchesOffset += integerParseResult.numParsedPatternMatches
 
     // The parsed integer may need adjustment if this is the

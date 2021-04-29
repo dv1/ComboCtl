@@ -54,19 +54,19 @@ class ParsedScreenStreamTest {
                 ),
                 parsedScreenStream.getNextParsedScreen()
             )
-            // Next we expect a null result after the change from NormalMainScreen
+            // Next we expect an UnrecognizedScreen result after the change from NormalMainScreen
             // to a frame (unrecognizableDisplayFrame1A) that could not be recognized.
             assertEquals(
-                null,
+                ParsedScreen.UnrecognizedScreen,
                 parsedScreenStream.getNextParsedScreen()
             )
-            // We expect a null result after switching to unrecognizableDisplayFrame2.
+            // We expect an UnrecognizedScreen result after switching to unrecognizableDisplayFrame2.
             // This is an unrecognizable frame that differs in its pixels from
             // unrecognizableDisplayFrame1A and 1B. Importantly, 1B must have been
             // filtered out, since both 1A and 1B could not be recognized _and_ have
             // equal pixel content.
             assertEquals(
-                null,
+                ParsedScreen.UnrecognizedScreen,
                 parsedScreenStream.getNextParsedScreen()
             )
             // Since unrecognizableDisplayFrame1B must have been filtered out,

@@ -114,7 +114,7 @@ class CouldNotFindRTScreenException(val targetScreenType: KClassifier) : RTNavig
  * Exception thrown when a function needed a specific screen type but could not get it.
  *
  * Typically, this happens because a display frame could not be parsed,
- * so the screen is simply null.
+ * so the screen is [ParsedScreen.UnrecognizedScreen].
  */
 class NoUsableRTScreenException() : RTNavigationException("No usable RT screen available")
 
@@ -154,7 +154,7 @@ class RTNavigationContext(
     val parsedScreenStream: ParsedScreenStream,
     val maxNumCycleAttempts: Int = 20
 ) {
-    private var parsedScreen: ParsedScreen? = null
+    private var parsedScreen: ParsedScreen = ParsedScreen.UnrecognizedScreen
     private var parsedScreenSet = false
 
     /**
@@ -178,7 +178,7 @@ class RTNavigationContext(
      *         happens, that screen is implicitly marked as processed
      *         as if [parsedScreenDone] had been called.
      */
-    suspend fun getParsedScreen(): ParsedScreen? {
+    suspend fun getParsedScreen(): ParsedScreen {
         if (!parsedScreenSet) {
             parsedScreen = parsedScreenStream.getNextParsedScreen()
 
@@ -186,7 +186,7 @@ class RTNavigationContext(
                 // We handle AlertScreen _before_ setting parsedScreenSet
                 // to true. That way, we implicitly mark this alert screen
                 // as processed.
-                when (val alertScreenContent = (parsedScreen!! as ParsedScreen.AlertScreen).content) {
+                when (val alertScreenContent = (parsedScreen as ParsedScreen.AlertScreen).content) {
                     is AlertScreenContent.Warning -> {
                         logger(LogLevel.WARN) { "Got warning screen with code ${alertScreenContent.code}" }
                         throw AlertScreenException(alertScreenContent)
@@ -251,10 +251,8 @@ suspend fun cycleToRTScreen(
     for (numSeenScreens in 0 until rtNavigationContext.maxNumCycleAttempts) {
         val parsedScreen = rtNavigationContext.getParsedScreen()
 
-        if (parsedScreen != null) {
-            if (parsedScreen::class == targetScreenType)
-                return
-        }
+        if (parsedScreen::class == targetScreenType)
+            return
 
         rtNavigationContext.pushButton(button)
 
@@ -283,10 +281,8 @@ suspend fun waitUntilScreenAppears(rtNavigationContext: RTNavigationContext, tar
     for (numSeenScreens in 0 until rtNavigationContext.maxNumCycleAttempts) {
         val parsedScreen = rtNavigationContext.getParsedScreen()
 
-        if (parsedScreen != null) {
-            if (parsedScreen::class == targetScreenType)
-                return
-        }
+        if (parsedScreen::class == targetScreenType)
+            return
 
         rtNavigationContext.parsedScreenDone()
     }
@@ -316,7 +312,7 @@ suspend fun navigateToRTScreen(
     // we end up at a recognizable screen, then continue from there.
     while (true) {
         val initialParsedScreen = rtNavigationContext.getParsedScreen()
-        if (initialParsedScreen == null) {
+        if (initialParsedScreen is ParsedScreen.UnrecognizedScreen) {
             rtNavigationContext.parsedScreenDone()
             rtNavigationContext.pushButton(RTNavigationButton.BACK)
         } else
@@ -326,7 +322,7 @@ suspend fun navigateToRTScreen(
     // Get the current screen. This will be our starting point for the path.
     val currentParsedScreen = rtNavigationContext.getParsedScreen()
 
-    val path = findRTNavigationPath(currentParsedScreen!!::class, targetScreenType)
+    val path = findRTNavigationPath(currentParsedScreen::class, targetScreenType)
     if (path.isEmpty())
         throw CouldNotFindRTScreenException(targetScreenType)
 

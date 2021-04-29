@@ -26,7 +26,9 @@ internal suspend fun getQuantityOnScreen(
     getScreenQuantity: (screen: ParsedScreen) -> Int?
 ): Int? {
     while (true) {
-        val parsedScreen = rtNavigationContext.getParsedScreen() ?: throw NoUsableRTScreenException()
+        val parsedScreen = rtNavigationContext.getParsedScreen()
+        if (parsedScreen is ParsedScreen.UnrecognizedScreen)
+            throw NoUsableRTScreenException()
 
         val currentQuantity = getScreenQuantity(parsedScreen)
 
