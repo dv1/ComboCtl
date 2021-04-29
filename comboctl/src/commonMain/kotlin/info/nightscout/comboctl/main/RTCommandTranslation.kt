@@ -1,11 +1,16 @@
 package info.nightscout.comboctl.main
 
 import info.nightscout.comboctl.base.BasicProgressStage
+import info.nightscout.comboctl.base.LogLevel
+import info.nightscout.comboctl.base.Logger
 import info.nightscout.comboctl.base.ProgressReporter
 import info.nightscout.comboctl.base.ProgressStage
 import info.nightscout.comboctl.base.PumpIO
+import info.nightscout.comboctl.parser.AlertScreenContent
 import info.nightscout.comboctl.parser.ParsedScreen
 import kotlin.math.sign
+
+private val logger = Logger.get("RTCommandTranslation")
 
 // Gets an integer quantity from the current parsed screen.
 // This must not be called if the current screen is unknown,
@@ -73,7 +78,7 @@ suspend fun adjustQuantityOnScreen(
     rtNavigationContext: RTNavigationContext,
     targetQuantity: Int,
     getScreenQuantity: (screen: ParsedScreen) -> Int?
-) {
+): Int {
     check(rtNavigationContext.pump.currentModeFlow.value == PumpIO.Mode.REMOTE_TERMINAL)
 
     // Get the currently displayed quantity; if the quantity is currently not
@@ -82,9 +87,18 @@ suspend fun adjustQuantityOnScreen(
     var previousQuantity: Int? = null
     var quantityParsed = true
 
+    val initiallySeenQuantity = currentQuantity!!
+
+    if (currentQuantity == targetQuantity) {
+        logger(LogLevel.DEBUG) { "Quantity on screen is already set to the target quantity $targetQuantity; not adjusting anything" }
+        return targetQuantity
+    }
+
+    logger(LogLevel.DEBUG) { "Initial quantity on screen before adjusting: $initiallySeenQuantity" }
+
     // Perform the long RT button press.
 
-    var button = if (currentQuantity!! > targetQuantity)
+    var button = if (currentQuantity > targetQuantity)
         RTNavigationButton.DOWN
     else
         RTNavigationButton.UP
@@ -184,6 +198,8 @@ suspend fun adjustQuantityOnScreen(
             quantityParsed = false
         }
     }
+
+    return initiallySeenQuantity
 }
 
 internal const val NumBasalProfileFactors = 24
