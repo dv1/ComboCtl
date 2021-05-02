@@ -439,3 +439,24 @@ suspend fun setTemporaryBasalRate(
         throw e
     }
 }
+
+/**
+ * Reads information from the pump's quickinfo screen.
+ *
+ * @param rtNavigationContext RT navigation context to use for parsing the quickinfo screen.
+ * @throws IllegalStateException if this function is called while the pump
+ *         is not in the remote terminal mode.
+ * @throws AlertScreenException if an alert occurs during this call.
+ * @throws NoUsableRTScreenException if the quickinfo screen could not be found.
+ */
+suspend fun readQuickinfo(rtNavigationContext: RTNavigationContext): ParsedScreen.QuickinfoMainScreen {
+    navigateToRTScreen(rtNavigationContext, ParsedScreen.QuickinfoMainScreen::class)
+    val parsedScreen = rtNavigationContext.getParsedScreen()
+    // After parsing the quickinfo screen, exit back to the main screen by pressing BACK.
+    rtNavigationContext.pushButton(RTNavigationButton.BACK)
+
+    when (parsedScreen) {
+        is ParsedScreen.QuickinfoMainScreen -> return parsedScreen
+        else -> throw NoUsableRTScreenException()
+    }
+}
