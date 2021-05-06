@@ -1137,12 +1137,12 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
             val payload = packet.payload
 
             val dateTime = DateTime(
-                seconds = payload[8].toPosInt(),
-                minutes = payload[7].toPosInt(),
-                hours = payload[6].toPosInt(),
-                days = payload[5].toPosInt(),
-                months = payload[4].toPosInt(),
-                years = (payload[2].toPosInt() shl 0) or (payload[3].toPosInt() shl 8)
+                second = payload[8].toPosInt(),
+                minute = payload[7].toPosInt(),
+                hour = payload[6].toPosInt(),
+                day = payload[5].toPosInt(),
+                month = payload[4].toPosInt(),
+                year = (payload[2].toPosInt() shl 0) or (payload[3].toPosInt() shl 8)
             )
 
             logger(LogLevel.VERBOSE) { "Current pump datetime: $dateTime" }
@@ -1271,15 +1271,15 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
                 // byte 2: bit 0 : highest bit of the hours            bits 1..5 : days                            bits 6..7 : lower 2 bits of the months
                 // byte 3: bits 0..1 : upper 2 bits of the months      bits 2..7 : years
                 val timestamp = DateTime(
-                    seconds = payload[payloadOffset + 0].toPosInt() and 0b00111111,
-                    minutes = ((payload[payloadOffset + 0].toPosInt() and 0b11000000) ushr 6) or
-                              ((payload[payloadOffset + 1].toPosInt() and 0b00001111) shl 2),
-                    hours = ((payload[payloadOffset + 1].toPosInt() and 0b11110000) ushr 4) or
-                            ((payload[payloadOffset + 2].toPosInt() and 0b00000001) shl 4),
-                    days = (payload[payloadOffset + 2].toPosInt() and 0b00111110) ushr 1,
-                    months = ((payload[payloadOffset + 2].toPosInt() and 0b11000000) ushr 6) or
-                             ((payload[payloadOffset + 3].toPosInt() and 0b00000011) shl 2),
-                    years = ((payload[payloadOffset + 3].toPosInt() and 0b11111100) ushr 2) + 2000
+                    second = payload[payloadOffset + 0].toPosInt() and 0b00111111,
+                    minute = ((payload[payloadOffset + 0].toPosInt() and 0b11000000) ushr 6) or
+                             ((payload[payloadOffset + 1].toPosInt() and 0b00001111) shl 2),
+                    hour = ((payload[payloadOffset + 1].toPosInt() and 0b11110000) ushr 4) or
+                           ((payload[payloadOffset + 2].toPosInt() and 0b00000001) shl 4),
+                    day = (payload[payloadOffset + 2].toPosInt() and 0b00111110) ushr 1,
+                    month = ((payload[payloadOffset + 2].toPosInt() and 0b11000000) ushr 6) or
+                            ((payload[payloadOffset + 3].toPosInt() and 0b00000011) shl 2),
+                    year = ((payload[payloadOffset + 3].toPosInt() and 0b11111100) ushr 2) + 2000
                 )
 
                 val eventTypeId = (payload[payloadOffset + 8].toPosInt() shl 0) or
@@ -1456,15 +1456,15 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
                         // byte 3: bits 0..1 : upper 2 bits of the months      bits 2..7 : years
 
                         val newDateTime = DateTime(
-                            seconds = detailBytes[0].toPosInt() and 0b00111111,
-                            minutes = ((detailBytes[0].toPosInt() and 0b11000000) ushr 6) or
-                                      ((detailBytes[1].toPosInt() and 0b00001111) shl 2),
-                            hours = ((detailBytes[1].toPosInt() and 0b11110000) ushr 4) or
-                                    ((detailBytes[2].toPosInt() and 0b00000001) shl 4),
-                            days = (detailBytes[2].toPosInt() and 0b00111110) ushr 1,
-                            months = ((detailBytes[2].toPosInt() and 0b11000000) ushr 6) or
-                                     ((detailBytes[3].toPosInt() and 0b00000011) shl 2),
-                            years = ((detailBytes[3].toPosInt() and 0b11111100) ushr 2) + 2000
+                            second = detailBytes[0].toPosInt() and 0b00111111,
+                            minute = ((detailBytes[0].toPosInt() and 0b11000000) ushr 6) or
+                                     ((detailBytes[1].toPosInt() and 0b00001111) shl 2),
+                            hour = ((detailBytes[1].toPosInt() and 0b11110000) ushr 4) or
+                                   ((detailBytes[2].toPosInt() and 0b00000001) shl 4),
+                            day = (detailBytes[2].toPosInt() and 0b00111110) ushr 1,
+                            month = ((detailBytes[2].toPosInt() and 0b11000000) ushr 6) or
+                                    ((detailBytes[3].toPosInt() and 0b00000011) shl 2),
+                            year = ((detailBytes[3].toPosInt() and 0b11111100) ushr 2) + 2000
                         )
 
                         logger(LogLevel.VERBOSE) {

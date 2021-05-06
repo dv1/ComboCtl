@@ -9,16 +9,16 @@ import kotlin.math.min
  * This is used when retrieving history data from the pump.
  */
 data class DateTime(
-    val years: Int,
-    val months: Int,
-    val days: Int,
-    val hours: Int,
-    val minutes: Int,
-    val seconds: Int
+    val year: Int,
+    val month: Int,
+    val day: Int,
+    val hour: Int,
+    val minute: Int,
+    val second: Int
 ) {
     override fun toString() =
-        "$years-${months.toString().padStart(2, '0')}-${days.toString().padStart(2, '0')} " +
-        "${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}"
+        "$year-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')} " +
+        "${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}:${second.toString().padStart(2, '0')}"
 }
 
 /**
