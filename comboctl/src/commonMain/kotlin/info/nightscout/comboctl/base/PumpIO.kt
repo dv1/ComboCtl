@@ -1034,7 +1034,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
 
         if (mutableCurrentModeFlow.value != null) {
             val modeToDeactivate = mutableCurrentModeFlow.value!!
-            logger(LogLevel.VERBOSE) { "Deactivating current service" }
+            logger(LogLevel.DEBUG) { "Deactivating current service" }
             sendPacketWithResponse(
                 ApplicationLayerIO.createCTRLDeactivateServicePacket(
                     when (modeToDeactivate) {
@@ -1046,7 +1046,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
             )
         }
 
-        logger(LogLevel.VERBOSE) { "Activating new service" }
+        logger(LogLevel.DEBUG) { "Activating new service" }
         sendPacketWithResponse(
             ApplicationLayerIO.createCTRLActivateServicePacket(
                 when (newMode) {
@@ -1060,7 +1060,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
         mutableCurrentModeFlow.value = newMode
 
         if (runKeepAliveLoop) {
-            logger(LogLevel.VERBOSE) { "(Re)starting keep-alive loop" }
+            logger(LogLevel.DEBUG) { "(Re)starting keep-alive loop" }
             when (newMode) {
                 Mode.COMMAND -> startCMDPingBackgroundLoop()
                 Mode.REMOTE_TERMINAL -> startRTKeepAliveBackgroundLoop()
@@ -1324,9 +1324,9 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
                             // Wait for the Combo to send us a button
                             // confirmation. We cannot send more button
                             // status commands until then.
-                            logger(LogLevel.VERBOSE) { "Waiting for button confirmation" }
+                            logger(LogLevel.DEBUG) { "Waiting for button confirmation" }
                             rtButtonConfirmationBarrier.receive()
-                            logger(LogLevel.VERBOSE) { "Got button confirmation" }
+                            logger(LogLevel.DEBUG) { "Got button confirmation" }
 
                             if (keepGoing != null) {
                                 var keepButtonPressGoing = false

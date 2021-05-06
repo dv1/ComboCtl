@@ -189,5 +189,6 @@ internal fun nativeLoggerCall(tag: String, cppLogLevel: Int, message: String) {
         else -> return
     }
 
-    Logger.backend.log(tag, logLevel, null, message)
+    if (logLevel.numericLevel <= Logger.threshold.numericLevel)
+        Logger.backend.log(tag, logLevel, null, message)
 }

@@ -587,13 +587,13 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val pumpAddr
 
         lastSentPacketTimestamp = null
 
-        logger(LogLevel.VERBOSE) { "Starting background IO worker" }
+        logger(LogLevel.DEBUG) { "Starting background IO worker" }
 
         // Run the worker with the single-threaded dispatcher to ensure thread
         // safety (packet send operations are also handled by this dispatcher).
         backgroundIOWorkerJob = backgroundIOScope.launch(workerThreadDispatcherManager.dispatcher) {
             try {
-                logger(LogLevel.VERBOSE) { "Background IO worker started" }
+                logger(LogLevel.DEBUG) { "Background IO worker started" }
                 runIncomingPacketLoop()
             } catch (e: CancellationException) {
                 throw e
@@ -711,7 +711,7 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val pumpAddr
             disconnectDeviceCallback()
 
             // Now shut down the worker.
-            logger(LogLevel.VERBOSE) { "Stopping background IO worker" }
+            logger(LogLevel.DEBUG) { "Stopping background IO worker" }
             try {
                 backgroundIOWorkerJob!!.cancelAndJoin()
             } catch (e: Exception) {
@@ -720,7 +720,7 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val pumpAddr
                 // so we swallow exceptions here.
             }
             backgroundIOWorkerJob = null
-            logger(LogLevel.VERBOSE) { "Background IO worker stopped" }
+            logger(LogLevel.DEBUG) { "Background IO worker stopped" }
 
             // Release the single-threaded dispatcher here, since we do not need
             // it anymore, and not releasing it would cause a resource leak.
@@ -1240,7 +1240,7 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val pumpAddr
             // responded to with an ACK_RESPONSE packet whose sequence bit
             // must match that of the received packet.
             if (packet.reliabilityBit) {
-                logger(LogLevel.DEBUG) {
+                logger(LogLevel.VERBOSE) {
                     "Got a transport layer ${packet.command.name} packet with its reliability bit set; " +
                     "responding with ACK_RESPONSE packet; sequence bit: ${packet.sequenceBit}"
                 }

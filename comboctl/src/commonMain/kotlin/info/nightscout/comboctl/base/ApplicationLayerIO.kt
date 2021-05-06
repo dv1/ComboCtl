@@ -1124,7 +1124,7 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
          * @throws InvalidPayloadException if the payload size is not the expected size.
          */
         fun parseCMDReadDateTimeResponsePacket(packet: Packet): DateTime {
-            logger(LogLevel.VERBOSE) { "Parsing CMD_READ_DATE_TIME_RESPONSE packet" }
+            logger(LogLevel.DEBUG) { "Parsing CMD_READ_DATE_TIME_RESPONSE packet" }
 
             // Payload size sanity check.
             if (packet.payload.size != 12) {
@@ -1145,7 +1145,7 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
                 year = (payload[2].toPosInt() shl 0) or (payload[3].toPosInt() shl 8)
             )
 
-            logger(LogLevel.VERBOSE) { "Current pump datetime: $dateTime" }
+            logger(LogLevel.DEBUG) { "Current pump datetime: $dateTime" }
 
             return dateTime
         }
@@ -1158,7 +1158,7 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
          * @throws InvalidPayloadException if the payload size is not the expected size.
          */
         fun parseCMDReadPumpStatusResponsePacket(packet: Packet): CMDPumpStatus {
-            logger(LogLevel.VERBOSE) { "Parsing CMD_READ_PUMP_STATUS_RESPONSE packet" }
+            logger(LogLevel.DEBUG) { "Parsing CMD_READ_PUMP_STATUS_RESPONSE packet" }
 
             // Payload size sanity check.
             if (packet.payload.size != 3) {
@@ -1175,7 +1175,7 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
             else
                 CMDPumpStatus.STOPPED
 
-            logger(LogLevel.VERBOSE) { "Pump status information: $status" }
+            logger(LogLevel.DEBUG) { "Pump status information: $status" }
 
             return status
         }
@@ -1188,7 +1188,7 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
          * @throws InvalidPayloadException if the payload size is not the expected size.
          */
         fun parseCMDReadErrorWarningStatusResponsePacket(packet: Packet): CMDErrorWarningStatus {
-            logger(LogLevel.VERBOSE) { "Parsing CMD_READ_ERROR_WARNING_STATUS_RESPONSE packet" }
+            logger(LogLevel.DEBUG) { "Parsing CMD_READ_ERROR_WARNING_STATUS_RESPONSE packet" }
 
             // Payload size sanity check.
             if (packet.payload.size != 4) {
@@ -1205,7 +1205,7 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
                 warningOccurred = (payload[3].toPosInt() == 0xB7)
             )
 
-            logger(LogLevel.VERBOSE) { "Error/warning status: $errorWarningStatus" }
+            logger(LogLevel.DEBUG) { "Error/warning status: $errorWarningStatus" }
 
             return errorWarningStatus
         }
@@ -1219,7 +1219,7 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
          * @throws PayloadDataCorruptionException if the payload contains corrupted data.
          */
         fun parseCMDReadHistoryBlockResponsePacket(packet: Packet): CMDHistoryBlock {
-            logger(LogLevel.VERBOSE) { "Parsing CMD_READ_HISTORY_BLOCK_RESPONSE packet" }
+            logger(LogLevel.DEBUG) { "Parsing CMD_READ_HISTORY_BLOCK_RESPONSE packet" }
 
             // Payload size sanity check.
             if (packet.payload.size < 7) {
@@ -1247,13 +1247,13 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
                 )
             }
 
-            logger(LogLevel.VERBOSE) { "Packet contains $numEvents history event(s)" }
+            logger(LogLevel.DEBUG) { "Packet contains $numEvents history event(s)" }
 
             val numRemainingEvents = (payload[2].toPosInt() shl 0) or (payload[3].toPosInt() shl 8)
             val moreEventsAvailable = (payload[4].toPosInt() == 0x48)
             val historyGap = (payload[5].toPosInt() == 0x48)
 
-            logger(LogLevel.VERBOSE) {
+            logger(LogLevel.DEBUG) {
                 "History block information:  " +
                 "num remaining events: $numRemainingEvents  " +
                 "more events available: $moreEventsAvailable  " +
@@ -1294,7 +1294,7 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
                                               (payload[payloadOffset + 17].toPosInt() shl 8)
                 val detailBytes = payload.subList(payloadOffset + 4, payloadOffset + 8)
 
-                logger(LogLevel.VERBOSE) {
+                logger(LogLevel.DEBUG) {
                     "Event #$eventIndex:  timestamp $timestamp  event type ID $eventTypeId  " +
                     "detail bytes CRC16 checksum ${detailBytesCrcChecksum.toHexString(width = 4, prependPrefix = true)}  " +
                     "event counter $eventCounter  " +
@@ -1340,7 +1340,7 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
                         // Event type ID 4 = bolus requested. ID 5 = bolus infused (= it is done).
                         val requested = (eventTypeId == 4)
 
-                        logger(LogLevel.VERBOSE) {
+                        logger(LogLevel.DEBUG) {
                             "Detail info: got history event \"quick bolus ${if (requested) "requested" else "infused"}\" " +
                             "with amount of ${bolusAmount.toFloat() / 10} IU"
                         }
@@ -1364,7 +1364,7 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
                         // Event type ID 8 = bolus started. ID 9 = bolus ended.
                         val started = (eventTypeId == 8)
 
-                        logger(LogLevel.VERBOSE) {
+                        logger(LogLevel.DEBUG) {
                             "Detail info: got history event \"extended bolus ${if (started) "started" else "ended"}\" " +
                             "with total amount of ${totalBolusAmount.toFloat() / 10} IU and " +
                             "total duration of $totalDurationMinutes minutes"
@@ -1395,7 +1395,7 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
                         // Event type ID 10 = bolus started. ID 11 = bolus ended.
                         val started = (eventTypeId == 10)
 
-                        logger(LogLevel.VERBOSE) {
+                        logger(LogLevel.DEBUG) {
                             "Detail info: got history event \"multiwave bolus ${if (started) "started" else "ended"}\" " +
                             "with total amount of ${totalBolusAmount.toFloat() / 10} IU, " +
                             "immediate amount of ${immediateBolusAmount.toFloat() / 10} IU, " +
@@ -1430,7 +1430,7 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
                         // events with type IDs 7 and 15 indicate that a bolus was infused (= finished).
                         val requested = (eventTypeId == 6) || (eventTypeId == 14)
 
-                        logger(LogLevel.VERBOSE) {
+                        logger(LogLevel.DEBUG) {
                             "Detail info: got history event \"${if (manual) "manual" else "automatic"} " +
                             "standard bolus ${if (requested) "requested" else "infused"}\" " +
                             "with amount of ${bolusAmount.toFloat() / 10} IU"
@@ -1467,14 +1467,14 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
                             year = ((detailBytes[3].toPosInt() and 0b11111100) ushr 2) + 2000
                         )
 
-                        logger(LogLevel.VERBOSE) {
+                        logger(LogLevel.DEBUG) {
                             "Detail info: got history event \"new datetime set\" with new datetime $newDateTime"
                         }
 
                         CMDHistoryEventDetail.NewDateTimeSet(newDateTime)
                     }
                     else -> {
-                        logger(LogLevel.VERBOSE) {
+                        logger(LogLevel.DEBUG) {
                             "No detail info available: event type ID unrecognized; skipping this event"
                         }
                         continue
@@ -1507,7 +1507,7 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
          * @throws PayloadDataCorruptionException if the payload contains corrupted data.
          */
         fun parseCMDGetBolusStatusResponsePacket(packet: Packet): CMDBolusDeliveryStatus {
-            logger(LogLevel.VERBOSE) { "Parsing CMD_GET_BOLUS_STATUS_RESPONSE packet" }
+            logger(LogLevel.DEBUG) { "Parsing CMD_GET_BOLUS_STATUS_RESPONSE packet" }
 
             // Payload size sanity check.
             if (packet.payload.size != 8) {
@@ -1539,7 +1539,7 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
                 remainingAmount = (payload[4].toPosInt() shl 0) or (payload[5].toPosInt() shl 8)
             )
 
-            logger(LogLevel.VERBOSE) { "Bolus status: $bolusStatus" }
+            logger(LogLevel.DEBUG) { "Bolus status: $bolusStatus" }
 
             return bolusStatus
         }
@@ -1552,7 +1552,7 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
          * @throws InvalidPayloadException if the payload size is not the expected size,
          */
         fun parseCMDDeliverBolusResponsePacket(packet: Packet): Boolean {
-            logger(LogLevel.VERBOSE) { "Parsing CMD_DELIVER_BOLUS_RESPONSE packet" }
+            logger(LogLevel.DEBUG) { "Parsing CMD_DELIVER_BOLUS_RESPONSE packet" }
 
             // Payload size sanity check.
             if (packet.payload.size != 3) {
@@ -1566,7 +1566,7 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
 
             val bolusStarted = (payload[2].toPosInt() == 0x48)
 
-            logger(LogLevel.VERBOSE) { "Bolus started: $bolusStarted" }
+            logger(LogLevel.DEBUG) { "Bolus started: $bolusStarted" }
 
             return bolusStarted
         }
@@ -1579,7 +1579,7 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
          * @throws InvalidPayloadException if the payload size is not the expected size,
          */
         fun parseCMDCancelBolusResponsePacket(packet: Packet): Boolean {
-            logger(LogLevel.VERBOSE) { "Parsing CMD_CANCEL_BOLUS_RESPONSE packet" }
+            logger(LogLevel.DEBUG) { "Parsing CMD_CANCEL_BOLUS_RESPONSE packet" }
 
             // Payload size sanity check.
             if (packet.payload.size != 3) {
@@ -1593,7 +1593,7 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
 
             val bolusCancelled = (payload[2].toPosInt() == 0x48)
 
-            logger(LogLevel.VERBOSE) { "Bolus cancelled: $bolusCancelled" }
+            logger(LogLevel.DEBUG) { "Bolus cancelled: $bolusCancelled" }
 
             return bolusCancelled
         }
