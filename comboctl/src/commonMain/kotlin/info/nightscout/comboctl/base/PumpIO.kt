@@ -221,6 +221,12 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
                             "Got RT_AUDIO packet with audio type ${audioType.toHexString(8)}; ignoring"
                         }
                     }
+                    ApplicationLayerIO.Command.RT_PAUSE,
+                    ApplicationLayerIO.Command.RT_RELEASE -> {
+                        logger(LogLevel.VERBOSE) {
+                            "Got ${ApplicationLayerIO.Command} packet with payload ${appLayerPacket.payload.toHexString()}; ignoring"
+                        }
+                    }
                     ApplicationLayerIO.Command.RT_VIBRATION -> {
                         logger(LogLevel.VERBOSE) {
                             val vibrationType = ApplicationLayerIO.parseRTVibrationPacket(appLayerPacket)

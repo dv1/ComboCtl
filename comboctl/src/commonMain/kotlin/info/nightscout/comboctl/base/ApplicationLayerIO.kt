@@ -177,7 +177,9 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
         RT_BUTTON_CONFIRMATION(ServiceID.RT_MODE, 0x0556, false),
         RT_DISPLAY(ServiceID.RT_MODE, 0x0555, false),
         RT_AUDIO(ServiceID.RT_MODE, 0x0559, false),
-        RT_VIBRATION(ServiceID.RT_MODE, 0x055A, false);
+        RT_VIBRATION(ServiceID.RT_MODE, 0x055A, false),
+        RT_PAUSE(ServiceID.RT_MODE, 0x0569, false),
+        RT_RELEASE(ServiceID.RT_MODE, 0x056A, false);
 
         companion object {
             private val values = Command.values()
