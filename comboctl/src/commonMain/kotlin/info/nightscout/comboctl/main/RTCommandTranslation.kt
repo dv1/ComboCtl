@@ -6,7 +6,6 @@ import info.nightscout.comboctl.base.Logger
 import info.nightscout.comboctl.base.ProgressReporter
 import info.nightscout.comboctl.base.ProgressStage
 import info.nightscout.comboctl.base.PumpIO
-import info.nightscout.comboctl.parser.AlertScreenContent
 import info.nightscout.comboctl.parser.ParsedScreen
 import kotlin.math.sign
 
@@ -366,7 +365,7 @@ suspend fun setTemporaryBasalRate(
 
         // First, set the TBR percentage.
         navigateToRTScreen(rtNavigationContext, ParsedScreen.TemporaryBasalRatePercentageScreen::class)
-        adjustQuantityOnScreen(rtNavigationContext, percentage) {
+        val initiallySeenTbrPercentage = adjustQuantityOnScreen(rtNavigationContext, percentage) {
             val currentPercentage = (it as ParsedScreen.TemporaryBasalRatePercentageScreen).percentage
 
             // Calculate setting process out of the "distance" from the
@@ -431,7 +430,17 @@ suspend fun setTemporaryBasalRate(
 
         // TBR set. Press CHECK to confirm it and exit back to the main menu.
         rtNavigationContext.pushButton(RTNavigationButton.CHECK)
-        waitUntilScreenAppears(rtNavigationContext, ParsedScreen.MainScreen::class)
+
+        // Setting the TBR to 100 will cancel any currently ongoing TBR. This
+        // in turn causes a warning screen with code W6 to appear. Dismiss that
+        // warning when it appears. (Unfortunately, it is not possible to
+        // configure the Combo such that that warning does not appear.)
+        // If there was no TBR set (meaning, the percentage already was set
+        // to 100), this is effectively a no-op, and no warning will appear.
+        if ((initiallySeenTbrPercentage != 100) && (percentage == 100))
+            rtNavigationContext.waitForAndDismissWarningScreen(6)
+        else
+            waitUntilScreenAppears(rtNavigationContext, ParsedScreen.MainScreen::class)
 
         progressReporter?.setCurrentProgressStage(BasicProgressStage.Finished)
     } catch (e: Exception) {
