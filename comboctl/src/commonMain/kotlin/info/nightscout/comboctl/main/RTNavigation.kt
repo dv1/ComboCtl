@@ -10,6 +10,7 @@ import info.nightscout.comboctl.base.findShortestPath
 import info.nightscout.comboctl.parser.AlertScreenContent
 import info.nightscout.comboctl.parser.ParsedScreen
 import info.nightscout.comboctl.parser.ParsedScreenStream
+import kotlin.math.sign
 import kotlin.reflect.KClassifier
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -449,4 +450,194 @@ suspend fun navigateToRTScreen(
             )
         }
     }
+}
+
+// Gets an integer quantity from the current parsed screen.
+// This must not be called if the current screen is unknown,
+// otherwise, NoUsableRTScreenException is thrown.
+// Since different screen types contain quantities with
+// different names, a getScreenQuantity function literal
+// needs to be provided that takes care of pulling the
+// quantity from the current screen.
+// If the current parsed screen was recognized, but its quantity
+// currently does not show up (typically because it is blinking),
+// then getScreenQuantity returns null. In some cases, a null
+// return value may already be OK. In others, it is necessary
+// to wait until the quantity shows up. To distinguish between
+// these two, the waitUntilQuantityAvailable argument exists.
+internal suspend fun getQuantityOnScreen(
+    rtNavigationContext: RTNavigationContext,
+    waitUntilQuantityAvailable: Boolean,
+    getScreenQuantity: (screen: ParsedScreen) -> Int?
+): Int? {
+    while (true) {
+        val parsedScreen = rtNavigationContext.getParsedScreen()
+        if (parsedScreen is ParsedScreen.UnrecognizedScreen)
+            throw NoUsableRTScreenException()
+
+        val currentQuantity = getScreenQuantity(parsedScreen)
+
+        if (currentQuantity != null) {
+            return currentQuantity
+        } else {
+            if (waitUntilQuantityAvailable) {
+                // Mark the current parsed screen as done, since
+                // while it was recognized, its quantity currently
+                // does not show up, so we try the next screen -
+                // perhaps that one does show the quantity.
+                rtNavigationContext.parsedScreenDone()
+            } else
+                return null
+        }
+    }
+}
+
+/**
+ * Adjusts a displayed quantity until its value matches the given target value.
+ *
+ * Adjustments are done by sending long and short RT button presses (specifically
+ * the UP and DOWN buttons). At first, a long button press is started to quickly
+ * get close to the target quantity. Afterwards, finetuning is done using a series
+ * of short RT button presses.
+ *
+ * The [getScreenQuantity] function literal takes the current [ParsedScreen] and
+ * retrieves & returns the displayed quantity. If said quantity currently does not
+ * show up (because it is blinking for example), then it returns null.
+ *
+ * @param rtNavigationContext RT navigation context to use for cycling through screens.
+ * @param targetQuantity Quantity to target with the adjustments.
+ * @param getScreenQuantity Function literal to get the displayed quantity.
+ * @throws NoUsableRTScreenException If the initial parsed screen available in the
+ *         context at the time of this function call is null (= unrecognized).
+ *         Quantities of unrecognized screens cannot be adjusted.
+ * @throws IllegalStateException if this function is called while the pump
+ *         is not in the remote terminal mode.
+ * @throws Exception Exceptions that were thrown in the getScreenQuantity callback.
+ */
+suspend fun adjustQuantityOnScreen(
+    rtNavigationContext: RTNavigationContext,
+    targetQuantity: Int,
+    getScreenQuantity: (screen: ParsedScreen) -> Int?
+): Int {
+    check(rtNavigationContext.pump.currentModeFlow.value == PumpIO.Mode.REMOTE_TERMINAL)
+
+    // Get the currently displayed quantity; if the quantity is currently not
+    // retrievable, wait until it is so we have a non-null initial quantity.
+    var currentQuantity = getQuantityOnScreen(rtNavigationContext, waitUntilQuantityAvailable = true, getScreenQuantity)
+    var previousQuantity: Int? = null
+    var quantityParsed = true
+
+    val initiallySeenQuantity = currentQuantity!!
+
+    if (currentQuantity == targetQuantity) {
+        logger(LogLevel.DEBUG) { "Quantity on screen is already set to the target quantity $targetQuantity; not adjusting anything" }
+        return targetQuantity
+    }
+
+    logger(LogLevel.DEBUG) { "Initial quantity on screen before adjusting: $initiallySeenQuantity" }
+
+    // Perform the long RT button press.
+
+    var button = if (currentQuantity > targetQuantity)
+        RTNavigationButton.DOWN
+    else
+        RTNavigationButton.UP
+
+    try {
+        rtNavigationContext.pump.startLongRTButtonPress(button.rtButtonCodes) {
+            // This check prevents a redundant getQuantityOnScreen
+            // call the first time this block is called.
+            if (!quantityParsed) {
+                // Get the newly displayed quantity. We do not wait until  it is
+                // non-null, since such a wait takes a while. If we get null as
+                // value, we simply continue with the current quantity instead.
+                // That way, we do not slow down the increment/decrement
+                // during the long RT button pressing.
+                val newQuantity = getQuantityOnScreen(rtNavigationContext, waitUntilQuantityAvailable = false, getScreenQuantity)
+
+                if (newQuantity != null) {
+                    previousQuantity = currentQuantity
+                    currentQuantity = newQuantity
+                }
+            }
+
+            val retval = if (currentQuantity == targetQuantity) {
+                // Matching value, we can exit.
+                false
+            } else if ((previousQuantity != null) && ((previousQuantity!! - targetQuantity).sign != (currentQuantity!! - targetQuantity).sign)) {
+                // If previousQuantity is "before" targetQuantity while
+                // currentQuantity is "after" targetQuantity, then we went
+                // past the target value, and we can exit.
+                false
+            } else {
+                rtNavigationContext.parsedScreenDone()
+                quantityParsed = false
+                true
+            }
+
+            retval
+        }
+
+        rtNavigationContext.pump.waitForLongRTButtonPressToFinish()
+    } catch (e: Exception) {
+        // Make sure the long RT button press is _always_ finished
+        // to not cause state related issues like failing short RT
+        // button presses later on.
+        rtNavigationContext.pump.stopLongRTButtonPress()
+        throw e
+    }
+
+    // Perform the short RT button press.
+
+    // Invalidate the current screen to be 100% sure that the quantity
+    // we start the short RT button press with is really the one that
+    // is currently being displayed.
+    rtNavigationContext.parsedScreenDone()
+
+    // Get the currently displayed quantity; if the quantity is currently not
+    // retrievable, wait until it is so we have a non-null initial quantity.
+    currentQuantity = getQuantityOnScreen(rtNavigationContext, waitUntilQuantityAvailable = true, getScreenQuantity)
+    previousQuantity = null
+    quantityParsed = true
+
+    button = if (currentQuantity!! > targetQuantity)
+        RTNavigationButton.DOWN
+    else
+        RTNavigationButton.UP
+
+    while (true) {
+        // This check prevents a redundant getQuantityOnScreen
+        // call the first time this loop iterates.
+        if (!quantityParsed) {
+            // Unlike the code for the long RT button presses, here, we _do_
+            // wait for a non-null parsed screen so we always know what the
+            // current quantity is. This is because unlike with the long RT
+            // button press, the short one does not auto-increment just
+            // because the button is being held down. We have to constantly
+            // check that the displayed quantity still isn't the target one,
+            // otherwise we may overshoot and adjust improperly.
+            val newQuantity = getQuantityOnScreen(rtNavigationContext, waitUntilQuantityAvailable = true, getScreenQuantity)
+
+            previousQuantity = currentQuantity
+            currentQuantity = newQuantity
+        }
+
+        if (currentQuantity == targetQuantity) {
+            // Matching value, we can exit.
+            break
+        } else if ((previousQuantity != null) && ((previousQuantity!! - targetQuantity).sign != (currentQuantity!! - targetQuantity).sign)) {
+            // If previousQuantity is "before" targetQuantity while
+            // currentQuantity is "after" targetQuantity, then we went
+            // past the target value, and we can exit.
+            break
+        } else {
+            rtNavigationContext.pushButton(button)
+            // Mark this screen as done to ensure that we get a fresh
+            // new parsed screen during the next loop iteration.
+            rtNavigationContext.parsedScreenDone()
+            quantityParsed = false
+        }
+    }
+
+    return initiallySeenQuantity
 }
