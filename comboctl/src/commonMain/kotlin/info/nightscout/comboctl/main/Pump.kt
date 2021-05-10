@@ -589,6 +589,24 @@ class Pump(
     }
 
     /**
+     * Cancels an ongoing bolus.
+     *
+     * @return true if the bolus was cancelled, false otherwise.
+     *         If no bolus is ongoing, this returns false as well.
+     * @throws IllegalStateException if the pump is not in the command
+     *         mode, the worker has failed (see [connect]), or the
+     *         pump is not connected.
+     */
+    suspend fun cancelCMDStandardBolus() {
+        if (!pumpIO.isConnected())
+            throw IllegalStateException("Not connected to Combo")
+
+        return runChecked {
+            pumpIO.cancelCMDStandardBolus()
+        }
+    }
+
+    /**
      * Performs a short button press.
      *
      * This mimics the physical pressing of buttons for a short

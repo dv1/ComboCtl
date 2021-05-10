@@ -805,6 +805,32 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
     }
 
     /**
+     * Cancels an ongoing bolus.
+     *
+     * @return true if the bolus was cancelled, false otherwise.
+     *         If no bolus is ongoing, this returns false as well.
+     * @throws IllegalStateException if the pump is not in the command
+     *         mode, the worker has failed (see [connect]), or the
+     *         pump is not connected.
+     */
+    suspend fun cancelCMDStandardBolus(): Boolean {
+        // TODO: Test that this function does the expected thing
+        // when no bolus is actually ongoing.
+        if (!isConnected())
+            throw IllegalStateException("Cancel bolus because the background worker is not running")
+
+        if (mutableCurrentModeFlow.value != Mode.COMMAND)
+            throw IllegalStateException("Cannot cancel bolus while being in ${mutableCurrentModeFlow.value} mode")
+
+        val packet = sendPacketWithResponse(
+            ApplicationLayerIO.createCMDCancelBolusPacket(ApplicationLayerIO.CMDBolusType.STANDARD),
+            ApplicationLayerIO.Command.CMD_CANCEL_BOLUS_RESPONSE
+        )
+
+        return ApplicationLayerIO.parseCMDCancelBolusResponsePacket(packet)
+    }
+
+    /**
      * Performs a short button press.
      *
      * This mimics the physical pressing of buttons for a short
