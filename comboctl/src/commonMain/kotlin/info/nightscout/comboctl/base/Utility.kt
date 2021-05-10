@@ -237,6 +237,22 @@ internal fun Int.toStringWithDecimal(numDecimals: Int): String {
 }
 
 /**
+ * Converts the given integer to string, using the rightmost digits as decimals.
+ *
+ * This behaves just like [Int.toStringWithDecimal], except it is applied on Long values.
+ */
+internal fun Long.toStringWithDecimal(numDecimals: Int): String {
+    require(numDecimals >= 0)
+    val longStr = this.toString()
+
+    return when {
+        numDecimals == 0 -> longStr
+        longStr.length <= numDecimals -> "0." + "0".repeat(numDecimals - longStr.length) + longStr
+        else -> longStr.substring(0, longStr.length - numDecimals) + "." + longStr.substring(longStr.length - numDecimals)
+    }
+}
+
+/**
  * Returns the elapsed time in milliseconds.
  *
  * This measures the elapsed time that started at some arbitrary point
