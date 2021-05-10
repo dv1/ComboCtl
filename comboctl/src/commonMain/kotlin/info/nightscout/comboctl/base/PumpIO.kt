@@ -751,7 +751,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      *         contain invalid values.
      * @throws ComboIOException if IO with the pump fails.
      */
-    suspend fun getCMDBolusStatus(): ApplicationLayerIO.CMDBolusDeliveryStatus {
+    suspend fun getCMDCurrentBolusDeliveryStatus(): ApplicationLayerIO.CMDBolusDeliveryStatus {
         if (!isConnected())
             throw IllegalStateException("Cannot get history delta because the background worker is not running")
 
@@ -777,7 +777,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      * done. The delivery may not happen if for example the pump is currently
      * stopped, or if it is already administering another bolus. It is
      * recommended to keep track of the current bolus status by periodically
-     * calling [getCMDBolusStatus].
+     * calling [getCMDCurrentBolusDeliveryStatus].
      *
      * @throws IllegalStateException if the pump is not in the comand
      *         mode, the worker has failed (see [connect]), or the

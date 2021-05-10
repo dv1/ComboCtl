@@ -555,7 +555,7 @@ class Pump(
             throw IllegalStateException("Not connected to Combo")
 
         return runChecked {
-            pumpIO.getCMDBolusStatus()
+            pumpIO.getCMDCurrentBolusDeliveryStatus()
         }
     }
 
