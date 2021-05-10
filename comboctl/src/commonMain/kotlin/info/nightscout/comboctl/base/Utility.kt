@@ -213,6 +213,30 @@ internal fun Byte.toHexString(width: Int, prependPrefix: Boolean = true): String
 }
 
 /**
+ * Converts the given integer to string, using the rightmost digits as decimals.
+ *
+ * This is useful for fixed-point decimals, that is, integers that actually
+ * store decimal values of fixed precision. These are used for insulin
+ * dosages. For example, the integer 155 may actually mean 1.55. In that case,
+ * [numDecimals] is set to 2, indicating that the 2 last digits are the
+ * fractional part.
+ *
+ * @param numDecimals How many of the rightmost digits make up the fraction
+ *        portion of the decimal.
+ * @return String representation of the decimal value.
+ */
+internal fun Int.toStringWithDecimal(numDecimals: Int): String {
+    require(numDecimals >= 0)
+    val intStr = this.toString()
+
+    return when {
+        numDecimals == 0 -> intStr
+        intStr.length <= numDecimals -> "0." + "0".repeat(numDecimals - intStr.length) + intStr
+        else -> intStr.substring(0, intStr.length - numDecimals) + "." + intStr.substring(intStr.length - numDecimals)
+    }
+}
+
+/**
  * Returns the elapsed time in milliseconds.
  *
  * This measures the elapsed time that started at some arbitrary point
