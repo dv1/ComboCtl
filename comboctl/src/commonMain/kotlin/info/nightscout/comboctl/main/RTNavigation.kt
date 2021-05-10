@@ -246,11 +246,16 @@ class RTNavigationContext(
      * are published via [rtWarningCodeFlow]. The expected warning code is not
      * published, however.
      *
+     * @param expectedWarningCode Integer code of the warning screen that we expect
+     *        to show up. This one will be dismissed just like any other warning,
+     *        but will not be published via [rtWarningCodeFlow]. If this parameter
+     *        is set to null, this functionality is disabled; all warnings are
+     *        published through the flow.
      * @throws AlertScreenException if an error screen appears. If this
      *         happens, that screen is implicitly marked as processed
      *         as if [parsedScreenDone] had been called.
      */
-    suspend fun waitForAndDismissWarningScreen(expectedWarningCode: Int) {
+    suspend fun waitForAndDismissWarningScreen(expectedWarningCode: Int?) {
         var warningScreenDismissed = false
         while (!warningScreenDismissed) {
             if (parsedScreen is ParsedScreen.AlertScreen) {
@@ -268,7 +273,13 @@ class RTNavigationContext(
                         logger(LogLevel.ERROR) { "Got error screen with code ${alertScreenContent.code}" }
                         throw AlertScreenException(alertScreenContent)
                     }
-                    else -> Unit
+                    else -> {
+                        // The current screen does not contain recognizable
+                        // error/warning information. This typically happens
+                        // when the alert screen is currently "blinked out".
+                        // Get the next screen, it may contain recognizable data.
+                        parsedScreen = parsedScreenStream.getNextParsedScreen()
+                    }
                 }
             } else
                 parsedScreen = parsedScreenStream.getNextParsedScreen()
