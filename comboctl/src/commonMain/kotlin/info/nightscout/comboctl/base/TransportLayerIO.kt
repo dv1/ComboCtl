@@ -1268,7 +1268,7 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val pumpAddr
             // packet coming _from_ the Combo.
             val skipPacket = when (packet.command) {
                 Command.ACK_RESPONSE -> {
-                    logger(LogLevel.DEBUG) { "Got ACK_RESPONSE packet; skipping" }
+                    logger(LogLevel.VERBOSE) { "Got ACK_RESPONSE packet; skipping" }
                     true
                 }
                 Command.ERROR_RESPONSE,

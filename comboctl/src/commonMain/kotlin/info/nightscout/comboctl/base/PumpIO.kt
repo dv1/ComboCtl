@@ -791,10 +791,10 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      */
     suspend fun deliverCMDStandardBolus(bolusAmount: Int): Boolean {
         if (!isConnected())
-            throw IllegalStateException("Cannot get history delta because the background worker is not running")
+            throw IllegalStateException("Cannot deliver standard bolus because the background worker is not running")
 
         if (mutableCurrentModeFlow.value != Mode.COMMAND)
-            throw IllegalStateException("Cannot get history delta while being in ${mutableCurrentModeFlow.value} mode")
+            throw IllegalStateException("Cannot deliver standard bolus while being in ${mutableCurrentModeFlow.value} mode")
 
         val packet = sendPacketWithResponse(
             ApplicationLayerIO.createCMDDeliverBolusPacket(bolusAmount),
