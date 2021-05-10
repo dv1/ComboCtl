@@ -4,7 +4,9 @@ package info.nightscout.comboctl.base
 // a more sophisticated logger can be used for JVM targets.
 actual class PlatformLoggerBackend actual constructor() : LoggerBackend {
     actual override fun log(tag: String, level: LogLevel, throwable: Throwable?, message: String?) {
-        var str = "[${level.str}] [$tag]"
+        val timestamp = getElapsedTimeInMs()
+
+        var str = "[${timestamp.toStringWithDecimal(3).padStart(10, ' ')}] [${level.str}] [$tag]"
 
         if (throwable != null)
             str += " (" + throwable::class.qualifiedName + ": \"" + throwable.message + "\")"
