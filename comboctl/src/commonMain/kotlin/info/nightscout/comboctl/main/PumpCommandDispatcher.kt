@@ -149,15 +149,10 @@ class PumpCommandDispatcher(private val pump: Pump) {
      *         is <0.
      * @throws AlertScreenException if an alert occurs during this call.
      */
-    suspend fun setBasalProfile(basalProfile: List<Int>) {
-        pump.switchMode(PumpIO.Mode.REMOTE_TERMINAL)
-
+    suspend fun setBasalProfile(basalProfile: List<Int>) =
+        dispatchCommand(PumpIO.Mode.REMOTE_TERMINAL, null) {
         require(basalProfile.size == NUM_BASAL_PROFILE_FACTORS)
         require(basalProfile.all { it >= 0 })
-
-        // Make sure any previously parsed screen is not reused,
-        // since these may contain stale states.
-        resetNavigation()
 
         basalProfileProgressReporter.reset()
 
@@ -256,21 +251,16 @@ class PumpCommandDispatcher(private val pump: Pump) {
      *         or if the percentage value is not an integer multiple of 10, or if
      *         the duration is <15 or not an integer multiple of 15 (see the note
      *         about duration being ignored with percentage 100 above though).
-     * @throws AlertScreenException if an alert occurs during this call, and it
-     *         is not a W6 warning (those are handled by this function).
+     * @throws AlertScreenException if alerts occurs during this call, and they
+     *         aren't a W6 warning (those are handled by this function).
      */
-    suspend fun setTemporaryBasalRate(percentage: Int, durationInMinutes: Int) {
-        pump.switchMode(PumpIO.Mode.REMOTE_TERMINAL)
-
+    suspend fun setTemporaryBasalRate(percentage: Int, durationInMinutes: Int) =
+        dispatchCommand(PumpIO.Mode.REMOTE_TERMINAL, expectedWarningCode = 6) {
         // The Combo can only set TBRs of up to 500%, and the
         // duration can only be an integer multiple of 15 minutes.
         require((percentage >= 0) && (percentage <= 500))
         require((percentage % 10) == 0)
         require((percentage == 100) || ((durationInMinutes >= 15) && ((durationInMinutes % 15) == 0)))
-
-        // Make sure any previously parsed screen is not reused,
-        // since these may contain stale states.
-        resetNavigation()
 
         tbrProgressReporter.reset()
 
@@ -281,7 +271,7 @@ class PumpCommandDispatcher(private val pump: Pump) {
 
             // First, set the TBR percentage.
             navigateToRTScreen(rtNavigationContext, ParsedScreen.TemporaryBasalRatePercentageScreen::class)
-            val initiallySeenTbrPercentage = adjustQuantityOnScreen(rtNavigationContext, percentage) {
+            adjustQuantityOnScreen(rtNavigationContext, percentage) {
                 val currentPercentage = (it as ParsedScreen.TemporaryBasalRatePercentageScreen).percentage
 
                 // Calculate setting process out of the "distance" from the
@@ -347,17 +337,6 @@ class PumpCommandDispatcher(private val pump: Pump) {
             // TBR set. Press CHECK to confirm it and exit back to the main menu.
             rtNavigationContext.pushButton(RTNavigationButton.CHECK)
 
-            // Setting the TBR to 100 will cancel any currently ongoing TBR. This
-            // in turn causes a warning screen with code W6 to appear. Dismiss that
-            // warning when it appears. (Unfortunately, it is not possible to
-            // configure the Combo such that that warning does not appear.)
-            // If there was no TBR set (meaning, the percentage already was set
-            // to 100), this is effectively a no-op, and no warning will appear.
-            if ((initiallySeenTbrPercentage != 100) && (percentage == 100))
-                rtNavigationContext.waitForAndDismissWarningScreen(6)
-            else
-                waitUntilScreenAppears(rtNavigationContext, ParsedScreen.MainScreen::class)
-
             tbrProgressReporter.setCurrentProgressStage(BasicProgressStage.Finished)
         } catch (e: Exception) {
             tbrProgressReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
@@ -368,23 +347,17 @@ class PumpCommandDispatcher(private val pump: Pump) {
     /**
      * Reads information from the pump's quickinfo screen.
      *
-     * @throws AlertScreenException if an alert occurs during this call.
+     * @throws AlertScreenException if alerts occur during this call.
      * @throws NoUsableRTScreenException if the quickinfo screen could not be found.
      */
-    suspend fun readQuickinfo(): ParsedScreen.QuickinfoMainScreen {
-        pump.switchMode(PumpIO.Mode.REMOTE_TERMINAL)
-
-        // Make sure any previously parsed screen is not reused,
-        // since these may contain stale states.
-        resetNavigation()
-
+    suspend fun readQuickinfo() = dispatchCommand(PumpIO.Mode.REMOTE_TERMINAL, null) {
         navigateToRTScreen(rtNavigationContext, ParsedScreen.QuickinfoMainScreen::class)
         val parsedScreen = rtNavigationContext.getParsedScreen()
         // After parsing the quickinfo screen, exit back to the main screen by pressing BACK.
         rtNavigationContext.pushButton(RTNavigationButton.BACK)
 
         when (parsedScreen) {
-            is ParsedScreen.QuickinfoMainScreen -> return parsedScreen
+            is ParsedScreen.QuickinfoMainScreen -> parsedScreen
             else -> throw NoUsableRTScreenException()
         }
     }
@@ -425,9 +398,8 @@ class PumpCommandDispatcher(private val pump: Pump) {
      * @throws BolusAbortedDueToErrorException when the bolus delivery failed due
      *         to an error.
      */
-    suspend fun deliverBolus(bolusAmount: Int, bolusStatusUpdateIntervalInMs: Long = 250) {
-        pump.switchMode(PumpIO.Mode.COMMAND)
-
+    suspend fun deliverBolus(bolusAmount: Int, bolusStatusUpdateIntervalInMs: Long = 250) =
+        dispatchCommand(PumpIO.Mode.COMMAND, null) {
         logger(LogLevel.DEBUG) { "Beginning bolus delivery of ${bolusAmount.toStringWithDecimal(1)} IU" }
         val didDeliver = pump.deliverCMDStandardBolus(bolusAmount)
         if (!didDeliver) {
@@ -501,5 +473,43 @@ class PumpCommandDispatcher(private val pump: Pump) {
     private fun resetNavigation() {
         parsedScreenStream.reset()
         rtNavigationContext.parsedScreenDone()
+    }
+
+    private suspend fun <T> dispatchCommand(pumpMode: PumpIO.Mode, expectedWarningCode: Int?, block: suspend () -> T): T {
+        pump.switchMode(pumpMode)
+
+        if (pumpMode == PumpIO.Mode.REMOTE_TERMINAL) {
+            // Make sure any previously parsed screen is not reused,
+            // since these may contain stale states.
+            resetNavigation()
+        }
+
+        val retval = block.invoke()
+
+        // Check if an alert appeared. Alert screens can show up at any moment,
+        // but typically, they appear when the user is done with the current
+        // operation and returns to the main screen.
+        checkForAlerts(expectedWarningCode)
+
+        return retval
+    }
+
+    private suspend fun checkForAlerts(expectedWarningCode: Int?) {
+        pump.switchMode(PumpIO.Mode.COMMAND)
+        val pumpStatus = pump.readCMDErrorWarningStatus()
+
+        try {
+            if (pumpStatus.warningOccurred || pumpStatus.errorOccurred) {
+                pump.switchMode(PumpIO.Mode.REMOTE_TERMINAL)
+                while (true) {
+                    rtNavigationContext.parsedScreenDone()
+                    rtNavigationContext.getParsedScreen()
+                    rtNavigationContext.parsedScreenDone()
+                }
+            }
+        } catch (e: AlertScreenException) {
+            if ((expectedWarningCode == null) || (e.getSingleWarningCode() != expectedWarningCode))
+                throw e
+        }
     }
 }

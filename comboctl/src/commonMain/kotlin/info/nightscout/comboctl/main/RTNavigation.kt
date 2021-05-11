@@ -12,8 +12,6 @@ import info.nightscout.comboctl.parser.ParsedScreen
 import info.nightscout.comboctl.parser.ParsedScreenStream
 import kotlin.math.sign
 import kotlin.reflect.KClassifier
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.asSharedFlow
 
 private val logger = Logger.get("RTNavigation")
 
@@ -122,12 +120,25 @@ class CouldNotFindRTScreenException(val targetScreenType: KClassifier) : RTNavig
 class NoUsableRTScreenException() : RTNavigationException("No usable RT screen available")
 
 /**
- * Exception thrown when an alert screen appears while navigating through RT screens.
+ * Exception thrown when alert screens appear while navigating through RT screens.
  *
- * @property alertScreenContent The content of the alert screen.
+ * @property alertScreenContents The content of the alert screen(s).
  */
-class AlertScreenException(val alertScreenContent: AlertScreenContent) :
-    RTNavigationException("RT alert screen appeared with contents: $alertScreenContent")
+class AlertScreenException(val alertScreenContents: List<AlertScreenContent>) :
+    RTNavigationException("RT alert screen appeared with contents: $alertScreenContents") {
+    /** Returns true if there is at least one [AlertScreenContent.Warning] in [alertScreenContents]. */
+    fun containsWarnings() = alertScreenContents.any { it is AlertScreenContent.Warning }
+
+    /** Returns true if there is at least one [AlertScreenContent.Error] in [alertScreenContents]. */
+    fun containsErrors() = alertScreenContents.any { it is AlertScreenContent.Error }
+
+    /** Returns the warning code if [alertScreenContents] only contains a single warning, and null otherwise. */
+    fun getSingleWarningCode() =
+        if ((alertScreenContents.size == 1) && (alertScreenContents[0] is AlertScreenContent.Warning))
+            (alertScreenContents[0] as AlertScreenContent.Warning).code
+        else
+            null
+}
 
 /**
  * Context object for navigating through remote terminal (RT) screens.
@@ -160,21 +171,6 @@ class RTNavigationContext(
     private var parsedScreen: ParsedScreen = ParsedScreen.UnrecognizedScreen
     private var parsedScreenSet = false
 
-    private val mutableRTWarningCodeFlow = MutableSharedFlow<Int>()
-
-    /**
-     * Read-only [SharedFlow] property that delivers warning codes observed while getting [ParsedScreen] instances.
-     *
-     * This flow publishes warning codes during the [waitForAndDismissWarningScreen]
-     * and [getParsedScreen] calls. These RT warning screens are automatically
-     * dismissed. The user gets notified about those through this flow.
-     * One exception is when [waitForAndDismissWarningScreen] is called and
-     * a warning screen is observed whose code matches the expected code that
-     * was passed to that function call as argument. That code is not published
-     * through this flow.
-     */
-    val rtWarningCodeFlow = mutableRTWarningCodeFlow.asSharedFlow()
-
     /**
      * Gets the parsed screen from this context object.
      *
@@ -188,104 +184,50 @@ class RTNavigationContext(
      * (to be able to look at new parsed screens), [parsedScreenDone]
      * needs to be called.
      *
-     * If a a warning screen appears, it is automatically dismissed
-     * by "pressing" the CHECK button. Afterwards, the warning code
-     * is published via the [rtWarningCodeFlow], and this function
-     * proceeds as usual with returning the next parsed screen.
-     * (The warning screens are not returned; they are filtered out.)
+     * If alert screens appear, they are automatically dismissed by
+     * "pressing" the CHECK button. Their error/warning codes are gathered,
+     * and once all screens are dismissed, an [AlertScreenException]
+     * is thrown. Any operation that was going on (setting a basal profile
+     * for example) must be considered as aborted. Once the screens have
+     * been dismissed and the exception was thrown, the Combo returns
+     * to the main screen. These alert screens are also implicitly
+     * marked as done, as if [parsedScreenDone] had been called.
      *
      * @return The parsed screen, of [ParsedScreen.UnrecognizedScreen]
      *         if the screen could not be recognized and consequently
      *         was not parsed.
-     * @throws AlertScreenException if an error screen appears. If this
-     *         happens, that screen is implicitly marked as processed
-     *         as if [parsedScreenDone] had been called.
+     * @throws AlertScreenException if one or more alert screens appear.
      */
     suspend fun getParsedScreen(): ParsedScreen {
         if (!parsedScreenSet) {
-            parsedScreen = parsedScreenStream.getNextParsedScreen()
+            val alertScreenContents = mutableListOf<AlertScreenContent>()
 
-            if (parsedScreen is ParsedScreen.AlertScreen) {
-                when (val alertScreenContent = (parsedScreen as ParsedScreen.AlertScreen).content) {
-                    is AlertScreenContent.Warning -> {
-                        logger(LogLevel.WARN) { "Got warning screen with code ${alertScreenContent.code}" }
-                        dismissWarningScreen()
+            while (true) {
+                parsedScreen = parsedScreenStream.getNextParsedScreen()
+
+                if (parsedScreen is ParsedScreen.AlertScreen) {
+                    when (val alertScreenContent = (parsedScreen as ParsedScreen.AlertScreen).content) {
+                        is AlertScreenContent.Warning,
+                        is AlertScreenContent.Error -> {
+                            logger(LogLevel.WARN) { "Got alert screen with content $alertScreenContent" }
+                            if (alertScreenContent !in alertScreenContents)
+                                alertScreenContents.add(alertScreenContent)
+                            pushButton(RTNavigationButton.CHECK)
+                        }
+                        else -> Unit
                     }
-                    is AlertScreenContent.Error -> {
-                        // Mark this screen as done to make sure that
-                        // the next getParsedScreen() does not again
-                        // retrieve the error screen.
-                        parsedScreenDone()
-                        logger(LogLevel.ERROR) { "Got error screen with code ${alertScreenContent.code}" }
-                        throw AlertScreenException(alertScreenContent)
-                    }
-                    else -> Unit
-                }
+                } else
+                    break
             }
 
-            parsedScreenSet = true
-        }
-        return parsedScreen
-    }
-
-    /**
-     * Suspends until a warning screen with the given code is observed and dismissed.
-     *
-     * This is useful if after a certain action it is expected that a warning screen
-     * appears. In such a case, it is necessary to dismiss that warning. The most
-     * prominent example of this is the W6 warning when a current TBR is cancelled
-     * by setting its percentage to 100.
-     *
-     * This function works in two stages. First, it keeps getting screens until
-     * a warning screen is seen. This commences the second stage, during which the
-     * function keeps pressing CHECK until the warning screen is not visible anymore.
-     * The screen that is shown after the warning screen is stored and can be
-     * accessed as usual with [getParsedScreen]. (It is not marked as processed.)
-     *
-     * If any other warnings occur while this function is suspending, their codes
-     * are published via [rtWarningCodeFlow]. The expected warning code is not
-     * published, however.
-     *
-     * @param expectedWarningCode Integer code of the warning screen that we expect
-     *        to show up. This one will be dismissed just like any other warning,
-     *        but will not be published via [rtWarningCodeFlow]. If this parameter
-     *        is set to null, this functionality is disabled; all warnings are
-     *        published through the flow.
-     * @throws AlertScreenException if an error screen appears. If this
-     *         happens, that screen is implicitly marked as processed
-     *         as if [parsedScreenDone] had been called.
-     */
-    suspend fun waitForAndDismissWarningScreen(expectedWarningCode: Int?) {
-        var warningScreenDismissed = false
-        while (!warningScreenDismissed) {
-            if (parsedScreen is ParsedScreen.AlertScreen) {
-                when (val alertScreenContent = (parsedScreen as ParsedScreen.AlertScreen).content) {
-                    is AlertScreenContent.Warning -> {
-                        logger(LogLevel.WARN) { "Got warning screen with code ${alertScreenContent.code}" }
-                        dismissWarningScreen(expectedWarningCode)
-                        warningScreenDismissed = true
-                    }
-                    is AlertScreenContent.Error -> {
-                        // Mark this screen as done to make sure that
-                        // the next getParsedScreen() does not again
-                        // retrieve the error screen.
-                        parsedScreenDone()
-                        logger(LogLevel.ERROR) { "Got error screen with code ${alertScreenContent.code}" }
-                        throw AlertScreenException(alertScreenContent)
-                    }
-                    else -> {
-                        // The current screen does not contain recognizable
-                        // error/warning information. This typically happens
-                        // when the alert screen is currently "blinked out".
-                        // Get the next screen, it may contain recognizable data.
-                        parsedScreen = parsedScreenStream.getNextParsedScreen()
-                    }
-                }
+            if (!alertScreenContents.isEmpty()) {
+                parsedScreenSet = false
+                throw AlertScreenException(alertScreenContents)
             } else
-                parsedScreen = parsedScreenStream.getNextParsedScreen()
+                parsedScreenSet = true
         }
 
-        parsedScreenSet = true
+        return parsedScreen
     }
 
     /**
@@ -310,48 +252,6 @@ class RTNavigationContext(
      */
     suspend fun pushButton(button: RTNavigationButton) =
         pump.sendShortRTButtonPress(button.rtButtonCodes)
-
-    private suspend fun dismissWarningScreen(expectedWarningCode: Int? = null) {
-        val observedWarnings = mutableListOf<Int>()
-
-        while (true) {
-            if (parsedScreen !is ParsedScreen.AlertScreen) {
-                logger(LogLevel.DEBUG) { "Warning screen no longer visible; successfully dismissed warning" }
-                break
-            }
-
-            when (val alertScreenContent = (parsedScreen as ParsedScreen.AlertScreen).content) {
-                is AlertScreenContent.Warning -> {
-                    // We store the warning code in a list, not just an Int. This covers
-                    // a rare corner case where a new warning appears before the current
-                    // warning is dismissed.
-                    if (alertScreenContent.code !in observedWarnings) {
-                        logger(LogLevel.DEBUG) { "Seen warning screen with code ${alertScreenContent.code}; dismissing" }
-                        observedWarnings.add(0, alertScreenContent.code)
-                    }
-                }
-                is AlertScreenContent.Error -> {
-                    // Corner case: An error appears before the current warning is dismissed.
-                    // Handle this as if the error appeared in the beginning.
-                    logger(LogLevel.ERROR) { "Got error screen with code ${alertScreenContent.code}" }
-                    throw AlertScreenException(alertScreenContent)
-                }
-                else -> Unit
-            }
-
-            // Keep pushing the CHECK button until the warning screen is gone.
-            pushButton(RTNavigationButton.CHECK)
-
-            parsedScreen = parsedScreenStream.getNextParsedScreen()
-        }
-
-        for (warningCode in observedWarnings) {
-            if ((expectedWarningCode == null) || (warningCode != expectedWarningCode)) {
-                logger(LogLevel.DEBUG) { "Reporting previously observed and dismissed warning with code $warningCode" }
-                mutableRTWarningCodeFlow.emit(warningCode)
-            }
-        }
-    }
 }
 
 /**
