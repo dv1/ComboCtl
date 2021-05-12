@@ -463,8 +463,8 @@ class PumpCommandDispatcher(private val pump: Pump) {
             bolusDeliveryProgressReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
             try {
                 pump.cancelCMDStandardBolus()
-            } catch (e2: Exception) {
-                logger(LogLevel.ERROR) { "Caught exception while cancelling bolus: $e" }
+            } catch (cancelBolusExc: Exception) {
+                logger(LogLevel.ERROR) { "Silently discarding caught exception while cancelling bolus: $cancelBolusExc" }
             }
             throw e
         }
