@@ -46,8 +46,8 @@ class ParsedScreenStreamTest {
             assertEquals(
                 ParsedScreen.MainScreen(
                     MainScreenContent.Normal(
-                        currentTimeHours = 10,
-                        currentTimeMinutes = 20,
+                        currentTimeHour = 10,
+                        currentTimeMinute = 20,
                         activeBasalRateNumber = 1,
                         currentBasalRateFactor = 200
                     )

@@ -9,7 +9,7 @@ import kotlin.math.min
 private data class ParsedValue<T>(val value: T, val numParsedPatternMatches: Int)
 
 // Utility class a parsed time value.
-private data class ParsedTime(val hours: Int, val minutes: Int)
+private data class ParsedTime(val hour: Int, val minute: Int)
 
 /**
  * Reservoir state as shown on display.
@@ -25,20 +25,20 @@ enum class ReservoirState {
  */
 sealed class MainScreenContent {
     data class Normal(
-        val currentTimeHours: Int,
-        val currentTimeMinutes: Int,
+        val currentTimeHour: Int,
+        val currentTimeMinute: Int,
         val activeBasalRateNumber: Int,
         val currentBasalRateFactor: Int
     ) : MainScreenContent()
 
     data class Stopped(
-        val currentTimeHours: Int,
-        val currentTimeMinutes: Int
+        val currentTimeHour: Int,
+        val currentTimeMinute: Int
     ) : MainScreenContent()
 
     data class Tbr(
-        val currentTimeHours: Int,
-        val currentTimeMinutes: Int,
+        val currentTimeHour: Int,
+        val currentTimeMinute: Int,
         val remainingTbrDurationHours: Int,
         val remainingTbrDurationMinutes: Int,
         val tbrPercentage: Int,
@@ -63,8 +63,8 @@ sealed class AlertScreenContent {
 /**
  * Result of a successful [parseDisplayFrame] call.
  *
- * Subclasses which have hour quantities use a 0..23 range for the hours.
- * (Even if the screen showed the hours in the 12-hour AM/PM format, they are
+ * Subclasses which have hour quantities use a 0..23 range for the hour.
+ * (Even if the screen showed the hour in the 12-hour AM/PM format, it is
  * converted to the 24-hour format.) Minute quantities use a 0..59 range.
  *
  * Insulin units use an integer-encoded-decimal scheme. The last 3 digits of
@@ -99,10 +99,10 @@ sealed class ParsedScreen {
 
     data class BasalRateTotalScreen(val totalNumUnits: Int) : ParsedScreen()
     data class BasalRateFactorSettingScreen(
-        val beginHours: Int,
-        val beginMinutes: Int,
-        val endHours: Int,
-        val endMinutes: Int,
+        val beginHour: Int,
+        val beginMinute: Int,
+        val endHour: Int,
+        val endMinute: Int,
         val numUnits: Int?
     ) : ParsedScreen()
 
@@ -422,10 +422,10 @@ private fun tryParseBasalRateFactorSettingScreen(matches: PatternMatches): Parse
         return ParsedScreen.UnrecognizedScreen
 
     return ParsedScreen.BasalRateFactorSettingScreen(
-        beginHours = beginTimeParseResult.value.hours,
-        beginMinutes = beginTimeParseResult.value.minutes,
-        endHours = endTimeParseResult.value.hours,
-        endMinutes = endTimeParseResult.value.minutes,
+        beginHour = beginTimeParseResult.value.hour,
+        beginMinute = beginTimeParseResult.value.minute,
+        endHour = endTimeParseResult.value.hour,
+        endMinute = endTimeParseResult.value.minute,
         numUnits = numUnitsParseResult?.value
     )
 }
@@ -443,8 +443,8 @@ private fun tryParseMainScreen(displayFrame: DisplayFrame, matches: PatternMatch
     if (curMatchesOffset >= matches.size)
         return ParsedScreen.UnrecognizedScreen
 
-    val hours = currentTimeParseResult.value.hours
-    val minutes = currentTimeParseResult.value.minutes
+    val hour = currentTimeParseResult.value.hour
+    val minute = currentTimeParseResult.value.minute
 
     // There must always be some more matches after the time.
     // If not, then this is not a valid main screen.
@@ -462,8 +462,8 @@ private fun tryParseMainScreen(displayFrame: DisplayFrame, matches: PatternMatch
 
             return ParsedScreen.MainScreen(
                 MainScreenContent.Stopped(
-                    currentTimeHours = hours,
-                    currentTimeMinutes = minutes
+                    currentTimeHour = hour,
+                    currentTimeMinute = minute
                 )
             )
         }
@@ -475,11 +475,11 @@ private fun tryParseMainScreen(displayFrame: DisplayFrame, matches: PatternMatch
 
             curMatchesOffset++ // Move past the arrow icon.
 
-            return tryParseMainScreenWithTbrInfo(displayFrame, matches, curMatchesOffset, hours, minutes)
+            return tryParseMainScreenWithTbrInfo(displayFrame, matches, curMatchesOffset, hour, minute)
         }
         else -> {
             // This is a default, normal main screen.
-            return tryParseNormalMainScreen(displayFrame, matches, curMatchesOffset, hours, minutes)
+            return tryParseNormalMainScreen(displayFrame, matches, curMatchesOffset, hour, minute)
         }
     }
 }
@@ -488,8 +488,8 @@ private fun tryParseNormalMainScreen(
     displayFrame: DisplayFrame,
     matches: PatternMatches,
     matchesOffset: Int,
-    hours: Int,
-    minutes: Int
+    hour: Int,
+    minute: Int
 ): ParsedScreen {
     // Start parsing right after the SMALL_ARROW symbol (tryParseMainScreen()
     // takes care of checking for that symbol glyph already.)
@@ -523,8 +523,8 @@ private fun tryParseNormalMainScreen(
 
     return ParsedScreen.MainScreen(
         MainScreenContent.Normal(
-            currentTimeHours = hours,
-            currentTimeMinutes = minutes,
+            currentTimeHour = hour,
+            currentTimeMinute = minute,
             activeBasalRateNumber = activeBasalRateNumber,
             currentBasalRateFactor = currentBasalRateFactorParseResult.value
         )
@@ -535,8 +535,8 @@ private fun tryParseMainScreenWithTbrInfo(
     displayFrame: DisplayFrame,
     matches: PatternMatches,
     matchesOffset: Int,
-    hours: Int,
-    minutes: Int
+    hour: Int,
+    minute: Int
 ): ParsedScreen {
     // Start parsing right after the SMALL_ARROW symbol (tryParseMainScreen()
     // takes care of checking for that symbol glyph already.)
@@ -591,10 +591,10 @@ private fun tryParseMainScreenWithTbrInfo(
 
     return ParsedScreen.MainScreen(
         MainScreenContent.Tbr(
-            currentTimeHours = hours,
-            currentTimeMinutes = minutes,
-            remainingTbrDurationHours = remainingTbrDurationParseResult.value.hours,
-            remainingTbrDurationMinutes = remainingTbrDurationParseResult.value.minutes,
+            currentTimeHour = hour,
+            currentTimeMinute = minute,
+            remainingTbrDurationHours = remainingTbrDurationParseResult.value.hour,
+            remainingTbrDurationMinutes = remainingTbrDurationParseResult.value.minute,
             tbrPercentage = tbrPercentageParseResult.value,
             activeBasalRateNumber = activeBasalRateNumber,
             currentBasalRateFactor = currentBasalRateFactorParseResult.value
@@ -689,7 +689,7 @@ private fun parseTemporaryBasalRateDurationScreen(matches: PatternMatches, numTi
 
     return ParsedScreen.TemporaryBasalRateDurationScreen(
         durationInMinutes = if (durationParseResult != null)
-            durationParseResult.value.hours * 60 + durationParseResult.value.minutes
+            durationParseResult.value.hour * 60 + durationParseResult.value.minute
         else
             null
     )
@@ -775,15 +775,14 @@ private fun parseTimeAndDateSettingsScreen(
 private val timeRegex = "(\\d\\d):?(\\d\\d)(AM|PM)?|(\\d\\d)(AM|PM)".toRegex()
 private const val asciiDigitOffset = '0'.toInt()
 
-private fun amPmTo24Hours(hours: Int, amPm: String) =
-    if ((hours == 12) && (amPm == "AM"))
+private fun amPmTo24Hour(hour: Int, amPm: String) =
+    if ((hour == 12) && (amPm == "AM"))
         0
-    else if ((hours != 12) && (amPm == "PM"))
-        hours + 12
+    else if ((hour != 12) && (amPm == "PM"))
+        hour + 12
     else
-        hours
+        hour
 
-// Result: <hours, minutes, numMatches>
 private fun parseTime(matches: PatternMatches, matchesOffset: Int): ParsedValue<ParsedTime>? {
     // Parse strings that specify a time.
     //
@@ -848,17 +847,17 @@ private fun parseTime(matches: PatternMatches, matchesOffset: Int): ParsedValue<
     // The Regex result groups are:
     //
     // #0: The entire string
-    // #1: Hours from a HH:MM or HH:MM(AM/PM) format
-    // #2: Minutes from a HH:MM or HH:MM(AM/PM) format
+    // #1: Hour from a HH:MM or HH:MM(AM/PM) format
+    // #2: Minute from a HH:MM or HH:MM(AM/PM) format
     // #3: AM/PM specifier from a HH:MM or HH:MM(AM/PM) format
-    // #4: Hours from a HH(AM/PM) format
+    // #4: Hour from a HH(AM/PM) format
     // #5: AM/PM specifier from a HH(AM/PM) format
     //
     // Groups without a found value are set to null.
 
     val regexGroups = regexResult.groups
-    var hours = 0
-    var minutes = 0
+    var hour = 0
+    var minute = 0
 
     if (regexGroups[1] != null) {
         // Possibility 1: This is a time string that matches
@@ -868,18 +867,18 @@ private fun parseTime(matches: PatternMatches, matchesOffset: Int): ParsedValue<
         //     HH:MM(AM/PM)
         //
         // This means that group #2 must not be null, since it
-        // contains the minutes, and these are required here.
+        // contains the minute, and these are required here.
 
         if (regexGroups[2] == null)
             return null
 
-        hours = regexGroups[1]!!.value.toInt()
-        minutes = regexGroups[2]!!.value.toInt()
+        hour = regexGroups[1]!!.value.toInt()
+        minute = regexGroups[2]!!.value.toInt()
 
         // If there is an AM/PM specifier, convert the hour
         // to the 24-hour format.
         if (regexGroups[3] != null)
-            hours = amPmTo24Hours(hours, regexGroups[3]!!.value)
+            hour = amPmTo24Hour(hour, regexGroups[3]!!.value)
     } else if (regexGroups[4] != null) {
         // Possibility 2: This is a time string that matches
         // this format:
@@ -892,13 +891,13 @@ private fun parseTime(matches: PatternMatches, matchesOffset: Int): ParsedValue<
         if (regexGroups[5] == null)
             return null
 
-        hours = amPmTo24Hours(
+        hour = amPmTo24Hour(
             regexGroups[4]!!.value.toInt(),
             regexGroups[5]!!.value
         )
     }
 
-    return ParsedValue(ParsedTime(hours, minutes), numMatches)
+    return ParsedValue(ParsedTime(hour, minute), numMatches)
 }
 
 private enum class ParseIntegerMode {

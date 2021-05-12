@@ -170,7 +170,7 @@ class PumpCommandDispatcher(private val pump: Pump) {
             // begins so we can be sure that during screen cycling we
             // actually get to the next factor (which begins at
             // different hours).
-            var previousBeginHours = (rtNavigationContext.getParsedScreen() as ParsedScreen.BasalRateFactorSettingScreen).beginHours
+            var previousBeginHour = (rtNavigationContext.getParsedScreen() as ParsedScreen.BasalRateFactorSettingScreen).beginHour
 
             for (index in basalProfile.indices) {
                 val basalFactor = basalProfile[index]
@@ -187,7 +187,7 @@ class PumpCommandDispatcher(private val pump: Pump) {
                     val parsedScreen = rtNavigationContext.getParsedScreen()
                     parsedScreen as ParsedScreen.BasalRateFactorSettingScreen
 
-                    if (parsedScreen.beginHours == previousBeginHours) {
+                    if (parsedScreen.beginHour == previousBeginHour) {
                         // This is still the same basal rate factor screen,
                         // since the begin hours are the same. Invalidate the
                         // current parsed screen to force the context to get
@@ -195,7 +195,7 @@ class PumpCommandDispatcher(private val pump: Pump) {
                         rtNavigationContext.parsedScreenDone()
                         continue
                     } else {
-                        previousBeginHours = parsedScreen.beginHours
+                        previousBeginHour = parsedScreen.beginHour
                         break
                     }
                 }

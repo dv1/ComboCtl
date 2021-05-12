@@ -10,10 +10,10 @@ class DisplayFrameParsingTest {
         val resultNoFactor = parseDisplayFrame(testFrameBasalRateFactorSettingNoFactorScreen)
         assertEquals(
             ParsedScreen.BasalRateFactorSettingScreen(
-                beginHours = 2,
-                beginMinutes = 0,
-                endHours = 3,
-                endMinutes = 0,
+                beginHour = 2,
+                beginMinute = 0,
+                endHour = 3,
+                endMinute = 0,
                 numUnits = null
             ),
             resultNoFactor
@@ -22,10 +22,10 @@ class DisplayFrameParsingTest {
         val result0 = parseDisplayFrame(testFrameBasalRateFactorSettingScreen0)
         assertEquals(
             ParsedScreen.BasalRateFactorSettingScreen(
-                beginHours = 2,
-                beginMinutes = 0,
-                endHours = 3,
-                endMinutes = 0,
+                beginHour = 2,
+                beginMinute = 0,
+                endHour = 3,
+                endMinute = 0,
                 numUnits = 120
             ),
             result0
@@ -34,10 +34,10 @@ class DisplayFrameParsingTest {
         val result1 = parseDisplayFrame(testFrameBasalRateFactorSettingScreen1)
         assertEquals(
             ParsedScreen.BasalRateFactorSettingScreen(
-                beginHours = 2,
-                beginMinutes = 0,
-                endHours = 3,
-                endMinutes = 0,
+                beginHour = 2,
+                beginMinute = 0,
+                endHour = 3,
+                endMinute = 0,
                 numUnits = 10000
             ),
             result1
@@ -46,10 +46,10 @@ class DisplayFrameParsingTest {
         val resultAM = parseDisplayFrame(testFrameBasalRateFactorSettingScreenAM)
         assertEquals(
             ParsedScreen.BasalRateFactorSettingScreen(
-                beginHours = 0,
-                beginMinutes = 0,
-                endHours = 1,
-                endMinutes = 0,
+                beginHour = 0,
+                beginMinute = 0,
+                endHour = 1,
+                endMinute = 0,
                 numUnits = 50
             ),
             resultAM
@@ -58,10 +58,10 @@ class DisplayFrameParsingTest {
         val resultAMPM = parseDisplayFrame(testFrameBasalRateFactorSettingScreenAMPM)
         assertEquals(
             ParsedScreen.BasalRateFactorSettingScreen(
-                beginHours = 11,
-                beginMinutes = 0,
-                endHours = 12,
-                endMinutes = 0,
+                beginHour = 11,
+                beginMinute = 0,
+                endHour = 12,
+                endMinute = 0,
                 numUnits = 0
             ),
             resultAMPM
@@ -70,10 +70,10 @@ class DisplayFrameParsingTest {
         val resultPMAM = parseDisplayFrame(testFrameBasalRateFactorSettingScreenPMAM)
         assertEquals(
             ParsedScreen.BasalRateFactorSettingScreen(
-                beginHours = 23,
-                beginMinutes = 0,
-                endHours = 0,
-                endMinutes = 0,
+                beginHour = 23,
+                beginMinute = 0,
+                endHour = 0,
+                endMinute = 0,
                 numUnits = 0
             ),
             resultPMAM
@@ -86,8 +86,8 @@ class DisplayFrameParsingTest {
         assertEquals(
             ParsedScreen.MainScreen(
                 MainScreenContent.Normal(
-                    currentTimeHours = 10,
-                    currentTimeMinutes = 20,
+                    currentTimeHour = 10,
+                    currentTimeMinute = 20,
                     activeBasalRateNumber = 1,
                     currentBasalRateFactor = 200
                 )
@@ -99,8 +99,8 @@ class DisplayFrameParsingTest {
         assertEquals(
             ParsedScreen.MainScreen(
                 MainScreenContent.Normal(
-                    currentTimeHours = 10,
-                    currentTimeMinutes = 20,
+                    currentTimeHour = 10,
+                    currentTimeMinute = 20,
                     activeBasalRateNumber = 1,
                     currentBasalRateFactor = 200
                 )
@@ -115,8 +115,8 @@ class DisplayFrameParsingTest {
         assertEquals(
             ParsedScreen.MainScreen(
                 MainScreenContent.Stopped(
-                    currentTimeHours = 10,
-                    currentTimeMinutes = 20
+                    currentTimeHour = 10,
+                    currentTimeMinute = 20
                 )
             ),
             resultWithSeparator
@@ -126,8 +126,8 @@ class DisplayFrameParsingTest {
         assertEquals(
             ParsedScreen.MainScreen(
                 MainScreenContent.Stopped(
-                    currentTimeHours = 10,
-                    currentTimeMinutes = 20
+                    currentTimeHour = 10,
+                    currentTimeMinute = 20
                 )
             ),
             resultWithoutSeparator
@@ -140,8 +140,8 @@ class DisplayFrameParsingTest {
         assertEquals(
             ParsedScreen.MainScreen(
                 MainScreenContent.Tbr(
-                    currentTimeHours = 10,
-                    currentTimeMinutes = 21,
+                    currentTimeHour = 10,
+                    currentTimeMinute = 21,
                     remainingTbrDurationHours = 0,
                     remainingTbrDurationMinutes = 30,
                     tbrPercentage = 110,
