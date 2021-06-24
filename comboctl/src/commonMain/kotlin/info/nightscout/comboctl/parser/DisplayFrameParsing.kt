@@ -140,7 +140,7 @@ fun parseDisplayFrame(displayFrame: DisplayFrame): ParsedScreen {
 
     // Find the pattern matches first. We'll parse the
     // resulting list to try to recognize the screen type.
-    val matches = findPatternMatches(displayFrame)
+    val matches = findTokens(displayFrame)
 
     // First, try to parse screens that show a clock at
     // the top left corner. This is easy and quick to
@@ -183,7 +183,7 @@ fun parseDisplayFrame(displayFrame: DisplayFrame): ParsedScreen {
 
 /************* Parsers for main screen categories and misc screens *************/
 
-private fun tryParseTopLeftClockScreens(displayFrame: DisplayFrame, matches: PatternMatches): ParsedScreen {
+private fun tryParseTopLeftClockScreens(displayFrame: DisplayFrame, matches: Tokens): ParsedScreen {
     var result: ParsedScreen
 
     if (matches.isEmpty())
@@ -209,7 +209,7 @@ private fun tryParseTopLeftClockScreens(displayFrame: DisplayFrame, matches: Pat
     return ParsedScreen.UnrecognizedScreen
 }
 
-private fun tryParseMenuScreen(matches: PatternMatches): ParsedScreen {
+private fun tryParseMenuScreen(matches: Tokens): ParsedScreen {
     // Menu screens are characterized by one icon at the bottom center
     // that identifies what menu screen this is. There is also a title
     // at the top, but that one is redundant for parsing purposes,
@@ -257,7 +257,7 @@ private fun tryParseMenuScreen(matches: PatternMatches): ParsedScreen {
     return ParsedScreen.UnrecognizedScreen
 }
 
-private fun tryParseScreenByTitle(displayFrame: DisplayFrame, matches: PatternMatches): ParsedValue<ParsedScreen> {
+private fun tryParseScreenByTitle(displayFrame: DisplayFrame, matches: Tokens): ParsedValue<ParsedScreen> {
     // Try to parse the title. If the frame contains a screen with
     // a title, then the first N matches will contain small character
     // glyphs that make up said title.
@@ -283,7 +283,7 @@ private fun tryParseScreenByTitle(displayFrame: DisplayFrame, matches: PatternMa
     return ParsedValue(result, numTitleCharacters)
 }
 
-private fun tryParseAlertScreen(matches: PatternMatches, numTitlePatternMatches: Int): ParsedScreen {
+private fun tryParseAlertScreen(matches: Tokens, numTitlePatternMatches: Int): ParsedScreen {
     // Start at an offset that is past the screen title. The
     // warning and error screens have multiple possible titles
     // depending on the exact nature of the warning / error.
@@ -360,7 +360,7 @@ private fun tryParseAlertScreen(matches: PatternMatches, numTitlePatternMatches:
     }
 }
 
-private fun tryParseBasalRateTotalScreen(matches: PatternMatches, numTitlePatternMatches: Int): ParsedScreen {
+private fun tryParseBasalRateTotalScreen(matches: Tokens, numTitlePatternMatches: Int): ParsedScreen {
     // Start at an offset that is past the screen title.
     // We can identify this screen without having to
     // resort to the title.
@@ -388,7 +388,7 @@ private fun tryParseBasalRateTotalScreen(matches: PatternMatches, numTitlePatter
 
 /************* Parsers for top-left clock screens *************/
 
-private fun tryParseBasalRateFactorSettingScreen(matches: PatternMatches): ParsedScreen {
+private fun tryParseBasalRateFactorSettingScreen(matches: Tokens): ParsedScreen {
     // Start at 1 to skip the clock symbol. This functio is called
     // by tryParseTopLeftClockScreens() precisely _because_ that
     // function already checked for that clock symbol.
@@ -430,7 +430,7 @@ private fun tryParseBasalRateFactorSettingScreen(matches: PatternMatches): Parse
     )
 }
 
-private fun tryParseMainScreen(displayFrame: DisplayFrame, matches: PatternMatches): ParsedScreen {
+private fun tryParseMainScreen(displayFrame: DisplayFrame, matches: Tokens): ParsedScreen {
     // Start at 1 to skip the clock symbol. This functio is called
     // by tryParseTopLeftClockScreens() precisely _because_ that
     // function already checked for that clock symbol.
@@ -486,7 +486,7 @@ private fun tryParseMainScreen(displayFrame: DisplayFrame, matches: PatternMatch
 
 private fun tryParseNormalMainScreen(
     displayFrame: DisplayFrame,
-    matches: PatternMatches,
+    matches: Tokens,
     matchesOffset: Int,
     hour: Int,
     minute: Int
@@ -533,7 +533,7 @@ private fun tryParseNormalMainScreen(
 
 private fun tryParseMainScreenWithTbrInfo(
     displayFrame: DisplayFrame,
-    matches: PatternMatches,
+    matches: Tokens,
     matchesOffset: Int,
     hour: Int,
     minute: Int
@@ -606,7 +606,7 @@ private fun tryParseMainScreenWithTbrInfo(
 
 private fun parseQuickinfoScreen(
     displayFrame: DisplayFrame,
-    matches: PatternMatches,
+    matches: Tokens,
     numTitleCharacters: Int
 ): ParsedScreen {
     // A quickinfo screen always contains at least the title string,
@@ -647,7 +647,7 @@ private fun parseQuickinfoScreen(
     )
 }
 
-private fun parseTemporaryBasalRatePercentageScreen(matches: PatternMatches, numTitleCharacters: Int): ParsedScreen {
+private fun parseTemporaryBasalRatePercentageScreen(matches: Tokens, numTitleCharacters: Int): ParsedScreen {
     // Start to parse right after the matches that make up the title.
     var curMatchesOffset = numTitleCharacters
 
@@ -674,7 +674,7 @@ private fun parseTemporaryBasalRatePercentageScreen(matches: PatternMatches, num
     return ParsedScreen.TemporaryBasalRatePercentageScreen(percentage = percentageParseResult?.value)
 }
 
-private fun parseTemporaryBasalRateDurationScreen(matches: PatternMatches, numTitleCharacters: Int): ParsedScreen {
+private fun parseTemporaryBasalRateDurationScreen(matches: Tokens, numTitleCharacters: Int): ParsedScreen {
     // Start to parse right after the matches that make up the title.
     var curMatchesOffset = numTitleCharacters
 
@@ -697,7 +697,7 @@ private fun parseTemporaryBasalRateDurationScreen(matches: PatternMatches, numTi
 
 private fun parseTimeAndDateSettingsScreen(
     displayFrame: DisplayFrame,
-    matches: PatternMatches,
+    matches: Tokens,
     titleID: TitleID,
     numTitleCharacters: Int
 ): ParsedScreen {
@@ -783,7 +783,7 @@ private fun amPmTo24Hour(hour: Int, amPm: String) =
     else
         hour
 
-private fun parseTime(matches: PatternMatches, matchesOffset: Int): ParsedValue<ParsedTime>? {
+private fun parseTime(matches: Tokens, matchesOffset: Int): ParsedValue<ParsedTime>? {
     // Parse strings that specify a time.
     //
     // These time formats are used by the Combo:
@@ -907,7 +907,7 @@ private enum class ParseIntegerMode {
 }
 
 private fun parseInteger(
-    matches: PatternMatches,
+    matches: Tokens,
     matchesOffset: Int,
     parseMode: ParseIntegerMode = ParseIntegerMode.ALL_DIGITS
 ): ParsedValue<Int>? {
@@ -962,7 +962,7 @@ private fun parseInteger(
     return ParsedValue(integer, numMatches)
 }
 
-private fun parseDecimal(matches: PatternMatches, matchesOffset: Int): ParsedValue<Int>? {
+private fun parseDecimal(matches: Tokens, matchesOffset: Int): ParsedValue<Int>? {
     // This parses decimal values like "0.22" or "123".
     // Decimals are encoded as integers whose last 3 digits
     // are the fractional. So, for example, decimal "12"
@@ -1050,9 +1050,9 @@ private fun parseDecimal(matches: PatternMatches, matchesOffset: Int): ParsedVal
 // the whitespace is not counted there. The reason for this is that
 // the number of matched patterns is used for advancing *within*
 // the matches list, and the whitespaces do not exist in that list.
-private fun parseTitleString(matches: PatternMatches): ParsedValue<String> {
+private fun parseTitleString(matches: Tokens): ParsedValue<String> {
     var titleString = ""
-    var lastMatch: PatternMatch? = null
+    var lastMatch: Token? = null
 
     var numMatchedCharacters = 0
 
@@ -1091,7 +1091,7 @@ private fun parseTitleString(matches: PatternMatches): ParsedValue<String> {
 
 // If true, then there is a whitespace between the matches,
 // or the second match is located in a line below the first one.
-private fun checkForWhitespaceAndNewline(firstMatch: PatternMatch, secondMatch: PatternMatch): Boolean {
+private fun checkForWhitespaceAndNewline(firstMatch: Token, secondMatch: Token): Boolean {
     val y1 = firstMatch.y
     val y2 = secondMatch.y
 

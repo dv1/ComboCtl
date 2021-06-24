@@ -5,7 +5,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-class PatternMatchingTest {
+class TokenizationTest {
     @Test
     fun checkBasicPatternMatch() {
         // Try to match the LARGE_BASAL symbol pattern in the testFrameMainScreenWithTimeSeparator.
@@ -31,22 +31,22 @@ class PatternMatchingTest {
     }
 
     @Test
-    fun checkMainScreenPatternMatching() {
-        // Look for matches in the main menu display frame.
+    fun checkMainScreenTokenization() {
+        // Look for tokens in the main menu display frame.
         // The pattern matching algorithm scans the frame
         // left to right, top to bottom, and tries the
         // large patterns first.
         // The main screen contains symbols that yield
-        // ambiguities due to overlapping matches. For
+        // ambiguities due to overlapping tokens. For
         // example, the basal icon contains sub-patterns
         // that match the cyrillic letter "п". These must
-        // be filtered out by findPatternMatches().
+        // be filtered out by findTokens().
 
-        val matches = findPatternMatches(testFrameMainScreenWithTimeSeparator)
+        val tokens = findTokens(testFrameMainScreenWithTimeSeparator)
 
-        assertEquals(13, matches.size)
+        assertEquals(13, tokens.size)
 
-        val iterator = matches.iterator()
+        val iterator = tokens.iterator()
 
         assertEquals(Glyph.SmallSymbol(Symbol.SMALL_CLOCK), iterator.next().glyph)
 
@@ -69,8 +69,8 @@ class PatternMatchingTest {
     }
 
     @Test
-    fun checkStandardBolusPatternMatching() {
-        // Look for matches in the standard bolus display frame.
+    fun checkStandardBolusTokenization() {
+        // Look for tokens in the standard bolus display frame.
         // The pattern matching algorithm scans the frame
         // left to right, top to bottom, and tries the
         // large patterns first.
@@ -79,11 +79,11 @@ class PatternMatchingTest {
         // the screen, thus testing that patterns are also properly
         // matched if they are at a border.
 
-        val matches = findPatternMatches(testFrameStandardBolusMenuScreen)
+        val tokens = findTokens(testFrameStandardBolusMenuScreen)
 
-        assertEquals(14, matches.size)
+        assertEquals(14, tokens.size)
 
-        val iterator = matches.iterator()
+        val iterator = tokens.iterator()
 
         assertEquals(Glyph.SmallCharacter('S'), iterator.next().glyph)
         assertEquals(Glyph.SmallCharacter('T'), iterator.next().glyph)
