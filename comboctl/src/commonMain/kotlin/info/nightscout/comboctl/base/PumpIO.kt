@@ -111,15 +111,12 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
     // collectors. This means that flow collection never ends. (See
     // the Kotlin SharedFlow documentation for details.) It is set
     // up to not suspend emission calls, instead dropping the oldest
-    // frames, and store up to 2 frames. That way, the display frame
-    // producer is not held back by backpressure. And, in case the
-    // collectors do not collect fast enough, there's one more frame
-    // available. (Being more than 2 frames behind would indicate a
-    // very slow collector which would otherwise lead to frequent
-    // backpressure anyway.)
+    // frames. That way, the display frame producer is not blocked
+    // by backpressure. To allow subscribers to immediately get data
+    // (the last received display frame), the replay cache is set to 1.
     private var mutableDisplayFrameFlow = MutableSharedFlow<DisplayFrame>(
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
-        extraBufferCapacity = 2
+        replay = 1
     )
     private val displayFrameAssembler = DisplayFrameAssembler()
 
@@ -1406,6 +1403,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
                 // immediately and not run its block. By cancelling
                 // the inner flow instead, this is circumvented,
                 // and the NO_BUTTON status is sent successfully.
+                logger(LogLevel.DEBUG) { "Ending long RT button press by sending NO_BUTTON" }
                 sendPacketNoResponse(
                     ApplicationLayerIO.createRTButtonStatusPacket(ApplicationLayerIO.RTButtonCode.NO_BUTTON.id, true)
                 )

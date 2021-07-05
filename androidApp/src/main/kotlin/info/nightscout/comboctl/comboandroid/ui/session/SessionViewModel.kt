@@ -13,8 +13,7 @@ import info.nightscout.comboctl.base.PumpIO
 import info.nightscout.comboctl.comboandroid.App
 import info.nightscout.comboctl.comboandroid.utils.SingleLiveData
 import info.nightscout.comboctl.main.Pump
-import info.nightscout.comboctl.parser.ParsedScreenStream
-import kotlinx.coroutines.flow.flow
+import info.nightscout.comboctl.parser.parsedScreenFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -151,15 +150,9 @@ class SessionViewModel : ViewModel() {
                 }.let { _modeLiveData.value = it }
             }.launchIn(viewModelScope)
 
-            val parsedScreenStream = ParsedScreenStream(pumpLocal.displayFrameFlow)
-
-            flow {
-                while (true) {
-                    emit(parsedScreenStream.getNextParsedScreen())
-                }
-            }.onEach {
-                _parsedScreenLiveData.value = it.toString()
-            }.launchIn(viewModelScope)
+            parsedScreenFlow(pumpLocal.displayFrameFlow, ignoreAlertScreens = true)
+                .onEach { _parsedScreenLiveData.value = it.toString() }
+                .launchIn(viewModelScope)
         }
     }
 

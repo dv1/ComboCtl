@@ -7,11 +7,11 @@ import info.nightscout.comboctl.base.PumpIO
 import info.nightscout.comboctl.base.ShortestPathHalf
 import info.nightscout.comboctl.base.Tree
 import info.nightscout.comboctl.base.findShortestPath
-import info.nightscout.comboctl.parser.AlertScreenContent
 import info.nightscout.comboctl.parser.ParsedScreen
-import info.nightscout.comboctl.parser.ParsedScreenStream
-import kotlin.math.sign
+import info.nightscout.comboctl.parser.parsedScreenFlow
 import kotlin.reflect.KClassifier
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 
 private val logger = Logger.get("RTNavigation")
 
@@ -55,6 +55,24 @@ internal data class RTNavigationScreenInfo(
     override fun hashCode() = screenType.hashCode()
 }
 
+// Tree for computing a route to navigate between screens.
+// To make sense of this, it is important to keep two things in mind:
+//
+// 1. Transitions between screens in this tree do not have to specify
+//    all screens in-between. Instead, navigating works by pressing
+//    the button associated with the target screen until said screen
+//    shows up. For example, when starting at the main screen (which
+//    is the implicit root of the tree), navigating to the tempo basal
+//    menu screen would involve pressing the MENU button repeatedly
+//    until that screen appears.
+// 2. Even though navigating between the menus in the Combo appears
+//    as a list traversal, it can actually be modeled as a tree, where
+//    navigating to the next menu screen equals descending into child
+//    nodes. For example, getting from the basal rate menu screen to
+//    the time and date settings menu screen requires descending into
+//    child nodes by repeatedly pressing the MENU button according to
+//    the tree structure. Doing this makes it easy to find a shortest
+//    path between screens, since doing that in a tree is trivial.
 internal val rtNavigationTree = Tree<RTNavigationScreenInfo>(
     rootValue = RTNavigationScreenInfo(ParsedScreen.MainScreen::class, buttonToReachThis = null, buttonToExit = null)
 ) {
@@ -62,9 +80,22 @@ internal val rtNavigationTree = Tree<RTNavigationScreenInfo>(
     child(RTNavigationScreenInfo(ParsedScreen.TemporaryBasalRateMenuScreen::class, RTNavigationButton.MENU)) {
         child(RTNavigationScreenInfo(ParsedScreen.TemporaryBasalRatePercentageScreen::class, RTNavigationButton.CHECK))
             .child(RTNavigationScreenInfo(ParsedScreen.TemporaryBasalRateDurationScreen::class, RTNavigationButton.MENU))
-        child(RTNavigationScreenInfo(ParsedScreen.BasalRate1ProgrammingMenuScreen::class, RTNavigationButton.MENU))
-            .child(RTNavigationScreenInfo(ParsedScreen.BasalRateTotalScreen::class, RTNavigationButton.CHECK))
-                .child(RTNavigationScreenInfo(ParsedScreen.BasalRateFactorSettingScreen::class, RTNavigationButton.MENU))
+        child(RTNavigationScreenInfo(ParsedScreen.MyDataMenuScreen::class, RTNavigationButton.MENU)) {
+            child(RTNavigationScreenInfo(ParsedScreen.MyDataBolusDataScreen::class, RTNavigationButton.CHECK))
+                .child(RTNavigationScreenInfo(ParsedScreen.MyDataErrorDataScreen::class, RTNavigationButton.MENU))
+                    .child(RTNavigationScreenInfo(ParsedScreen.MyDataDailyTotalsScreen::class, RTNavigationButton.MENU))
+                        .child(RTNavigationScreenInfo(ParsedScreen.MyDataTbrDataScreen::class, RTNavigationButton.MENU))
+            child(RTNavigationScreenInfo(ParsedScreen.BasalRate1ProgrammingMenuScreen::class, RTNavigationButton.MENU)) {
+                child(RTNavigationScreenInfo(ParsedScreen.BasalRateTotalScreen::class, RTNavigationButton.CHECK))
+                    .child(RTNavigationScreenInfo(ParsedScreen.BasalRateFactorSettingScreen::class, RTNavigationButton.MENU))
+                child(RTNavigationScreenInfo(ParsedScreen.TimeAndDateSettingsMenuScreen::class, RTNavigationButton.MENU))
+                    .child(RTNavigationScreenInfo(ParsedScreen.TimeAndDateSettingsHourScreen::class, RTNavigationButton.CHECK))
+                        .child(RTNavigationScreenInfo(ParsedScreen.TimeAndDateSettingsMinuteScreen::class, RTNavigationButton.MENU))
+                            .child(RTNavigationScreenInfo(ParsedScreen.TimeAndDateSettingsYearScreen::class, RTNavigationButton.MENU))
+                                .child(RTNavigationScreenInfo(ParsedScreen.TimeAndDateSettingsMonthScreen::class, RTNavigationButton.MENU))
+                                    .child(RTNavigationScreenInfo(ParsedScreen.TimeAndDateSettingsDayScreen::class, RTNavigationButton.MENU))
+            }
+        }
     }
 }
 
@@ -114,441 +145,414 @@ class CouldNotFindRTScreenException(val targetScreenType: KClassifier) : RTNavig
 /**
  * Exception thrown when a function needed a specific screen type but could not get it.
  *
- * Typically, this happens because a display frame could not be parsed,
- * so the screen is [ParsedScreen.UnrecognizedScreen].
+ * Typically, this happens because a display frame could not be parsed
+ * (= the screen is [ParsedScreen.UnrecognizedScreen]).
  */
 class NoUsableRTScreenException() : RTNavigationException("No usable RT screen available")
 
 /**
- * Exception thrown when alert screens appear while navigating through RT screens.
+ * Context class for housing states related to navigating through RT screens.
  *
- * @property alertScreenContents The content of the alert screen(s).
- */
-class AlertScreenException(val alertScreenContents: List<AlertScreenContent>) :
-    RTNavigationException("RT alert screen appeared with contents: $alertScreenContents") {
-    /** Returns true if there is at least one [AlertScreenContent.Warning] in [alertScreenContents]. */
-    fun containsWarnings() = alertScreenContents.any { it is AlertScreenContent.Warning }
-
-    /** Returns true if there is at least one [AlertScreenContent.Error] in [alertScreenContents]. */
-    fun containsErrors() = alertScreenContents.any { it is AlertScreenContent.Error }
-
-    /** Returns the warning code if [alertScreenContents] only contains a single warning, and null otherwise. */
-    fun getSingleWarningCode() =
-        if ((alertScreenContents.size == 1) && (alertScreenContents[0] is AlertScreenContent.Warning))
-            (alertScreenContents[0] as AlertScreenContent.Warning).code
-        else
-            null
-}
-
-/**
- * Context object for navigating through remote terminal (RT) screens.
+ * This wraps a [Pump] instance in a higher level interface that takes care of button
+ * presses (including button combinations, for example MENU+UP for navigating back)
+ * and handles the instantiation of [ParsedScreen] flows. RT navigation functions
+ * like [cycleToRTScreen] use this context.
  *
- * This stores all common states that are used during navigation. In particular,
- * the last parsed screen is stored. This is important, since it takes some time
- * until the Combo sends a display frame with a _new_ screen inside (it sometimes
- * sends the same display frame multiple times, or different display frames with
- * the same screen type multiple times). If for example function A got a parsed
- * screen but could not handle it, function B might still be interested in trying
- * to interpret the current screen contents. By being able to access the last
- * parsed screen, function B can then interpret it immediately without having
- * to wait for a new screen again. This improves performance overall.
+ * It is possible to create multiple context instances that are associated with the same
+ * pump, but it is important to make sure that at most one instance operates that pump
+ * at the same time. It is therefore not recommended to create more than one context
+ * for the same pump (and it rarely makes sense to do so).
  *
- * This also contains code to operate the pump, particularly for pushing buttons.
+ * As a safeguard, [maxNumCycleAttempts] limits the amount of screen changes that
+ * navigation functions like [cycleToRTScreen] or [waitUntilScreenAppears] can see
+ * before they throw [CouldNotFindRTScreenException]. The default value is 20,
+ * meaning that these functions can at most see 20 transitions betwen screens.
+ * This prevents infinite loops in case these functions fail to find the screen
+ * they are looking for.
  *
- * @property pump Pump to operate. Navigation functions may need to access
- *           some of the [Pump] functionality, which is why this exists.
- * @property parsedScreenStream [ParsedScreenStream] instance to receive
- *           parsed screens from.
- * @property maxNumCycleAttempts How many times RT navigation shall cycle through
- *           screens before giving up. This is necessary to avoid potential
- *           infinite loops.
+ * @property pump Pump to associate the context with.
+ * @property maxNumCycleAttempts Maximum RT screen cycle count. Must be at least 1.
  */
 class RTNavigationContext(
-    val pump: Pump,
-    val parsedScreenStream: ParsedScreenStream,
+    private val pump: Pump,
     val maxNumCycleAttempts: Int = 20
 ) {
-    private var parsedScreen: ParsedScreen = ParsedScreen.UnrecognizedScreen
-    private var parsedScreenSet = false
+    init {
+        require(maxNumCycleAttempts > 0)
+    }
 
     /**
-     * Gets the parsed screen from this context object.
+     * Returns a new [Flow] of [ParsedScreen] instances.
      *
-     * This returns the parsed screen that is internally stored. If there is
-     * no such parsed screen, it fetches one from the [ParsedScreenStream]
-     * that was passed to the constructor, stores a reference to that newly
-     * received parsed screen internally (to make sure the next time this
-     * function is called, that parsed screen is returned immediately),
-     * and then returns the parsed screen. If callers decide that that
-     * parsed screen has been fully processed and needs to be discarded
-     * (to be able to look at new parsed screens), [parsedScreenDone]
-     * needs to be called.
+     * See the [parsedScreenFlow] documentation for details about the flow itself.
+     * This function creates one such flow whose dismissAlertAction is to press
+     * the CHECK button.
      *
-     * If alert screens appear, they are automatically dismissed by
-     * "pressing" the CHECK button. Their error/warning codes are gathered,
-     * and once all screens are dismissed, an [AlertScreenException]
-     * is thrown. Any operation that was going on (setting a basal profile
-     * for example) must be considered as aborted. Once the screens have
-     * been dismissed and the exception was thrown, the Combo returns
-     * to the main screen. These alert screens are also implicitly
-     * marked as done, as if [parsedScreenDone] had been called.
+     * IMPORTANT: If multiple parsed screen flows are created, and all of them are
+     * used at the same time, then only one of them can have [ignoreAlertScreens]
+     * set to false. All the others must set this argument to true. Otherwise, the
+     * flows may dismiss screens more often than necessary, possibly causing undefined
+     * behavior. Also, that way, only the flow that actually dismisses alert screens
+     * throws [AlertScreenException].
      *
-     * @return The parsed screen, of [ParsedScreen.UnrecognizedScreen]
-     *         if the screen could not be recognized and consequently
-     *         was not parsed.
-     * @throws AlertScreenException if one or more alert screens appear.
+     * @param filterDuplicates Whether or not to filter out duplicates. Filtering is
+     *        enabled by default.
+     * @param ignoreAlertScreens If set to true, alert screens are ignored and dropped.
+     *        If set to false, alert screens are processed, and an exception is thrown.
+     *        Set to false by default.
+     * @return The [ParsedScreen] flow.
      */
-    suspend fun getParsedScreen(): ParsedScreen {
-        if (!parsedScreenSet) {
-            val alertScreenContents = mutableListOf<AlertScreenContent>()
-
-            while (true) {
-                parsedScreen = parsedScreenStream.getNextParsedScreen()
-
-                if (parsedScreen is ParsedScreen.AlertScreen) {
-                    when (val alertScreenContent = (parsedScreen as ParsedScreen.AlertScreen).content) {
-                        is AlertScreenContent.Warning,
-                        is AlertScreenContent.Error -> {
-                            logger(LogLevel.WARN) { "Got alert screen with content $alertScreenContent" }
-                            if (alertScreenContent !in alertScreenContents)
-                                alertScreenContents.add(alertScreenContent)
-                            pushButton(RTNavigationButton.CHECK)
-                        }
-                        else -> Unit
-                    }
-                } else
-                    break
-            }
-
-            if (!alertScreenContents.isEmpty()) {
-                parsedScreenSet = false
-                throw AlertScreenException(alertScreenContents)
-            } else
-                parsedScreenSet = true
+    fun getParsedScreenFlow(filterDuplicates: Boolean = true, ignoreAlertScreens: Boolean = false) =
+        parsedScreenFlow(pump.displayFrameFlow, filterDuplicates, ignoreAlertScreens) {
+            shortPressButton(RTNavigationButton.CHECK)
         }
 
-        return parsedScreen
-    }
+    suspend fun startLongButtonPress(button: RTNavigationButton, keepGoing: (suspend () -> Boolean)? = null) =
+        pump.startLongRTButtonPress(button.rtButtonCodes, keepGoing)
 
-    /**
-     * Invalidates any previously received parsed screen.
-     *
-     * This needs to be called once a parsed screen is considered to
-     * have been fully processed and to not be of any use anymore.
-     * Calling this then guarantees that the next [getParsedScreen]
-     * call will fetch a new parsed screen instead of returning the
-     * previously received one.
-     */
-    fun parsedScreenDone() {
-        parsedScreenSet = false
-    }
+    suspend fun stopLongButtonPress() = pump.stopLongRTButtonPress()
 
-    /**
-     * Pushes an RT navigation button.
-     *
-     * See [RTNavigationButton] for details about why this exists.
-     *
-     * @param button RT navigation button to press.
-     */
-    suspend fun pushButton(button: RTNavigationButton) =
-        pump.sendShortRTButtonPress(button.rtButtonCodes)
+    suspend fun waitForLongButtonPressToFinish() = pump.waitForLongRTButtonPressToFinish()
+
+    suspend fun shortPressButton(button: RTNavigationButton) = pump.sendShortRTButtonPress(button.rtButtonCodes)
 }
 
 /**
- * Cycles through RT screens until the a screen with the desired type is found.
+ * Repeatedly presses the [button] until a screen of the required [targetScreenType] appears.
  *
- * "Cycling" means to press a particular RT navigation button until a screen
- * with the desired type is found. If the button is pressed a certain number
- * of times (defined by [RTNavigationContext]'s maxNumCycleAttempts property),
- * and no matching screen is found, this throws [CouldNotFindRTScreenException].
- *
- * This suspends until either the screen is found or an exception is thrown.
- *
- * @param rtNavigationContext RT navigation context to use for cycling through screens.
- * @param button RT navigation button to press for cycling between screens.
- * @param targetScreenType Type of the screen to search for.
- * @throws CouldNotFindRTScreenException if no screen with the given type was found.
+ * @param rtNavigationContext Context for navigating to the target screen.
+ * @param button Button to press for cycling to the target screen.
+ * @param targetScreenType Type of the target screen.
+ * @throws CouldNotFindRTScreenException if the screen was not found even
+ *         after this function moved [RTNavigationContext.maxNumCycleAttempts]
+ *         times from screen to screen.
+ * @throws AlertScreenException if alert screens are seen.
  */
 suspend fun cycleToRTScreen(
     rtNavigationContext: RTNavigationContext,
     button: RTNavigationButton,
     targetScreenType: KClassifier
 ) {
-    for (numSeenScreens in 0 until rtNavigationContext.maxNumCycleAttempts) {
-        val parsedScreen = rtNavigationContext.getParsedScreen()
+    var cycleCount = 0
+    rtNavigationContext.getParsedScreenFlow(ignoreAlertScreens = false)
+        .first { parsedScreen ->
+            if (cycleCount >= rtNavigationContext.maxNumCycleAttempts)
+                throw CouldNotFindRTScreenException(targetScreenType)
 
-        if (parsedScreen::class == targetScreenType)
-            return
-
-        rtNavigationContext.pushButton(button)
-
-        rtNavigationContext.parsedScreenDone()
-    }
-
-    throw CouldNotFindRTScreenException(targetScreenType)
+            if (parsedScreen::class == targetScreenType) {
+                true
+            } else {
+                rtNavigationContext.shortPressButton(button)
+                cycleCount++
+                false
+            }
+        }
 }
 
 /**
- * Suspends until the desired screen type shows up.
+ * Keeps watching out for incoming screens until one of the desired type is observed.
  *
- * This is useful for when an RT button was pressed programmatically, and
- * execution has to wait until the effect of that is seen (when pressing said
- * button is supposed to change to another screen).
- *
- * This is almost identical to [cycleToRTScreen], except that that function
- * repeatedly presses an RT button after newly received parsed screen, while
- * this function just waits for the required screen to eventually show up.
- *
- * @param rtNavigationContext RT navigation context to use for waiting for the screen.
- * @param targetScreenType Type of the screen to wait for.
- * @throws CouldNotFindRTScreenException if no screen with the given type appeared.
+ * @param rtNavigationContext Context for observing incoming screens.
+ * @param targetScreenType Type of the target screen.
+ * @throws CouldNotFindRTScreenException if the screen was not seen even after
+ *         this function observed [RTNavigationContext.maxNumCycleAttempts]
+ *         screens coming in.
+ * @throws AlertScreenException if alert screens are seen.
  */
 suspend fun waitUntilScreenAppears(rtNavigationContext: RTNavigationContext, targetScreenType: KClassifier) {
-    for (numSeenScreens in 0 until rtNavigationContext.maxNumCycleAttempts) {
-        val parsedScreen = rtNavigationContext.getParsedScreen()
+    var cycleCount = 0
+    rtNavigationContext.getParsedScreenFlow(ignoreAlertScreens = false)
+        .first { parsedScreen ->
+            if (cycleCount >= rtNavigationContext.maxNumCycleAttempts)
+                throw CouldNotFindRTScreenException(targetScreenType)
 
-        if (parsedScreen::class == targetScreenType)
-            return
-
-        rtNavigationContext.parsedScreenDone()
-    }
-
-    throw CouldNotFindRTScreenException(targetScreenType)
+            if (parsedScreen::class == targetScreenType) {
+                true
+            } else {
+                cycleCount++
+                false
+            }
+        }
 }
 
 /**
- * Navigates through screens, entering and exiting subsections, until the target is reached.
+ * Navigates from the current screen to the screen of the given type.
  *
- * This differs from [cycleToRTScreen] in that only a target screen type is given.
- * A shortest path from the current screen to a screen with the given target type
- * is computed and then traversed. That path contains information about what
- * intermediate screens to cycle to and what buttons to press for cycling.
+ * This performs a navigation by pressing the appropriate RT buttons to
+ * transition between screens until the target screen is reached. This uses
+ * an internal navigation tree to compute the shortest path from the current
+ * to the target screen. If no path to the target screen can be found,
+ * [CouldNotFindRTScreenException] is thrown.
  *
- * @param rtNavigationContext RT navigation context to use for cycling through screens.
- * @param targetScreenType Type of the screen to navigate to.
- * @throws CouldNotFindRTScreenException if there is no screen of type [targetScreenType]
- *         in the internal RT navigation tree.
+ * @param rtNavigationContext Context to use for navigating.
+ * @param targetScreenType Type of the target screen.
+ * @throws CouldNotFindRTScreenException if the screen was not seen even after
+ *         this function observed [RTNavigationContext.maxNumCycleAttempts]
+ *         screens coming in, or if no path from the current screen to
+ *         [targetScreenType] could be found.
+ * @throws AlertScreenException if alert screens are seen.
  */
 suspend fun navigateToRTScreen(
     rtNavigationContext: RTNavigationContext,
     targetScreenType: KClassifier
 ) {
-    // Handle special case where we currently are in a screen that could
-    // not be recognized by any parser. In such a case, we just exit until
-    // we end up at a recognizable screen, then continue from there.
-    while (true) {
-        val initialParsedScreen = rtNavigationContext.getParsedScreen()
-        if (initialParsedScreen is ParsedScreen.UnrecognizedScreen) {
-            rtNavigationContext.parsedScreenDone()
-            rtNavigationContext.pushButton(RTNavigationButton.BACK)
-        } else
-            break
-    }
+    // Get the current screen so we know the starting point.
+    val currentParsedScreen = rtNavigationContext.getParsedScreenFlow(ignoreAlertScreens = false)
+        .first { parsedScreen ->
+            if (parsedScreen is ParsedScreen.UnrecognizedScreen) {
+                rtNavigationContext.shortPressButton(RTNavigationButton.BACK)
+                false
+            } else {
+                true
+            }
+        }
 
-    // Get the current screen. This will be our starting point for the path.
-    val currentParsedScreen = rtNavigationContext.getParsedScreen()
-
+    // Figure out the shortest path.
     val path = findRTNavigationPath(currentParsedScreen::class, targetScreenType)
     if (path.isEmpty())
         throw CouldNotFindRTScreenException(targetScreenType)
 
-    for (pathItem in path) {
-        if ((pathItem.screenType != null) && pathItem.nextNavButton != null) {
-            cycleToRTScreen(
-                rtNavigationContext,
-                pathItem.nextNavButton,
-                pathItem.screenType
-            )
-        }
-    }
-}
+    // Navigate from the current to the target screen.
+    var cycleCount = 0
+    val pathIt = path.iterator()
+    var nextTargetPathItem = pathIt.next()
+    rtNavigationContext.getParsedScreenFlow(ignoreAlertScreens = false)
+        .first { parsedScreen ->
+            if (cycleCount >= rtNavigationContext.maxNumCycleAttempts)
+                throw CouldNotFindRTScreenException(targetScreenType)
 
-// Gets an integer quantity from the current parsed screen.
-// This must not be called if the current screen is unknown,
-// otherwise, NoUsableRTScreenException is thrown.
-// Since different screen types contain quantities with
-// different names, a getScreenQuantity function literal
-// needs to be provided that takes care of pulling the
-// quantity from the current screen.
-// If the current parsed screen was recognized, but its quantity
-// currently does not show up (typically because it is blinking),
-// then getScreenQuantity returns null. In some cases, a null
-// return value may already be OK. In others, it is necessary
-// to wait until the quantity shows up. To distinguish between
-// these two, the waitUntilQuantityAvailable argument exists.
-internal suspend fun getQuantityOnScreen(
-    rtNavigationContext: RTNavigationContext,
-    waitUntilQuantityAvailable: Boolean,
-    getScreenQuantity: (screen: ParsedScreen) -> Int?
-): Int? {
-    while (true) {
-        val parsedScreen = rtNavigationContext.getParsedScreen()
-        if (parsedScreen is ParsedScreen.UnrecognizedScreen)
-            throw NoUsableRTScreenException()
+            if (parsedScreen::class == nextTargetPathItem.screenType) {
+                cycleCount = 0
+                if (pathIt.hasNext()) {
+                    nextTargetPathItem = pathIt.next()
+                } else
+                    return@first true
+            }
 
-        val currentQuantity = getScreenQuantity(parsedScreen)
-
-        if (currentQuantity != null) {
-            return currentQuantity
-        } else {
-            if (waitUntilQuantityAvailable) {
-                // Mark the current parsed screen as done, since
-                // while it was recognized, its quantity currently
-                // does not show up, so we try the next screen -
-                // perhaps that one does show the quantity.
-                rtNavigationContext.parsedScreenDone()
+            if (nextTargetPathItem.nextNavButton != null) {
+                rtNavigationContext.shortPressButton(nextTargetPathItem.nextNavButton!!)
+                cycleCount++
+                false
             } else
-                return null
+                true
         }
-    }
 }
 
 /**
- * Adjusts a displayed quantity until its value matches the given target value.
+ * Holds down a specific button until the specified screen check callback returns true.
  *
- * Adjustments are done by sending long and short RT button presses (specifically
- * the UP and DOWN buttons). At first, a long button press is started to quickly
- * get close to the target quantity. Afterwards, finetuning is done using a series
- * of short RT button presses.
+ * This is useful for performing an ongoing activity based on the screen contents.
+ * [adjustQuantityOnScreen] uses this internally for adjusting a quantiy on screen.
+ * [button] is kept pressed until [checkScreen] returns true, at which point that
+ * RT button is released.
  *
- * The [getScreenQuantity] function literal takes the current [ParsedScreen] and
- * retrieves & returns the displayed quantity. If said quantity currently does not
- * show up (because it is blinking for example), then it returns null.
+ * @param rtNavigationContext Context to use for the long RT button press.
+ * @param button Button to long-press.
+ * @param checkScreen Callback that returns false if the button shall continue
+ *        to be long-pressed or true if it shall be released. The latter also
+ *        causes this function to finish.
+ * @return The last observed [ParsedScreen].
+ * @throws AlertScreenException if alert screens are seen.
+ */
+suspend fun longPressRTButtonUntil(
+    rtNavigationContext: RTNavigationContext,
+    button: RTNavigationButton,
+    checkScreen: (parsedScreen: ParsedScreen) -> Boolean
+): ParsedScreen {
+    var startedLongPress = false
+
+    try {
+        logger(LogLevel.DEBUG) { "Starting long RT button press:  button: $button" }
+        val screenFlow = rtNavigationContext.getParsedScreenFlow(ignoreAlertScreens = false)
+
+        return screenFlow
+            .first { parsedScreen ->
+                if (checkScreen(parsedScreen)) {
+                    return@first true
+                }
+
+                if (!startedLongPress) {
+                    rtNavigationContext.startLongButtonPress(button) {
+                        // Wait for a short while. This is necessary, because
+                        // at each startLongButtonPress callback iteration,
+                        // a command is sent to the Combo that informs it
+                        // that the button is still being held down. This
+                        // triggers an update in the Combo. For example, if
+                        // the current screen is a TBR percentage screen,
+                        // and the UP button is held down, then the percentage
+                        // will be increased after that command is sent to
+                        // the Combo. These commands cannot be sent too
+                        // rapidly, since it takes the Combo some time to
+                        // send a new screen (a screen with the incremented
+                        // percentage in this TBR example) to the client.
+                        // If the commands are sent too quickly, then the
+                        // Combo would keep sending new screens even long
+                        // after the button was released.
+                        delay(110)
+                        true
+                    }
+                    startedLongPress = true
+                }
+
+                false
+            }
+    } finally {
+        logger(LogLevel.DEBUG) { "Stopping long RT button press:  button: $button" }
+        if (startedLongPress)
+            rtNavigationContext.stopLongButtonPress()
+    }
+}
+
+sealed class ShortPressRTButtonsCommand {
+    object DoNothing : ShortPressRTButtonsCommand()
+    object Stop : ShortPressRTButtonsCommand()
+    data class PressButton(val button: RTNavigationButton) : ShortPressRTButtonsCommand()
+}
+
+/**
+ * Short-presses a button until the specified screen check callback returns true.
  *
- * @param rtNavigationContext RT navigation context to use for cycling through screens.
- * @param targetQuantity Quantity to target with the adjustments.
- * @param getScreenQuantity Function literal to get the displayed quantity.
- * @throws NoUsableRTScreenException If the initial parsed screen available in the
- *         context at the time of this function call is null (= unrecognized).
- *         Quantities of unrecognized screens cannot be adjusted.
- * @throws IllegalStateException if this function is called while the pump
- *         is not in the remote terminal mode.
- * @throws Exception Exceptions that were thrown in the getScreenQuantity callback.
+ * This is the short-press counterpart to [longPressRTButtonUntil]. For each observed
+ * [ParsedScreen], it invokes the specified  [checkScreen] callback. That callback then
+ * returns a command, telling this function what to do next. If that comand is
+ * [ShortPressRTButtonsCommand.PressButton], this function short-presses the button
+ * specified in that sealed subclass, and then waits for the next [ParsedScreen].
+ * If the command is [ShortPressRTButtonsCommand.Stop], this function finishes.
+ * If the command is [ShortPressRTButtonsCommand.DoNothing], this function skips
+ * the current [ParsedScreen]. The last command is useful for example when the
+ * screen contents are blinking. By returning DoNothing, the callback effectively
+ * causes this function to wait until another screen (hopefully without the blinking)
+ * arrives and can be processed by that callback.
+ *
+ * @param rtNavigationContext Context to use for the short RT button press.
+ * @param checkScreen Callback that returns the command this function shall execute next.
+ * @return The last observed [ParsedScreen].
+ * @throws AlertScreenException if alert screens are seen.
+ */
+suspend fun shortPressRTButtonsUntil(
+    rtNavigationContext: RTNavigationContext,
+    checkScreen: (parsedScreen: ParsedScreen) -> ShortPressRTButtonsCommand
+): ParsedScreen {
+    return rtNavigationContext.getParsedScreenFlow(ignoreAlertScreens = false)
+        .first { parsedScreen ->
+            when (val command = checkScreen(parsedScreen)) {
+                ShortPressRTButtonsCommand.DoNothing -> Unit
+                ShortPressRTButtonsCommand.Stop -> return@first true
+                is ShortPressRTButtonsCommand.PressButton -> rtNavigationContext.shortPressButton(command.button)
+            }
+
+            false
+        }
+}
+
+/**
+ * Adjusts a quantity that is shown currently on screen, using the specified in/decrement buttons.
+ *
+ * Internally, this first uses a long RT button press to quickly change the quantity
+ * to be as close as possible to the [targetQuantity]. Then, with short RT button
+ * presses, any leftover differences between the currently shown quantity and
+ * [targetQuantity] is corrected.
+ *
+ * The current quantity is extracted from the current [ParsedScreen] with the
+ * [getQuantity] callback. That callback returns null if the quantity currently
+ * is not available (typically happens because the screen is blinking). This
+ * will not cause an error; instead, this function will just wait until the
+ * callback returns a non-null value.
+ *
+ * @param rtNavigationContext Context to use for adjusting the quantity.
+ * @param targetQuantity Quantity to set the on-screen quantity to.
+ * @param incrementButton What RT button to press for incrementing the on-screen quantity.
+ * @param decrementButton What RT button to press for decrementing the on-screen quantity.
+ * @param getQuantity Callback for extracting the on-screen quantity.
+ * @throws AlertScreenException if alert screens are seen.
  */
 suspend fun adjustQuantityOnScreen(
     rtNavigationContext: RTNavigationContext,
     targetQuantity: Int,
-    getScreenQuantity: (screen: ParsedScreen) -> Int?
-): Int {
-    check(rtNavigationContext.pump.currentModeFlow.value == PumpIO.Mode.REMOTE_TERMINAL)
+    incrementButton: RTNavigationButton = RTNavigationButton.UP,
+    decrementButton: RTNavigationButton = RTNavigationButton.DOWN,
+    getQuantity: (parsedScreen: ParsedScreen) -> Int?
+) {
+    var initialQuantity = 0
 
-    // Get the currently displayed quantity; if the quantity is currently not
-    // retrievable, wait until it is so we have a non-null initial quantity.
-    var currentQuantity = getQuantityOnScreen(rtNavigationContext, waitUntilQuantityAvailable = true, getScreenQuantity)
-    var previousQuantity: Int? = null
-    var quantityParsed = true
-
-    val initiallySeenQuantity = currentQuantity!!
-
-    if (currentQuantity == targetQuantity) {
-        logger(LogLevel.DEBUG) { "Quantity on screen is already set to the target quantity $targetQuantity; not adjusting anything" }
-        return targetQuantity
-    }
-
-    logger(LogLevel.DEBUG) { "Initial quantity on screen before adjusting: $initiallySeenQuantity" }
-
-    // Perform the long RT button press.
-
-    var button = if (currentQuantity > targetQuantity)
-        RTNavigationButton.DOWN
-    else
-        RTNavigationButton.UP
-
-    try {
-        rtNavigationContext.pump.startLongRTButtonPress(button.rtButtonCodes) {
-            // This check prevents a redundant getQuantityOnScreen
-            // call the first time this block is called.
-            if (!quantityParsed) {
-                // Get the newly displayed quantity. We do not wait until  it is
-                // non-null, since such a wait takes a while. If we get null as
-                // value, we simply continue with the current quantity instead.
-                // That way, we do not slow down the increment/decrement
-                // during the long RT button pressing.
-                val newQuantity = getQuantityOnScreen(rtNavigationContext, waitUntilQuantityAvailable = false, getScreenQuantity)
-
-                if (newQuantity != null) {
-                    previousQuantity = currentQuantity
-                    currentQuantity = newQuantity
-                }
-            }
-
-            val retval = if (currentQuantity == targetQuantity) {
-                // Matching value, we can exit.
-                false
-            } else if ((previousQuantity != null) && ((previousQuantity!! - targetQuantity).sign != (currentQuantity!! - targetQuantity).sign)) {
-                // If previousQuantity is "before" targetQuantity while
-                // currentQuantity is "after" targetQuantity, then we went
-                // past the target value, and we can exit.
-                false
-            } else {
-                rtNavigationContext.parsedScreenDone()
-                quantityParsed = false
+    // Get the quantity that is initially shown on screen.
+    // This is necessary to (a) check if anything needs to
+    // be done at all and (b) decide what button to long-press
+    // in the code block below.
+    rtNavigationContext.getParsedScreenFlow(ignoreAlertScreens = false)
+        .first { parsedScreen ->
+            val quantity = getQuantity(parsedScreen)
+            if (quantity != null) {
+                initialQuantity = quantity
                 true
+            } else
+                false
+        }
+
+    if (initialQuantity == targetQuantity)
+        return
+
+    val needToIncrement = (initialQuantity < targetQuantity)
+
+    // First phase: Adjust quantity with a long RT button press.
+    // This is (much) faster than using short RT button presses,
+    // but can overshoot, especially since the Combo increases the
+    // increment/decrement steps over time. (That is why the
+    // comparisons below are <= and >= instead of ==).
+    longPressRTButtonUntil(
+        rtNavigationContext,
+        if (needToIncrement) incrementButton else decrementButton
+    ) { parsedScreen ->
+        val currentQuantity = getQuantity(parsedScreen)
+        if (currentQuantity == null) {
+            false
+        } else {
+            if (needToIncrement)
+                (currentQuantity >= targetQuantity)
+            else
+                (currentQuantity <= targetQuantity)
+        }
+    }
+
+    var lastQuantity: Int? = null
+
+    // Observe the screens until we see a screen whose quantity
+    // is the same as the previous screen's. This "debouncing" is
+    // necessary since the Combo may be somewhat behind with the
+    // display frames it sends to the client. This means that even
+    // after the longPressRTButtonUntil() call above finished, the
+    // Combo may still send several send updates, and the on-screen
+    // quantity may still be in/decremented. We need to wait until
+    // that in/decrementing is over before we can do any corrections
+    // with short RT button presses.
+    rtNavigationContext.getParsedScreenFlow(filterDuplicates = false)
+        .first { parsedScreen ->
+            val currentQuantity = getQuantity(parsedScreen)
+
+            if (currentQuantity != null) {
+                if (currentQuantity == lastQuantity)
+                    return@first true
+                else
+                    lastQuantity = currentQuantity
             }
 
-            retval
+            false
         }
 
-        rtNavigationContext.pump.waitForLongRTButtonPressToFinish()
-    } catch (e: Exception) {
-        // Make sure the long RT button press is _always_ finished
-        // to not cause state related issues like failing short RT
-        // button presses later on.
-        rtNavigationContext.pump.stopLongRTButtonPress()
-        throw e
+    // If the on-screen quantity is not the target quantity, we may
+    // have overshot, or the in/decrement factor may have been increased
+    // over time by the Combo. Perform short RT button  presses to nudge
+    // the quantity until it reaches the target value.
+    shortPressRTButtonsUntil(rtNavigationContext) { parsedScreen ->
+        val currentQuantity = getQuantity(parsedScreen)
+
+        if (currentQuantity == null)
+            ShortPressRTButtonsCommand.DoNothing
+        else if (currentQuantity < targetQuantity)
+            ShortPressRTButtonsCommand.PressButton(incrementButton)
+        else if (currentQuantity > targetQuantity)
+            ShortPressRTButtonsCommand.PressButton(decrementButton)
+        else
+            ShortPressRTButtonsCommand.Stop
     }
-
-    // Perform the short RT button press.
-
-    // Invalidate the current screen to be 100% sure that the quantity
-    // we start the short RT button press with is really the one that
-    // is currently being displayed.
-    rtNavigationContext.parsedScreenDone()
-
-    // Get the currently displayed quantity; if the quantity is currently not
-    // retrievable, wait until it is so we have a non-null initial quantity.
-    currentQuantity = getQuantityOnScreen(rtNavigationContext, waitUntilQuantityAvailable = true, getScreenQuantity)
-    previousQuantity = null
-    quantityParsed = true
-
-    button = if (currentQuantity!! > targetQuantity)
-        RTNavigationButton.DOWN
-    else
-        RTNavigationButton.UP
-
-    while (true) {
-        // This check prevents a redundant getQuantityOnScreen
-        // call the first time this loop iterates.
-        if (!quantityParsed) {
-            // Unlike the code for the long RT button presses, here, we _do_
-            // wait for a non-null parsed screen so we always know what the
-            // current quantity is. This is because unlike with the long RT
-            // button press, the short one does not auto-increment just
-            // because the button is being held down. We have to constantly
-            // check that the displayed quantity still isn't the target one,
-            // otherwise we may overshoot and adjust improperly.
-            val newQuantity = getQuantityOnScreen(rtNavigationContext, waitUntilQuantityAvailable = true, getScreenQuantity)
-
-            previousQuantity = currentQuantity
-            currentQuantity = newQuantity
-        }
-
-        if (currentQuantity == targetQuantity) {
-            // Matching value, we can exit.
-            break
-        } else if ((previousQuantity != null) && ((previousQuantity!! - targetQuantity).sign != (currentQuantity!! - targetQuantity).sign)) {
-            // If previousQuantity is "before" targetQuantity while
-            // currentQuantity is "after" targetQuantity, then we went
-            // past the target value, and we can exit.
-            break
-        } else {
-            rtNavigationContext.pushButton(button)
-            // Mark this screen as done to ensure that we get a fresh
-            // new parsed screen during the next loop iteration.
-            rtNavigationContext.parsedScreenDone()
-            quantityParsed = false
-        }
-    }
-
-    return initiallySeenQuantity
 }

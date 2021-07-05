@@ -3,26 +3,46 @@ package info.nightscout.comboctl.main
 import info.nightscout.comboctl.base.ApplicationLayerIO
 import info.nightscout.comboctl.base.BasicProgressStage
 import info.nightscout.comboctl.base.ComboException
+import info.nightscout.comboctl.base.DateTime
 import info.nightscout.comboctl.base.LogLevel
 import info.nightscout.comboctl.base.Logger
 import info.nightscout.comboctl.base.ProgressReporter
 import info.nightscout.comboctl.base.ProgressStage
 import info.nightscout.comboctl.base.PumpIO
 import info.nightscout.comboctl.base.toStringWithDecimal
+import info.nightscout.comboctl.parser.AlertScreenException
 import info.nightscout.comboctl.parser.ParsedScreen
-import info.nightscout.comboctl.parser.ParsedScreenStream
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 
 private val logger = Logger.get("PumpCommandDispatcher")
 
 /** The number of integers in a basal profile. */
 const val NUM_BASAL_PROFILE_FACTORS = 24
 
+/**
+ * Exception thrown when something goes wrong with a bolus delivery.
+ *
+ * @param totalAmount Total bolus amount that was supposed to be delivered.
+ * @param message The detail message.
+ */
 open class BolusDeliveryException(val totalAmount: Int, message: String) : ComboException(message)
 
+/**
+ * Exception thrown when the Combo did not deliver the bolus at all.
+ *
+ * @param totalAmount Total bolus amount that was supposed to be delivered.
+ */
 class BolusNotDeliveredException(totalAmount: Int) :
     BolusDeliveryException(totalAmount, "Could not deliver bolus amount of ${totalAmount.toStringWithDecimal(1)} IU")
 
+/**
+ * Exception thrown when the bolus delivery was cancelled.
+ *
+ * @param deliveredAmount Bolus amount that was delivered before the bolus was cancelled.
+ * @param totalAmount Total bolus amount that was supposed to be delivered.
+ */
 class BolusCancelledByUserException(deliveredAmount: Int, totalAmount: Int) :
     BolusDeliveryException(
         totalAmount,
@@ -30,6 +50,12 @@ class BolusCancelledByUserException(deliveredAmount: Int, totalAmount: Int) :
                 "total programmed amount: ${totalAmount.toStringWithDecimal(1)} IU"
     )
 
+/**
+ * Exception thrown when the bolus delivery was aborted due to an error.
+ *
+ * @param deliveredAmount Bolus amount that was delivered before the bolus was aborted.
+ * @param totalAmount Total bolus amount that was supposed to be delivered.
+ */
 class BolusAbortedDueToErrorException(deliveredAmount: Int, totalAmount: Int) :
     BolusDeliveryException(
         totalAmount,
@@ -75,6 +101,49 @@ object RTCommandProgressStage {
      * @property totalAmount Total amount of bolus units.
      */
     data class DeliveringBolus(val deliveredAmount: Int, val totalAmount: Int) : ProgressStage("deliveringBolus")
+
+    /**
+     * TDD fetching history stage.
+     *
+     * @property historyEntryIndex Index of the history entry that was just fetched.
+     *           Valid range is 1 to [totalNumEntries].
+     * @property totalNumEntries Total number of entries in the history.
+     */
+    data class FetchingTDDHistory(val historyEntryIndex: Int, val totalNumEntries: Int) : ProgressStage("fetchingTDDHistory")
+
+    /**
+     * TBR fetching history stage.
+     *
+     * @property historyEntryIndex Index of the history entry that was just fetched.
+     *           Valid range is 1 to [totalNumEntries].
+     * @property totalNumEntries Total number of entries in the history.
+     */
+    data class FetchingTBRHistory(val historyEntryIndex: Int, val totalNumEntries: Int) : ProgressStage("fetchingTBRHistory")
+
+    /**
+     * SetDateTime stage when the current hour is set.
+     */
+    object SettingDateTimeHour : ProgressStage("settingDateTimeHour")
+
+    /**
+     * SetDateTime stage when the current minute is set.
+     */
+    object SettingDateTimeMinute : ProgressStage("settingDateTimeMinute")
+
+    /**
+     * SetDateTime stage when the current year is set.
+     */
+    object SettingDateTimeYear : ProgressStage("settingDateTimeYear")
+
+    /**
+     * SetDateTime stage when the current month is set.
+     */
+    object SettingDateTimeMonth : ProgressStage("settingDateTimeMonth")
+
+    /**
+     * SetDateTime stage when the current day is set.
+     */
+    object SettingDateTimeDay : ProgressStage("settingDateTimeDay")
 }
 
 /**
@@ -99,8 +168,8 @@ object RTCommandProgressStage {
  * @property pump [Pump] instance to use for dispatching commands.
  */
 class PumpCommandDispatcher(private val pump: Pump) {
-    private val parsedScreenStream = ParsedScreenStream(pump.displayFrameFlow)
-    private val rtNavigationContext = RTNavigationContext(pump, parsedScreenStream)
+    private val rtNavigationContext = RTNavigationContext(pump)
+    private var parsedScreenFlow = rtNavigationContext.getParsedScreenFlow(ignoreAlertScreens = false)
 
     private val basalProfileProgressReporter = ProgressReporter(
         listOf(
@@ -118,6 +187,23 @@ class PumpCommandDispatcher(private val pump: Pump) {
     private val bolusDeliveryProgressReporter = ProgressReporter(
         listOf(
             RTCommandProgressStage.DeliveringBolus::class
+        )
+    )
+
+    private val historyProgressReporter = ProgressReporter(
+        listOf(
+            RTCommandProgressStage.FetchingTDDHistory::class,
+            RTCommandProgressStage.FetchingTBRHistory::class
+        )
+    )
+
+    private val setDateTimeProgressReporter = ProgressReporter(
+        listOf(
+            RTCommandProgressStage.SettingDateTimeHour::class,
+            RTCommandProgressStage.SettingDateTimeMinute::class,
+            RTCommandProgressStage.SettingDateTimeYear::class,
+            RTCommandProgressStage.SettingDateTimeMonth::class,
+            RTCommandProgressStage.SettingDateTimeDay::class
         )
     )
 
@@ -165,7 +251,7 @@ class PumpCommandDispatcher(private val pump: Pump) {
             // begins so we can be sure that during screen cycling we
             // actually get to the next factor (which begins at
             // different hours).
-            var previousBeginHour = (rtNavigationContext.getParsedScreen() as ParsedScreen.BasalRateFactorSettingScreen).beginHour
+            var previousBeginHour = (parsedScreenFlow.first() as ParsedScreen.BasalRateFactorSettingScreen).beginTime.hour
 
             for (index in basalProfile.indices) {
                 val basalFactor = basalProfile[index]
@@ -176,34 +262,28 @@ class PumpCommandDispatcher(private val pump: Pump) {
                 basalProfileProgressReporter.setCurrentProgressStage(RTCommandProgressStage.SettingBasalProfile(index + 1))
 
                 // By pushing MENU we move to the next basal rate factor.
-                rtNavigationContext.pushButton(RTNavigationButton.MENU)
+                rtNavigationContext.shortPressButton(RTNavigationButton.MENU)
 
-                while (true) {
-                    val parsedScreen = rtNavigationContext.getParsedScreen()
-                    parsedScreen as ParsedScreen.BasalRateFactorSettingScreen
-
-                    if (parsedScreen.beginHour == previousBeginHour) {
-                        // This is still the same basal rate factor screen,
-                        // since the begin hours are the same. Invalidate the
-                        // current parsed screen to force the context to get
-                        // a new one the next time getParsedScreen() is called.
-                        rtNavigationContext.parsedScreenDone()
-                        continue
-                    } else {
-                        previousBeginHour = parsedScreen.beginHour
-                        break
+                parsedScreenFlow
+                    .first { parsedScreen ->
+                        parsedScreen as ParsedScreen.BasalRateFactorSettingScreen
+                        if (parsedScreen.beginTime.hour == previousBeginHour) {
+                            false
+                        } else {
+                            previousBeginHour = parsedScreen.beginTime.hour
+                            true
+                        }
                     }
-                }
             }
 
             // All factors are set. Press CHECK once to get back to the total
             // basal rate screen, and then CHECK again to store the new profile
             // and return to the main menu.
 
-            rtNavigationContext.pushButton(RTNavigationButton.CHECK)
+            rtNavigationContext.shortPressButton(RTNavigationButton.CHECK)
             waitUntilScreenAppears(rtNavigationContext, ParsedScreen.BasalRateTotalScreen::class)
 
-            rtNavigationContext.pushButton(RTNavigationButton.CHECK)
+            rtNavigationContext.shortPressButton(RTNavigationButton.CHECK)
             waitUntilScreenAppears(rtNavigationContext, ParsedScreen.MainScreen::class)
 
             basalProfileProgressReporter.setCurrentProgressStage(BasicProgressStage.Finished)
@@ -299,8 +379,6 @@ class PumpCommandDispatcher(private val pump: Pump) {
                 currentPercentage
             }
 
-            tbrProgressReporter.setCurrentProgressStage(RTCommandProgressStage.SettingTBRPercentage(100))
-
             // If the percentage is 100%, we are done (and navigating to
             // the duration screen is not possible). Otherwise, continue.
             if (percentage != 100) {
@@ -335,7 +413,7 @@ class PumpCommandDispatcher(private val pump: Pump) {
             tbrProgressReporter.setCurrentProgressStage(RTCommandProgressStage.SettingTBRDuration(100))
 
             // TBR set. Press CHECK to confirm it and exit back to the main menu.
-            rtNavigationContext.pushButton(RTNavigationButton.CHECK)
+            rtNavigationContext.shortPressButton(RTNavigationButton.CHECK)
 
             tbrProgressReporter.setCurrentProgressStage(BasicProgressStage.Finished)
         } catch (e: Exception) {
@@ -352,12 +430,14 @@ class PumpCommandDispatcher(private val pump: Pump) {
      */
     suspend fun readQuickinfo() = dispatchCommand(PumpIO.Mode.REMOTE_TERMINAL, null) {
         navigateToRTScreen(rtNavigationContext, ParsedScreen.QuickinfoMainScreen::class)
-        val parsedScreen = rtNavigationContext.getParsedScreen()
-        // After parsing the quickinfo screen, exit back to the main screen by pressing BACK.
-        rtNavigationContext.pushButton(RTNavigationButton.BACK)
+        val parsedScreen = parsedScreenFlow.first()
 
         when (parsedScreen) {
-            is ParsedScreen.QuickinfoMainScreen -> parsedScreen
+            is ParsedScreen.QuickinfoMainScreen -> {
+                // After parsing the quickinfo screen, exit back to the main screen by pressing BACK.
+                rtNavigationContext.shortPressButton(RTNavigationButton.BACK)
+                parsedScreen
+            }
             else -> throw NoUsableRTScreenException()
         }
     }
@@ -470,9 +550,240 @@ class PumpCommandDispatcher(private val pump: Pump) {
         }
     }
 
+    enum class HistoryPart {
+        HISTORY_DELTA,
+        TDD_HISTORY,
+        TBR_HISTORY
+    }
+
+    data class TddHistoryEvent(val date: DateTime, val totalDailyAmount: Int)
+    data class TbrHistoryEvent(val timestamp: DateTime, val percentage: Int, val durationInMinutes: Int)
+
+    data class History(
+        val historyDeltaEvents: List<ApplicationLayerIO.CMDHistoryEvent>,
+        val tddEvents: List<TddHistoryEvent>,
+        val tbrEvents: List<TbrHistoryEvent>
+    )
+
+    /**
+     * [StateFlow] for reporting progress during the [fetchHistory] call.
+     *
+     * See the [ProgressReporter] documentation for details.
+     *
+     * This flow consists of these stages (aside from Finished/Aborted/Idle):
+     *
+     * - [RTCommandProgressStage.FetchingTDDHistory]
+     * - [RTCommandProgressStage.FetchingTBRHistory]
+     */
+    val historyProgressFlow = historyProgressReporter.progressFlow
+
+    /**
+     * Fetches bolus, TDD, and TBR history from the Combo.
+     *
+     * The Combo actually contains two history datasets. One is a "delta",
+     * that is, events that happened since the last time the Combo was
+     * queried for such that history delta. Once retrieved, that delta
+     * is cleared, which is why only the events since the last retrieval
+     * are available in this dataset. The other is a full list of the last
+     * 30 boluses, the last 30 TDD figures, and the last 30 TBRs. That
+     * second dataset is *not* cleared after retrieval.
+     *
+     * The history delta is retrieved very quickly, since it works over
+     * the Combo's command mode. The other dataset has to be accessed
+     * over the remote terminal mode, which is a much slower process
+     * as a result.
+     *
+     * To allow for multiple use cases which may require different forms
+     * of data, this function accepts the [enabledParts] argument, which
+     * specifies what to fetch. Other parts are omitted. For example, if
+     * only [HistoryPart.HISTORY_DELTA] is in this set, then this function
+     * will finish very quickly, but only return the history delta.
+     *
+     * @param enabledParts Which parts of the history to fetch.
+     * @return Retrieved history. Not all fields may be filled, depending
+     *         on what is specified in [enabledParts].
+     */
+    suspend fun fetchHistory(enabledParts: Set<HistoryPart>): History {
+        // Not using dispatchCommand() here, since we may have to switch
+        // between modes multiple times.
+
+        historyProgressReporter.reset()
+
+        try {
+            val deltaEvents = if (HistoryPart.HISTORY_DELTA in enabledParts) {
+                pump.switchMode(PumpIO.Mode.COMMAND)
+                pump.getCMDHistoryDelta()
+            } else
+                listOf()
+
+            val tddEvents = if (HistoryPart.TDD_HISTORY in enabledParts) {
+                pump.switchMode(PumpIO.Mode.REMOTE_TERMINAL)
+                navigateToRTScreen(rtNavigationContext, ParsedScreen.MyDataDailyTotalsScreen::class)
+
+                val eventsList = mutableListOf<TddHistoryEvent>()
+
+                longPressRTButtonUntil(rtNavigationContext, RTNavigationButton.DOWN) { parsedScreen ->
+                    if (parsedScreen !is ParsedScreen.MyDataDailyTotalsScreen) {
+                        logger(LogLevel.DEBUG) { "Got a non-TDD screen ($parsedScreen) ; stopping TDD history scan" }
+                        return@longPressRTButtonUntil true
+                    }
+
+                    eventsList.add(
+                        TddHistoryEvent(
+                            date = parsedScreen.date,
+                            totalDailyAmount = parsedScreen.totalDailyAmount
+                        )
+                    )
+
+                    logger(LogLevel.DEBUG) {
+                        "Got TDD history event ${parsedScreen.index} / ${parsedScreen.totalNumEntries} ; " +
+                        "date = ${parsedScreen.date} ; " +
+                        "TDD = ${parsedScreen.totalDailyAmount.toStringWithDecimal(3)}"
+                    }
+
+                    historyProgressReporter.setCurrentProgressStage(
+                        RTCommandProgressStage.FetchingTDDHistory(parsedScreen.index, parsedScreen.totalNumEntries)
+                    )
+
+                    (parsedScreen.index >= parsedScreen.totalNumEntries)
+                }
+
+                eventsList
+            } else
+                listOf()
+
+            val tbrEvents = if (HistoryPart.TBR_HISTORY in enabledParts) {
+                pump.switchMode(PumpIO.Mode.REMOTE_TERMINAL)
+                navigateToRTScreen(rtNavigationContext, ParsedScreen.MyDataTbrDataScreen::class)
+
+                val eventsList = mutableListOf<TbrHistoryEvent>()
+
+                longPressRTButtonUntil(rtNavigationContext, RTNavigationButton.DOWN) { parsedScreen ->
+                    if (parsedScreen !is ParsedScreen.MyDataTbrDataScreen) {
+                        logger(LogLevel.DEBUG) { "Got a non-TBR screen ($parsedScreen) ; stopping TBR history scan" }
+                        return@longPressRTButtonUntil true
+                    }
+
+                    eventsList.add(
+                        TbrHistoryEvent(
+                            timestamp = parsedScreen.timestamp,
+                            percentage = parsedScreen.percentage,
+                            durationInMinutes = parsedScreen.durationInMinutes
+                        )
+                    )
+
+                    logger(LogLevel.DEBUG) {
+                        "Got TDD history event ${parsedScreen.index} / ${parsedScreen.totalNumEntries} ; " +
+                        "timestamp = ${parsedScreen.timestamp} ; percentage = ${parsedScreen.percentage} ; " +
+                        "duration in minutes = ${parsedScreen.durationInMinutes}"
+                    }
+
+                    historyProgressReporter.setCurrentProgressStage(
+                        RTCommandProgressStage.FetchingTBRHistory(parsedScreen.index, parsedScreen.totalNumEntries)
+                    )
+
+                    (parsedScreen.index >= parsedScreen.totalNumEntries)
+                }
+
+                eventsList
+            } else
+                listOf()
+
+            historyProgressReporter.setCurrentProgressStage(BasicProgressStage.Finished)
+
+            // Check if an alert appeared. Alert screens can show up at any moment,
+            // but typically, they appear when the user is done with the current
+            // operation and returns to the main screen.
+            checkForAlerts(null)
+
+            return History(deltaEvents, tddEvents, tbrEvents)
+        } catch (e: Exception) {
+            historyProgressReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
+            throw e
+        }
+    }
+
+    /**
+     * [StateFlow] for reporting progress during the [setDateTime] call.
+     *
+     * See the [ProgressReporter] documentation for details.
+     *
+     * This flow consists of these stages (aside from Finished/Aborted/Idle):
+     *
+     * - [RTCommandProgressStage.SettingDateTimeHour]
+     * - [RTCommandProgressStage.SettingDateTimeMinute]
+     * - [RTCommandProgressStage.SettingDateTimeYear]
+     * - [RTCommandProgressStage.SettingDateTimeMonth]
+     * - [RTCommandProgressStage.SettingDateTimeDay]
+     */
+    val setDateTimeProgressFlow = setDateTimeProgressReporter.progressFlow
+
+    /**
+     * Sets the Combo's current date and time.
+     *
+     * The time is given as localtime, since the Combo is not timezone-aware.
+     *
+     * This is done by using the remote terminal mode, and as
+     * a consequence, takes some time to finish, unlike its
+     * [getDateTime] counterpart.
+     *
+     * @param newDateTime Date and time to set.
+     */
+    suspend fun setDateTime(newDateTime: DateTime) = dispatchCommand(PumpIO.Mode.REMOTE_TERMINAL, null) {
+        setDateTimeProgressReporter.reset()
+
+        try {
+            setDateTimeProgressReporter.setCurrentProgressStage(RTCommandProgressStage.SettingDateTimeHour)
+            navigateToRTScreen(rtNavigationContext, ParsedScreen.TimeAndDateSettingsHourScreen::class)
+            adjustQuantityOnScreen(rtNavigationContext, newDateTime.hour) { parsedScreen ->
+                (parsedScreen as ParsedScreen.TimeAndDateSettingsHourScreen).hour
+            }
+
+            setDateTimeProgressReporter.setCurrentProgressStage(RTCommandProgressStage.SettingDateTimeMinute)
+            navigateToRTScreen(rtNavigationContext, ParsedScreen.TimeAndDateSettingsMinuteScreen::class)
+            adjustQuantityOnScreen(rtNavigationContext, newDateTime.minute) { parsedScreen ->
+                (parsedScreen as ParsedScreen.TimeAndDateSettingsMinuteScreen).minute
+            }
+
+            setDateTimeProgressReporter.setCurrentProgressStage(RTCommandProgressStage.SettingDateTimeYear)
+            navigateToRTScreen(rtNavigationContext, ParsedScreen.TimeAndDateSettingsYearScreen::class)
+            adjustQuantityOnScreen(rtNavigationContext, newDateTime.year) { parsedScreen ->
+                (parsedScreen as ParsedScreen.TimeAndDateSettingsYearScreen).year
+            }
+
+            setDateTimeProgressReporter.setCurrentProgressStage(RTCommandProgressStage.SettingDateTimeMonth)
+            navigateToRTScreen(rtNavigationContext, ParsedScreen.TimeAndDateSettingsMonthScreen::class)
+            adjustQuantityOnScreen(rtNavigationContext, newDateTime.month) { parsedScreen ->
+                (parsedScreen as ParsedScreen.TimeAndDateSettingsMonthScreen).month
+            }
+
+            setDateTimeProgressReporter.setCurrentProgressStage(RTCommandProgressStage.SettingDateTimeDay)
+            navigateToRTScreen(rtNavigationContext, ParsedScreen.TimeAndDateSettingsDayScreen::class)
+            adjustQuantityOnScreen(rtNavigationContext, newDateTime.day) { parsedScreen ->
+                (parsedScreen as ParsedScreen.TimeAndDateSettingsDayScreen).day
+            }
+
+            rtNavigationContext.shortPressButton(RTNavigationButton.CHECK)
+
+            setDateTimeProgressReporter.setCurrentProgressStage(BasicProgressStage.Finished)
+        } catch (e: Exception) {
+            setDateTimeProgressReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
+            throw e
+        }
+    }
+
+    /**
+     * Retrieves the Combo's current date and time.
+     *
+     * The time is given as localtime, since the Combo is not timezone-aware.
+     */
+    suspend fun getDateTime() = dispatchCommand<DateTime>(PumpIO.Mode.COMMAND, null) {
+        pump.readCMDDateTime()
+    }
+
+    // TODO: Is this still necessary?
     private fun resetNavigation() {
-        parsedScreenStream.reset()
-        rtNavigationContext.parsedScreenDone()
+        parsedScreenFlow = rtNavigationContext.getParsedScreenFlow()
     }
 
     private suspend fun <T> dispatchCommand(pumpMode: PumpIO.Mode, expectedWarningCode: Int?, block: suspend () -> T): T {
@@ -501,11 +812,11 @@ class PumpCommandDispatcher(private val pump: Pump) {
         try {
             if (pumpStatus.warningOccurred || pumpStatus.errorOccurred) {
                 pump.switchMode(PumpIO.Mode.REMOTE_TERMINAL)
-                while (true) {
-                    rtNavigationContext.parsedScreenDone()
-                    rtNavigationContext.getParsedScreen()
-                    rtNavigationContext.parsedScreenDone()
-                }
+                // Since the parsed screen flow gets data from an upstream
+                // hot flow, collect() would normally never end. However,
+                // an alert was seen, so at some point, the flow will see
+                // an alert screen and throw an AlertScreenException.
+                parsedScreenFlow.collect()
             }
         } catch (e: AlertScreenException) {
             if ((expectedWarningCode == null) || (e.getSingleWarningCode() != expectedWarningCode))

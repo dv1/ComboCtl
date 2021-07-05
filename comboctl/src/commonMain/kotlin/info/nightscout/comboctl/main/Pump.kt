@@ -34,7 +34,11 @@ private val logger = Logger.get("Pump")
  *
  * This is the high level interface for controlling a pump with
  * ComboCtl. Programs using ComboCtl primarily use this class,
- * along with [PumpManager].
+ * along with [PumpManager]. The methods in this class provide
+ * the controls that the pump directly provides (pressing buttons
+ * in RT mode, receiving display frames in RT mode, administering
+ * bolus in command mode etc). More complex operations are built
+ * on these methods and are provided by [PumpCommandDispatcher].
  *
  * Each Pump object has a [PumpStateStore] associated with
  * it. A [PumpStateStore] of one Pump instance must be kept

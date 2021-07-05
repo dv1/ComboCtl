@@ -13,7 +13,7 @@ class TokenizationTest {
         // Trying to match it at those coordinates is expected to succeed,
         // while trying to match it slightly to the right should fail.
 
-        val largeBasalGlyphPattern = glyphPatterns[Glyph.LargeSymbol(Symbol.LARGE_BASAL)]!!
+        val largeBasalGlyphPattern = glyphPatterns[Glyph.LargeSymbol(LargeSymbol.BASAL)]!!
 
         val result1 = checkIfPatternMatchesAt(
             testFrameMainScreenWithTimeSeparator,
@@ -48,22 +48,22 @@ class TokenizationTest {
 
         val iterator = tokens.iterator()
 
-        assertEquals(Glyph.SmallSymbol(Symbol.SMALL_CLOCK), iterator.next().glyph)
+        assertEquals(Glyph.SmallSymbol(SmallSymbol.CLOCK), iterator.next().glyph)
 
         assertEquals(Glyph.SmallDigit(1), iterator.next().glyph)
         assertEquals(Glyph.SmallDigit(0), iterator.next().glyph)
-        assertEquals(Glyph.SmallSymbol(Symbol.SMALL_SEPARATOR), iterator.next().glyph)
+        assertEquals(Glyph.SmallSymbol(SmallSymbol.SEPARATOR), iterator.next().glyph)
         assertEquals(Glyph.SmallDigit(2), iterator.next().glyph)
         assertEquals(Glyph.SmallDigit(0), iterator.next().glyph)
 
-        assertEquals(Glyph.LargeSymbol(Symbol.LARGE_BASAL), iterator.next().glyph)
+        assertEquals(Glyph.LargeSymbol(LargeSymbol.BASAL), iterator.next().glyph)
 
         assertEquals(Glyph.LargeDigit(0), iterator.next().glyph)
-        assertEquals(Glyph.LargeSymbol(Symbol.LARGE_DOT), iterator.next().glyph)
+        assertEquals(Glyph.LargeSymbol(LargeSymbol.DOT), iterator.next().glyph)
         assertEquals(Glyph.LargeDigit(2), iterator.next().glyph)
         assertEquals(Glyph.LargeDigit(0), iterator.next().glyph)
 
-        assertEquals(Glyph.LargeSymbol(Symbol.LARGE_UNITS_PER_HOUR), iterator.next().glyph)
+        assertEquals(Glyph.LargeSymbol(LargeSymbol.UNITS_PER_HOUR), iterator.next().glyph)
 
         assertEquals(Glyph.SmallDigit(1), iterator.next().glyph)
     }
@@ -99,6 +99,6 @@ class TokenizationTest {
         assertEquals(Glyph.SmallCharacter('U'), iterator.next().glyph)
         assertEquals(Glyph.SmallCharacter('S'), iterator.next().glyph)
 
-        assertEquals(Glyph.LargeSymbol(Symbol.LARGE_BOLUS), iterator.next().glyph)
+        assertEquals(Glyph.LargeSymbol(LargeSymbol.BOLUS), iterator.next().glyph)
     }
 }

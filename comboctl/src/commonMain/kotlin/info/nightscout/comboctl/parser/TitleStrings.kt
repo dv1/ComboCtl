@@ -15,7 +15,11 @@ enum class TitleID {
     MINUTE,
     YEAR,
     MONTH,
-    DAY
+    DAY,
+    BOLUS_DATA,
+    ERROR_DATA,
+    DAILY_TOTALS,
+    TBR_DATA
 }
 
 /**
@@ -38,6 +42,10 @@ val knownScreenTitles = mapOf(
     "YEAR" to TitleID.YEAR,
     "MONTH" to TitleID.MONTH,
     "DAY" to TitleID.DAY,
+    "BOLUS DATA" to TitleID.BOLUS_DATA,
+    "ERROR DATA" to TitleID.ERROR_DATA,
+    "DAILY TOTALS" to TitleID.DAILY_TOTALS,
+    "TBR DATA" to TitleID.TBR_DATA,
 
     // Spanish
     "QUICK INFO" to TitleID.QUICK_INFO,
@@ -48,6 +56,10 @@ val knownScreenTitles = mapOf(
     "AÑO" to TitleID.YEAR,
     "MES" to TitleID.MONTH,
     "DÍA" to TitleID.DAY,
+    "DATOS DE BOLO" to TitleID.BOLUS_DATA,
+    "DATOS DE ERROR" to TitleID.ERROR_DATA,
+    "TOTALES DIARIOS" to TitleID.DAILY_TOTALS,
+    "DATOS DE DBT" to TitleID.TBR_DATA,
 
     // French
     "QUICK INFO" to TitleID.QUICK_INFO,
@@ -58,6 +70,10 @@ val knownScreenTitles = mapOf(
     "ANNÉE" to TitleID.YEAR,
     "MOIS" to TitleID.MONTH,
     "JOUR" to TitleID.DAY,
+    "BOLUS" to TitleID.BOLUS_DATA,
+    "ERREURS" to TitleID.ERROR_DATA,
+    "QUANTITÉS JOURN." to TitleID.DAILY_TOTALS,
+    "DBT" to TitleID.TBR_DATA,
 
     // Italian
     "QUICK INFO" to TitleID.QUICK_INFO,
@@ -68,6 +84,10 @@ val knownScreenTitles = mapOf(
     "IMPOSTARE ANNO" to TitleID.YEAR,
     "IMPOSTARE MESE" to TitleID.MONTH,
     "IMPOSTARE GIORNO" to TitleID.DAY,
+    "MEMORIA BOLI" to TitleID.BOLUS_DATA,
+    "MEMORIA ALLARMI" to TitleID.ERROR_DATA,
+    "TOTALI GIORNATA" to TitleID.DAILY_TOTALS,
+    "MEMORIA PBT" to TitleID.TBR_DATA,
 
     // Russian
     "QUICK INFO" to TitleID.QUICK_INFO,
@@ -78,6 +98,10 @@ val knownScreenTitles = mapOf(
     "ГOД" to TitleID.YEAR,
     "МECЯЦ" to TitleID.MONTH,
     "ДEHЬ" to TitleID.DAY,
+    "ДАHHЫE O БOЛЮCE" to TitleID.BOLUS_DATA,
+    "ДАHHЫE OБ O ИБ." to TitleID.ERROR_DATA,
+    "CУTOЧHЫE ДOЗЫ" to TitleID.DAILY_TOTALS,
+    "ДАHHЫE O BБC" to TitleID.TBR_DATA,
 
     // Turkish
     "QUICK INFO" to TitleID.QUICK_INFO,
@@ -88,6 +112,10 @@ val knownScreenTitles = mapOf(
     "YIL" to TitleID.YEAR,
     "AY" to TitleID.MONTH,
     "GÜN" to TitleID.DAY,
+    "BOLUS VERİLERİ" to TitleID.BOLUS_DATA,
+    "HATA VERİLERİ" to TitleID.ERROR_DATA,
+    "GÜNLÜK TOPLAM" to TitleID.DAILY_TOTALS,
+    "GBH VERİLERİ" to TitleID.TBR_DATA,
 
     // Polish
     "QUICK INFO" to TitleID.QUICK_INFO,
@@ -98,6 +126,10 @@ val knownScreenTitles = mapOf(
     "ROK" to TitleID.YEAR,
     "MIESIĄC" to TitleID.MONTH,
     "DZIEŃ" to TitleID.DAY,
+    "DANE BOLUSA" to TitleID.BOLUS_DATA,
+    "DANE BŁĘDU" to TitleID.ERROR_DATA,
+    "DZIEN. D. CAŁK." to TitleID.DAILY_TOTALS,
+    "DANE TDP" to TitleID.TBR_DATA,
 
     // Czech
     "QUICK INFO" to TitleID.QUICK_INFO,
@@ -108,6 +140,10 @@ val knownScreenTitles = mapOf(
     "ROK" to TitleID.YEAR,
     "MĚSÍC" to TitleID.MONTH,
     "DEN" to TitleID.DAY,
+    "ÚDAJE BOLUSŮ" to TitleID.BOLUS_DATA,
+    "ÚDAJE CHYB" to TitleID.ERROR_DATA,
+    "CELK. DEN. DÁVKY" to TitleID.DAILY_TOTALS,
+    "ÚDAJE DBD" to TitleID.TBR_DATA,
 
     // Hungarian
     "QUICK INFO" to TitleID.QUICK_INFO,
@@ -118,6 +154,10 @@ val knownScreenTitles = mapOf(
     "ÉV" to TitleID.YEAR,
     "HÓNAP" to TitleID.MONTH,
     "NAP" to TitleID.DAY,
+    "BÓLUSADATOK" to TitleID.BOLUS_DATA,
+    "HIBAADATOK" to TitleID.ERROR_DATA,
+    "NAPI TELJES" to TitleID.DAILY_TOTALS,
+    "TBR-ADATOK" to TitleID.TBR_DATA,
 
     // Slovak
     "QUICK INFO" to TitleID.QUICK_INFO,
@@ -128,6 +168,10 @@ val knownScreenTitles = mapOf(
     "ROK" to TitleID.YEAR,
     "MESIAC" to TitleID.MONTH,
     "DEŇ" to TitleID.DAY,
+    "BOLUSOVÉ DÁTA" to TitleID.BOLUS_DATA,
+    "DÁTA O CHYBÁCH" to TitleID.ERROR_DATA,
+    "SÚČTY DŇA" to TitleID.DAILY_TOTALS,
+    "DBD DÁTA" to TitleID.TBR_DATA,
 
     // Romanian
     "QUICK INFO" to TitleID.QUICK_INFO,
@@ -138,6 +182,10 @@ val knownScreenTitles = mapOf(
     "AN" to TitleID.YEAR,
     "LUNĂ" to TitleID.MONTH,
     "ZI" to TitleID.DAY,
+    "DATE BOLUS" to TitleID.BOLUS_DATA,
+    "DATE EROARE" to TitleID.ERROR_DATA,
+    "TOTALURI ZILNICE" to TitleID.DAILY_TOTALS,
+    "DATE RBT" to TitleID.TBR_DATA,
 
     // Croatian
     "QUICK INFO" to TitleID.QUICK_INFO,
@@ -148,6 +196,10 @@ val knownScreenTitles = mapOf(
     "GODINA" to TitleID.YEAR,
     "MJESEC" to TitleID.MONTH,
     "DAN" to TitleID.DAY,
+    "PODACI O BOLUSU" to TitleID.BOLUS_DATA,
+    "PODACI O GREŠK." to TitleID.ERROR_DATA,
+    "UKUPNE DNEV.DOZE" to TitleID.DAILY_TOTALS,
+    "PODACI O PBD-U" to TitleID.TBR_DATA,
 
     // Dutch
     "QUICK INFO" to TitleID.QUICK_INFO,
@@ -158,6 +210,10 @@ val knownScreenTitles = mapOf(
     "JAAR" to TitleID.YEAR,
     "MAAND" to TitleID.MONTH,
     "DAG" to TitleID.DAY,
+    "BOLUSGEGEVENS" to TitleID.BOLUS_DATA,
+    "FOUTENGEGEVENS" to TitleID.ERROR_DATA,
+    "DAGTOTALEN" to TitleID.DAILY_TOTALS,
+    "TBD-GEGEVENS" to TitleID.TBR_DATA,
 
     // Greek
     "QUICK INFO" to TitleID.QUICK_INFO,
@@ -168,6 +224,10 @@ val knownScreenTitles = mapOf(
     "ETOΣ" to TitleID.YEAR,
     "МHNАΣ" to TitleID.MONTH,
     "HМEPА" to TitleID.DAY,
+    "ΔEΔOМENА ΔOΣEΩN" to TitleID.BOLUS_DATA,
+    "ΔEΔOМ. ΣΦАΛМАTΩN" to TitleID.ERROR_DATA,
+    "HМEPHΣIO ΣΥNOΛO" to TitleID.DAILY_TOTALS,
+    "ΔEΔOМENА П.B.P." to TitleID.TBR_DATA,
 
     // Finnish
     "QUICK INFO" to TitleID.QUICK_INFO,
@@ -178,6 +238,10 @@ val knownScreenTitles = mapOf(
     "VUOSI" to TitleID.YEAR,
     "KUUKAUSI" to TitleID.MONTH,
     "PÄIVÄ" to TitleID.DAY,
+    "BOLUSTIEDOT" to TitleID.BOLUS_DATA,
+    "HÄLYTYSTIEDOT" to TitleID.ERROR_DATA,
+    "PÄIV. KOK.ANNOS" to TitleID.DAILY_TOTALS,
+    "TBA - TIEDOT" to TitleID.TBR_DATA,
 
     // Norwegian
     "QUICK INFO" to TitleID.QUICK_INFO,
@@ -188,6 +252,10 @@ val knownScreenTitles = mapOf(
     "ÅR" to TitleID.YEAR,
     "MÅNED" to TitleID.MONTH,
     "DAG" to TitleID.DAY,
+    "BOLUSDATA" to TitleID.BOLUS_DATA,
+    "FEILDATA" to TitleID.ERROR_DATA,
+    "DØGNMENGDE" to TitleID.DAILY_TOTALS,
+    "MBD-DATA" to TitleID.TBR_DATA,
 
     // Portuguese
     "QUICK INFO" to TitleID.QUICK_INFO,
@@ -198,6 +266,11 @@ val knownScreenTitles = mapOf(
     "ANO" to TitleID.YEAR,
     "MÊS" to TitleID.MONTH,
     "DIA" to TitleID.DAY,
+    "DADOS DE BOLUS" to TitleID.BOLUS_DATA,
+    // on some newer pumps translations have changed, so a menu can have multiple names
+    "DADOS DE ERROS" to TitleID.ERROR_DATA, "DADOS DE ALARMES" to TitleID.ERROR_DATA,
+    "TOTAIS DIÁRIOS" to TitleID.DAILY_TOTALS,
+    "DADOS DBT" to TitleID.TBR_DATA,
 
     // Swedish
     "QUICK INFO" to TitleID.QUICK_INFO,
@@ -208,6 +281,10 @@ val knownScreenTitles = mapOf(
     "ÅR" to TitleID.YEAR,
     "MÅNAD" to TitleID.MONTH,
     "DAG" to TitleID.DAY,
+    "BOLUSDATA" to TitleID.BOLUS_DATA,
+    "FELDATA" to TitleID.ERROR_DATA,
+    "DYGNSHISTORIK" to TitleID.DAILY_TOTALS,
+    "TBD DATA" to TitleID.TBR_DATA,
 
     // Danish
     "QUICK INFO" to TitleID.QUICK_INFO,
@@ -218,6 +295,10 @@ val knownScreenTitles = mapOf(
     "ÅR" to TitleID.YEAR,
     "MÅNED" to TitleID.MONTH,
     "DAG" to TitleID.DAY,
+    "BOLUSDATA" to TitleID.BOLUS_DATA,
+    "FEJLDATA" to TitleID.ERROR_DATA,
+    "DAGLIG TOTAL" to TitleID.DAILY_TOTALS,
+    "MBR-DATA" to TitleID.TBR_DATA,
 
     // German
     "QUICK INFO" to TitleID.QUICK_INFO,
@@ -228,6 +309,10 @@ val knownScreenTitles = mapOf(
     "JAHR" to TitleID.YEAR,
     "MONAT" to TitleID.MONTH,
     "TAG" to TitleID.DAY,
+    "BOLUSINFORMATION" to TitleID.BOLUS_DATA,
+    "FEHLERMELDUNGEN" to TitleID.ERROR_DATA,
+    "TAGESGESAMTMENGE" to TitleID.DAILY_TOTALS,
+    "TBR-INFORMATION" to TitleID.TBR_DATA,
 
     // Some pumps came preconfigured with a different quick info name
     "ACCU CHECK SPIRIT" to TitleID.QUICK_INFO

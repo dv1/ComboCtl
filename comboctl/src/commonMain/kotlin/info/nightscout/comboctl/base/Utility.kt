@@ -4,9 +4,12 @@ import kotlin.math.max
 import kotlin.math.min
 
 /**
- * Simple data class for storing local time.
+ * Simple data class for storing date and local time.
  *
- * This is used when retrieving history data from the pump.
+ * This is also used for just storing dates with the [DateTime.fromDate]
+ * function. The time fields (hour/minute/second) are set to 0 when storing
+ * dates only. The same applies to [DateTime.fromTime], except that the
+ * date fields (year/month/day) are then set to 0 instead.
  */
 data class DateTime(
     val year: Int,
