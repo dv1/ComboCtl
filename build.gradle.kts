@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
+
 plugins {
     kotlin("multiplatform") version "1.4.31" apply false
     id("org.jlleitschuh.gradle.ktlint") version "9.2.1"
@@ -45,6 +47,20 @@ allprojects {
             content {
                 includeModule("org.jetbrains.trove4j", "trove4j")
             }
+        }
+    }
+
+    // This is a workaround for this incorrect log message until it is fixed in KMM:
+    //
+    //     The Kotlin source set androidAndroidTestRelease was configured
+    //     but not added to any Kotlin compilation. You can add a source
+    //     set to a target’s compilation by connecting it with the
+    //     compilation’s default source set using ‘dependsOn’.
+    //
+    // Originally from https://github.com/LouisCAD/Splitties/commit/898e45c9d4db292207d7f83fff8fb3411f81bc4b
+    afterEvaluate {
+        project.extensions.findByType<KotlinMultiplatformExtension>()?.let { kmpExt ->
+            kmpExt.sourceSets.removeAll { it.name == "androidAndroidTestRelease" }
         }
     }
 
