@@ -17,8 +17,22 @@ data class DateTime(
     val second: Int
 ) {
     override fun toString() =
-        "$year-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')} " +
+        "${year.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')} " +
         "${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}:${second.toString().padStart(2, '0')}"
+
+    companion object {
+        fun fromDate(year: Int = 0, month: Int = 0, day: Int = 0) =
+            DateTime(year = year, month = month, day = day, hour = 0, minute = 0, second = 0)
+
+        fun fromTime(hour: Int = 0, minute: Int = 0, second: Int = 0) =
+            DateTime(year = 0, month = 0, day = 0, hour = hour, minute = minute, second = second)
+
+        fun combineDateTimes(timeFrom: DateTime, dateFrom: DateTime) =
+            DateTime(
+                year = dateFrom.year, month = dateFrom.month, day = dateFrom.day,
+                hour = timeFrom.hour, minute = timeFrom.minute, second = timeFrom.second
+            )
+    }
 }
 
 /**
