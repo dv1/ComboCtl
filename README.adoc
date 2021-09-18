@@ -30,12 +30,9 @@ received from the Combo. Currently, the following modules exist:
   contains platform specific bits, like bindings to a platform's Bluetooth stack.
   This module is set up as a Kotlin/Multiplatform subproject. It currently
   supports the JVM and Android as targets, though Native may be added later.
-* *devtools* - Development tools. Currently, all of them are console based and
-  are built for the JVM.
 * *javafxApp* - JavaFX 8 based test application to operate Combo pumps.
   Includes a UI to see the Combo's display frames.
-
-#TODO# More coming for Android support
+* *androidApp* - Android test application to operate Combo pumps.
 
 ComboCtl is primarily implemented in Kotlin. Platform specific bits may be written
 in other languages.
@@ -109,19 +106,6 @@ Android dependencies may be added too, in a new `comboctl/src/androidTest/`
 subdirectory.
 
 
-=== devtools/
-
-The tools in here currently include:
-
-* `bluez_cli` - Command line interface for operating the Bluetooth stack.
-  Useful for testing the BlueZ bindings.
-* `dump_packets` - Command line tool for dumping Ruffy data dumps to stdout.
-  Useful for analyzing communication between Ruffy and the Combo.
-  Note that the main Ruffy version does not produce such data dumps. You
-  need to use https://github.com/dv1/ruffy[this fork] instead,
-  specifically its `datadumps` branch.
-
-
 === javafxApp/
 
 This is a JavaFX 8 based application to operate Combo pumps interactively.
@@ -134,6 +118,20 @@ one is not implemented yet in the application). The pump window also contains
 a JavaFX ImageView for showing the display frames sent by the Combo.
 
 This application can be started by running: `./gradlew :javafxApp:run`
+
+On HiDPI screens, setting the `GDK_SCALE` environment variable in Linux
+can be used to zoom the user interface. `GDK_SCALE=2.0` zooms the UI
+by a factor of 2, for example.
+
+The Gradle build scripts are set up to skip javafxApp automatically when
+building for a non-PC platform, most notably Android.
+
+
+=== androidApp/
+
+This is a simple test Android app to connect to a single pump. It features
+an RT display frame view and several controls to perform typical actions
+like up, down, etc.
 
 
 
@@ -192,13 +190,4 @@ Many issues like ordering imports alphabetically can be resolved automatically w
 * Integrate the [detekt static analyzer](https://detekt.github.io/detekt/)
   in addition to ktlint may be useful.
 * Try to figure out the remaining TODOs in combo-comm-spec.adoc.
-* Implement the display frame parser, using the code from Ruffy
-  as an example.
-* Try to integrate the Command Mode commands. These may be very
-  useful, since with them, administering a bolus and reading the
-  history can be done much faster.
-* Implement the scripter, using the code from AndroidAPS as an
-  example. Also rename it to something like "rtModeCommandTranslator"
-  which describes the nature of the code better.
-* Write Android test app, an Android counterpart to `javafxApp/`.
 * Thorough testing to cover all sorts of use cases.
