@@ -49,7 +49,7 @@ class AndroidBluetoothDevice(
         // Use toUpperCase() since Android expects the A-F hex digits in the
         // Bluetooth address string to be uppercase (lowercase ones are considered
         // invalid and cause an exception to be thrown).
-        val androidBtAddressString = address.toString().toUpperCase(Locale.ROOT)
+        val androidBtAddressString = address.toString().uppercase(Locale.ROOT)
 
         try {
             // Establishing the RFCOMM connection does not always work right away.

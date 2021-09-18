@@ -13,7 +13,7 @@ sourceSets {
 
 dependencies {
     implementation(project(":comboctl"))
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.4.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.5.2")
     implementation(group = "org.jline", name = "jline", version = "3.16.0")
 }
 

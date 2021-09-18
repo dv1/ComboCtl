@@ -200,14 +200,14 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
                         // Signal the arrival of the button confirmation.
                         // (Either RT_BUTTON_CONFIRMATION or RT_DISPLAY
                         // function as confirmations.)
-                        rtButtonConfirmationBarrier.offer(Unit)
+                        rtButtonConfirmationBarrier.trySend(Unit)
                     }
                     ApplicationLayerIO.Command.RT_BUTTON_CONFIRMATION -> {
                         logger(LogLevel.VERBOSE) { "Got RT_BUTTON_CONFIRMATION packet from the Combo" }
                         // Signal the arrival of the button confirmation.
                         // (Either RT_BUTTON_CONFIRMATION or RT_DISPLAY
                         // function as confirmations.)
-                        rtButtonConfirmationBarrier.offer(Unit)
+                        rtButtonConfirmationBarrier.trySend(Unit)
                     }
                     ApplicationLayerIO.Command.RT_KEEP_ALIVE -> {
                         logger(LogLevel.VERBOSE) { "Got RT_KEEP_ALIVE packet from the Combo; ignoring" }
@@ -541,7 +541,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
     suspend fun disconnect(disconnectDeviceCallback: suspend () -> Unit = { }) {
         // Make sure that any function that is suspended by this
         // barrier is woken up.
-        rtButtonConfirmationBarrier.offer(Unit)
+        rtButtonConfirmationBarrier.trySend(Unit)
 
         stopCMDPingBackgroundLoop()
         stopRTKeepAliveBackgroundLoop()

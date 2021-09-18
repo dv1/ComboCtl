@@ -85,7 +85,7 @@ fun generateWeakKeyFromPIN(PIN: PairingPIN): ByteArray {
     for (i in 0 until PAIRING_PIN_SIZE) {
         val pinDigit = PIN[i]
 
-        val pinAsciiIndex = pinDigit + '0'.toInt()
+        val pinAsciiIndex = pinDigit + '0'.code
         generatedKey[i] = pinAsciiIndex.toByte()
     }
 
@@ -96,7 +96,7 @@ fun generateWeakKeyFromPIN(PIN: PairingPIN): ByteArray {
     for (i in 0 until 6) {
         val pinDigit = PIN[i]
 
-        val pinAsciiIndex = pinDigit + '0'.toInt()
+        val pinAsciiIndex = pinDigit + '0'.code
         generatedKey[i + PAIRING_PIN_SIZE] = (0xFF xor pinAsciiIndex).toByte()
     }
 

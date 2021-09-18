@@ -1471,7 +1471,7 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val pumpAddr
         for (i in 0 until 13) {
             val pumpIDByte = packet.payload[4 + i]
             if (pumpIDByte == 0.toByte()) break
-            else pumpIDStrBuilder.append(pumpIDByte.toChar())
+            else pumpIDStrBuilder.append(pumpIDByte.toInt().toChar())
         }
         val pumpID = pumpIDStrBuilder.toString()
 

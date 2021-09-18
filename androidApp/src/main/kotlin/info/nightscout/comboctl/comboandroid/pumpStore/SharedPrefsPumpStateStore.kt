@@ -26,7 +26,7 @@ class SharedPrefsPumpStateStore(private val sharedPreferences: SharedPreferences
         by PreferenceDelegateString(sharedPreferences, SharedPrefsPumpStateStore.PUMP_ID_KEY, "")
 
     override fun createPumpState(pumpAddress: BluetoothAddress, invariantPumpData: InvariantPumpData) {
-        btAddress = pumpAddress.toString().toUpperCase()
+        btAddress = pumpAddress.toString().uppercase()
 
         cpCipherString = invariantPumpData.clientPumpCipher.toString()
         pcCipherString = invariantPumpData.pumpClientCipher.toString()

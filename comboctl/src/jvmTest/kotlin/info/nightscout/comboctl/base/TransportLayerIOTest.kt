@@ -114,7 +114,7 @@ class TransportLayerIOTest {
     fun verifyPacketDataIntegrityWithMAC() {
         // Create packet and verify that the MAC check detects data corruption.
 
-        val key = ByteArray(CIPHER_KEY_SIZE).apply { fill('0'.toByte()) }
+        val key = ByteArray(CIPHER_KEY_SIZE).apply { fill('0'.code.toByte()) }
         val cipher = Cipher(key)
 
         val packet = TransportLayerIO.Packet(

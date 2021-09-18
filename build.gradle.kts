@@ -1,7 +1,7 @@
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 
 plugins {
-    kotlin("multiplatform") version "1.4.31" apply false
+    kotlin("multiplatform") version "1.5.30" apply false
     id("org.jlleitschuh.gradle.ktlint") version "9.2.1"
 }
 
@@ -14,8 +14,8 @@ buildscript {
         google()
     }
     dependencies {
-        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.4.31")
-        classpath("com.android.tools.build:gradle:4.1.3")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.5.30")
+        classpath("com.android.tools.build:gradle:4.2.0")
     }
 }
 

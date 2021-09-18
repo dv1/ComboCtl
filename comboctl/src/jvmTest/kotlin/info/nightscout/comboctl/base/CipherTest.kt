@@ -38,7 +38,7 @@ class CipherTest {
         val inputData = "0123456789abcdef".toByteArray(Charsets.UTF_8)
 
         val key = ByteArray(CIPHER_KEY_SIZE)
-        key.fill('0'.toByte())
+        key.fill('0'.code.toByte())
 
         val cipher = Cipher(key)
 

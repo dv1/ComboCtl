@@ -356,7 +356,7 @@ class StringParser() : Parser() {
         return if (parsedString.isEmpty())
             ParseResult.Failed
         else
-            ParseResult.Value(parsedString.toUpperCase())
+            ParseResult.Value(parsedString.uppercase())
     }
 
     // If true, then there is a whitespace between the matches,
@@ -537,7 +537,7 @@ class DecimalParser : Parser() {
  */
 class DateParser : Parser() {
     private val dateRegex = "(\\d\\d)([/\\.])(\\d\\d)([/\\.](\\d\\d))?".toRegex()
-    private val asciiDigitOffset = '0'.toInt()
+    private val asciiDigitOffset = '0'.code
 
     override fun parseImpl(parseContext: ParseContext): ParseResult {
         // To be able to handle all date formats without too much
@@ -611,7 +611,7 @@ class DateParser : Parser() {
  */
 class TimeParser : Parser() {
     private val timeRegex = "(\\d\\d):?(\\d\\d)(AM|PM)?|(\\d\\d)(AM|PM)".toRegex()
-    private val asciiDigitOffset = '0'.toInt()
+    private val asciiDigitOffset = '0'.code
 
     private fun amPmTo24Hour(hour: Int, amPm: String) =
         if ((hour == 12) && (amPm == "AM"))
