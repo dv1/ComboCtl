@@ -41,13 +41,6 @@ allprojects {
     repositories {
         mavenCentral()
         google()
-        // trove4j is currently not present in mavenCentral. See:
-        // https://stackoverflow.com/questions/66049196/replacing-jcenter-in-android-gradle-repositories
-        jcenter() {
-            content {
-                includeModule("org.jetbrains.trove4j", "trove4j")
-            }
-        }
     }
 
     // This is a workaround for this incorrect log message until it is fixed in KMM:

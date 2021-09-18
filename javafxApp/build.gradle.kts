@@ -23,17 +23,6 @@ sourceSets {
     // https://stackoverflow.com/a/20677016/560774
 }
 
-// Version 5.0.1 of Klaxon is currently (2021-03-04)
-// only available in JCenter. Test later if it has
-// been copied to maven central.
-repositories {
-    jcenter() {
-        content {
-            includeModule("com.beust", "klaxon")
-        }
-    }
-}
-
 javafx {
     modules = listOf("javafx.controls", "javafx.fxml", "javafx.web")
 }
@@ -43,7 +32,7 @@ dependencies {
     implementation(project(":comboctl"))
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.5.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-javafx:1.5.2")
-    implementation("com.beust:klaxon:5.0.1")
+    implementation("com.beust:klaxon:5.5")
 }
 
 tasks {
