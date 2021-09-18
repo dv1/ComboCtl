@@ -1,13 +1,10 @@
 include(":comboctl")
-include(":devtools:common")
-include(":devtools:dump_packets")
-include(":devtools:bluez_cli")
 include(":androidApp")
 
 val env = System.getProperties() ?: mapOf<String, String>()
 
 if (env["idea.platform.prefix"] != "AndroidStudio") {
-    logger.lifecycle("Not building with Android Studio; enabling javafxApp")
+    logger.lifecycle("Not building with Android Studio; enabling BlueZ backend and javafxApp")
     include(":javafxApp")
     include(":comboctl:src:linuxBlueZCpp")
     include(":comboctl:src:linuxBlueZCpp:external:fmtlib")
