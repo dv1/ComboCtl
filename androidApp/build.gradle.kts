@@ -20,13 +20,13 @@ dependencies {
 }
 
 android {
-    compileSdkVersion(28)
+    compileSdkVersion(29)
     buildToolsVersion = "30.0.2"
 
     defaultConfig {
         applicationId = "info.nightscout.comboctl.androidApp"
         minSdkVersion(26)
-        targetSdkVersion(28)
+        targetSdkVersion(29)
         versionCode = 1
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
