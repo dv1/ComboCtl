@@ -21,6 +21,8 @@ import java.io.IOException
 
 private val logger = Logger.get("JsonPumpStateStore")
 
+// Simple pump state store which writes to a local JSON file.
+// This is only meant for development and testing.
 class JsonPumpStateStore : PumpStateStore {
     data class Entry(val invariantPumpData: InvariantPumpData, var currentTxNonce: Nonce)
 

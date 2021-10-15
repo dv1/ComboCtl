@@ -4,19 +4,24 @@ import info.nightscout.comboctl.base.BluetoothAddress
 import info.nightscout.comboctl.base.BluetoothException
 import info.nightscout.comboctl.base.PairingPIN
 import info.nightscout.comboctl.base.TransportLayerIO
-import info.nightscout.comboctl.base.toBluetoothAddress
 import info.nightscout.comboctl.main.Pump
 import info.nightscout.comboctl.main.PumpManager
 import javafx.beans.binding.Bindings
+import javafx.beans.property.ObjectProperty
+import javafx.beans.property.SimpleObjectProperty
 import javafx.collections.FXCollections
 import javafx.collections.ObservableList
 import javafx.fxml.FXMLLoader
 import javafx.scene.Parent
 import javafx.scene.Scene
 import javafx.scene.control.ButtonType
-import javafx.scene.control.ListView
+import javafx.scene.control.DatePicker
+import javafx.scene.control.ProgressBar
+import javafx.scene.control.SelectionModel
+import javafx.scene.control.Spinner
 import javafx.scene.control.TextInputDialog
 import javafx.scene.image.ImageView
+import javafx.scene.layout.Pane
 import javafx.stage.Stage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -29,27 +34,36 @@ import kotlinx.coroutines.withContext
 class MainViewController {
     private var pumpManager: PumpManager? = null
     private var mainScope: CoroutineScope? = null
-    private var pumpStateStore: JsonPumpStateStore? = null
-    private var listView: ListView<String>? = null
+    private var pumpUISelectionModel: SelectionModel<BluetoothAddress>? = null
 
     private var pairingJob: Job? = null
 
-    private val pumpList: ObservableList<String> = FXCollections.observableArrayList()
-
     private val pumpInstances = mutableMapOf<BluetoothAddress, Pump>()
 
+    // List containing Bluetooth addresses of paired pumps.
+    // Used for notifying observing UI controls about added/removed pumps.
+    val pumpAddressList: ObservableList<BluetoothAddress> = FXCollections.observableArrayList()
+
+    // Boolean property for notifying observers that pairing is (in)active.
+    // Used for enabling/disabling pairing UI controls.
+    private val mutableIsPairingProperty = SimpleObjectProperty<Boolean>()
+    val isPairingProperty: ObjectProperty<Boolean> = mutableIsPairingProperty
+
+    // Initializes the states in this controller.
+    // The pumpUISelectionModel is needed for when the user double-clicks
+    // a pump entry in the list to open it. The selection model is needed
+    // to determine which item was selected and clicked on.
     fun setup(
         pumpManager: PumpManager,
         mainScope: CoroutineScope,
-        pumpStateStore: JsonPumpStateStore,
-        listView: ListView<String>
+        pumpUISelectionModel: SelectionModel<BluetoothAddress>
     ) {
         this.pumpManager = pumpManager
         this.mainScope = mainScope
-        this.pumpStateStore = pumpStateStore
-        this.listView = listView
+        this.pumpUISelectionModel = pumpUISelectionModel
 
-        listView.items = pumpList
+        mutableIsPairingProperty.setValue(false)
+
         resetPumpList()
     }
 
@@ -57,15 +71,24 @@ class MainViewController {
         require(pumpManager != null)
         require(mainScope != null)
 
-        try {
-            pairingJob = mainScope!!.launch {
+        if (pairingJob != null)
+            return
+
+        mutableIsPairingProperty.setValue(true)
+
+        pairingJob = mainScope!!.launch {
+            try {
                 pumpManager!!.pairingProgressFlow
                     .onEach { println("Pairing progress: $it") }
                     .launchIn(mainScope!!)
 
                 val result = pumpManager!!.pairWithNewPump(
-                    300
+                    discoveryDuration = 300
                 ) { newPumpAddress, _ ->
+                    // We must run askUserForPIN() in a JavaFX context.
+                    // Otherwise, crashes happen, since JavaFX UI controls
+                    // must not be operated in any thread other than the
+                    // JavaFX thread.
                     withContext(mainScope!!.coroutineContext) {
                         askUserForPIN(newPumpAddress)
                     }
@@ -73,12 +96,16 @@ class MainViewController {
 
                 println("Pairing result: $result")
 
-                resetPumpList()
+                if (result is PumpManager.PairingResult.Success)
+                    pumpAddressList.add(result.bluetoothAddress)
+            } catch (e: IllegalStateException) {
+                println("Attempted to start discovery even though it is running already")
+            } catch (e: BluetoothException) {
+                println("Bluetooth interface exception: $e")
+            } finally {
+                pairingJob = null
+                mutableIsPairingProperty.setValue(false)
             }
-        } catch (e: IllegalStateException) {
-            println("Attempted to start discovery even though it is running already")
-        } catch (e: BluetoothException) {
-            println("Bluetooth interface exception: $e")
         }
     }
 
@@ -89,23 +116,9 @@ class MainViewController {
 
     fun openPumpView() {
         require(pumpManager != null)
-        require(listView != null)
+        require(pumpUISelectionModel != null)
 
-        val selectedItems = listView!!.selectionModel.selectedItems
-
-        lateinit var pumpBluetoothAddressStr: String
-        try {
-            pumpBluetoothAddressStr = selectedItems[0]
-        } catch (e: IndexOutOfBoundsException) {
-            return
-        }
-
-        lateinit var pumpBluetoothAddress: BluetoothAddress
-        try {
-            pumpBluetoothAddress = pumpBluetoothAddressStr.toBluetoothAddress()
-        } catch (e: IllegalArgumentException) {
-            return
-        }
+        val pumpBluetoothAddress = pumpUISelectionModel!!.selectedItem ?: return
 
         if (pumpInstances.contains(pumpBluetoothAddress))
             return
@@ -126,10 +139,60 @@ class MainViewController {
         pumpViewController.setup(
             pump,
             mainScope!!,
-            scene.lookup("#displayFrameView") as ImageView
+            pumpViewStage
         )
 
-        pumpViewStage.title = "Pump $pumpBluetoothAddress"
+        val displayFrameView = scene.lookup("#displayFrameView") as ImageView
+        displayFrameView.image = pumpViewController.displayFrameImage
+
+        // Bidirectinally bind the pumpViewController properties that
+        // are associated with datetime values to the date picker and
+        // the hour/minute/second spinners. The bidirectional binding
+        // allows for the controls to be updated when a new datetime
+        // is read from the Combo and also allows for setting a new
+        // date and time and sending that to the Combo.
+
+        val datePicker = scene.lookup("#datePicker") as? DatePicker
+            ?: TODO("Could not access date picker")
+        datePicker.valueProperty().bindBidirectional(
+            pumpViewController.dateProperty)
+
+        // Need to suppress unchecked cast warnings, since these are produced
+        // even though we use a safe cast here. This is a Kotlin limitation,
+        // and only happens when safe-casting to a generic type. See:
+        // https://stackoverflow.com/a/36570969/560774
+
+        @Suppress("UNCHECKED_CAST")
+        val hourSpinner = scene.lookup("#hourSpinner") as? Spinner<Int>
+            ?: TODO("Could not access hour spinner")
+        hourSpinner.getValueFactory().valueProperty().bindBidirectional(
+            pumpViewController.hourProperty)
+
+        @Suppress("UNCHECKED_CAST")
+        val minuteSpinner = scene.lookup("#minuteSpinner") as? Spinner<Int>
+            ?: TODO("Could not access minute spinner")
+        minuteSpinner.getValueFactory().valueProperty().bindBidirectional(
+            pumpViewController.minuteProperty)
+
+        @Suppress("UNCHECKED_CAST")
+        val secondSpinner = scene.lookup("#secondSpinner") as? Spinner<Int>
+            ?: TODO("Could not access second spinner")
+        secondSpinner.getValueFactory().valueProperty().bindBidirectional(
+            pumpViewController.secondProperty)
+
+        val progressBar = scene.lookup("#progressBar") as? ProgressBar
+            ?: TODO("Could not access progress bar")
+        progressBar.progressProperty().bind(pumpViewController.progressProperty)
+
+        // Bind the parent pane's width and height property to the imageview
+        // to make sure the imageview always is resized to fill the parent pane.
+        val parentPane = displayFrameView.parent as Pane
+        displayFrameView.fitWidthProperty().bind(parentPane.widthProperty())
+        displayFrameView.fitHeightProperty().bind(parentPane.heightProperty())
+
+        val pumpID = pumpManager!!.getPumpID(pumpBluetoothAddress)
+
+        pumpViewStage.title = "Pump $pumpID ($pumpBluetoothAddress)"
         pumpViewStage.scene = scene
         pumpViewStage.setOnHidden {
             val pumpToRemove = pumpInstances[pumpBluetoothAddress]
@@ -144,14 +207,16 @@ class MainViewController {
         pumpViewStage.show()
     }
 
-    fun onPumpUnpaired(pumpAddress: BluetoothAddress) = resetPumpList()
+    fun onPumpUnpaired(pumpAddress: BluetoothAddress) =
+        pumpAddressList.remove(pumpAddress)
 
     private fun resetPumpList() {
-        require(pumpStateStore != null)
+        require(pumpManager != null)
 
-        pumpList.clear()
-        for (stateBluetoothAddress in pumpStateStore!!.getAvailablePumpStateAddresses()) {
-            pumpList.add(stateBluetoothAddress.toString())
+        pumpAddressList.clear()
+
+        for (bluetoothAddress in pumpManager!!.getPairedPumpAddresses()) {
+            pumpAddressList.add(bluetoothAddress)
         }
     }
 

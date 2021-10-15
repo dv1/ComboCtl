@@ -7,8 +7,10 @@ plugins {
 }
 
 application {
-    mainClass.set("info.nightscout.comboctl.javafxApp.App")
+    mainClass.set("info.nightscout.comboctl.javafxApp.Application")
     val rootdir = rootProject.projectDir
+    // Add the path to the linuxBlueZCpp .so that contains
+    // the BlueZ Bluetooth backend that is used on the PC.
     applicationDefaultJvmArgs = listOf(
         "-Djava.library.path=" +
         "$rootdir/comboctl/src/jvmMain/cpp/linuxBlueZCppJNI/build/lib/main/debug"
@@ -24,7 +26,7 @@ sourceSets {
 }
 
 javafx {
-    modules = listOf("javafx.controls", "javafx.fxml", "javafx.web")
+    modules = listOf("javafx.controls", "javafx.fxml")
 }
 
 dependencies {
@@ -41,6 +43,11 @@ tasks {
     }
 }
 
+java {
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+}
+
 tasks.withType<KotlinCompile> {
-    kotlinOptions.jvmTarget = "1.8"
+    kotlinOptions.jvmTarget = "11"
 }
