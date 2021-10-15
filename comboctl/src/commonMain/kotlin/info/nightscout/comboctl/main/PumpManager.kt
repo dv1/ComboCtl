@@ -78,7 +78,7 @@ class PumpManager(
      */
     sealed class PairingResult {
         data class Success(
-            val BluetoothAddress: BluetoothAddress,
+            val bluetoothAddress: BluetoothAddress,
             val pumpID: String
         ) : PairingResult()
 
