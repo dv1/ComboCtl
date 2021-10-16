@@ -2,6 +2,8 @@ package info.nightscout.comboctl.parser
 
 import info.nightscout.comboctl.base.DateTime
 import info.nightscout.comboctl.base.DisplayFrame
+import info.nightscout.comboctl.base.Quickinfo
+import info.nightscout.comboctl.base.ReservoirState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -445,7 +447,12 @@ class ParserTest {
 
         assertEquals(ParseResult.Value::class, result::class)
         val screen = (result as ParseResult.Value<*>).value as ParsedScreen
-        assertEquals(ParsedScreen.QuickinfoMainScreen(availableUnits = 213, reservoirState = ReservoirState.FULL), screen)
+        assertEquals(
+            ParsedScreen.QuickinfoMainScreen(
+                Quickinfo(availableUnits = 213, reservoirState = ReservoirState.FULL)
+            ),
+            screen
+        )
     }
 
     @Test

@@ -2,6 +2,8 @@ package info.nightscout.comboctl.parser
 
 import info.nightscout.comboctl.base.DateTime
 import info.nightscout.comboctl.base.DisplayFrame
+import info.nightscout.comboctl.base.Quickinfo
+import info.nightscout.comboctl.base.ReservoirState
 import kotlin.reflect.KClassifier
 
 /*****************************************
@@ -9,15 +11,6 @@ import kotlin.reflect.KClassifier
  *****************************************/
 
 /* Screens are the final result of parser runs. */
-
-/**
- * Reservoir state as shown on display.
- */
-enum class ReservoirState {
-    EMPTY,
-    LOW,
-    FULL
-}
 
 /**
  * Possible bolus types in the bolus data screen in the "My Data" bolus history.
@@ -112,7 +105,7 @@ sealed class ParsedScreen {
     data class TemporaryBasalRatePercentageScreen(val percentage: Int?) : ParsedScreen()
     data class TemporaryBasalRateDurationScreen(val durationInMinutes: Int?) : ParsedScreen()
 
-    data class QuickinfoMainScreen(val availableUnits: Int, val reservoirState: ReservoirState) : ParsedScreen()
+    data class QuickinfoMainScreen(val quickinfo: Quickinfo) : ParsedScreen()
 
     data class TimeAndDateSettingsHourScreen(val hour: Int?) : ParsedScreen()
     data class TimeAndDateSettingsMinuteScreen(val minute: Int?) : ParsedScreen()
@@ -1026,10 +1019,11 @@ class QuickinfoScreenParser : Parser() {
 
         val availableUnits = parseResult.valueAt<Int>(1)
 
-        return ParseResult.Value(ParsedScreen.QuickinfoMainScreen(
-            availableUnits = availableUnits,
-            reservoirState = reservoirState
-        ))
+        return ParseResult.Value(
+            ParsedScreen.QuickinfoMainScreen(
+                Quickinfo(availableUnits = availableUnits, reservoirState = reservoirState)
+            )
+        )
     }
 }
 

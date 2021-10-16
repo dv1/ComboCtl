@@ -427,6 +427,7 @@ class PumpCommandDispatcher(private val pump: Pump) {
      *
      * @throws AlertScreenException if alerts occur during this call.
      * @throws NoUsableRTScreenException if the quickinfo screen could not be found.
+     * @return The [Quickinfo].
      */
     suspend fun readQuickinfo() = dispatchCommand(PumpIO.Mode.REMOTE_TERMINAL, null) {
         navigateToRTScreen(rtNavigationContext, ParsedScreen.QuickinfoMainScreen::class)
@@ -436,7 +437,8 @@ class PumpCommandDispatcher(private val pump: Pump) {
             is ParsedScreen.QuickinfoMainScreen -> {
                 // After parsing the quickinfo screen, exit back to the main screen by pressing BACK.
                 rtNavigationContext.shortPressButton(RTNavigationButton.BACK)
-                parsedScreen
+                // Return the quickinfo from the quickinfo screen
+                parsedScreen.quickinfo
             }
             else -> throw NoUsableRTScreenException()
         }
