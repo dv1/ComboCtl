@@ -369,7 +369,12 @@ class Pump(
             // Do this in a separate coroutine with an IO dispatcher
             // since the connection setup may block.
             withContext(ioDispatcher()) {
-                bluetoothDevice.connect(connectProgressReporter)
+                try {
+                    bluetoothDevice.connect(connectProgressReporter)
+                } catch (e: Exception) {
+                    connectProgressReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
+                    throw e
+                }
             }
 
             // Establish the regular connection. Also call join() here
