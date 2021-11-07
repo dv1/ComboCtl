@@ -510,7 +510,6 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
                 logger(LogLevel.INFO) { "Pump IO connected" }
             } catch (e: Exception) {
                 disconnect()
-                onBackgroundIOException(e)
                 // Re-throw the exception to let this Job fail. This makes
                 // sure that any ongoing join() call detects the failure
                 // and throws a CancellationException.
