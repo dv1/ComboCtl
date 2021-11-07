@@ -230,18 +230,38 @@ class PumpCommandDispatcher(private val pump: Pump) {
      * indicator on a GUI.
      *
      * The supplied [basalProfile] must contain exactly 24 integers (one for
-     * each basal profile factor).
+     * each basal profile factor). Each factor is an integer-encoded-decimal.
+     * The last 3 digits of the integer make up the 3 most significant fractional
+     * digits of a decimal. For example, 10 IU are encoded as 10000, 2.5 IU are
+     * encoded as 2500, 0.06 IU are encoded as 60 etc.
+     *
+     * The total supported range is 0.0 IU to 10 IU (inclusive). The following
+     * IU ranges are supported for each factor, along with the granularity:
+     *
+     *   0.00 IU to 0.05 IU  : increment in 0.05 IU steps
+     *   0.05 IU to 1.00 IU  : increment in 0.01 IU steps
+     *   1.00 IU to 10.00 IU : increment in 0.05 IU steps
      *
      * @param basalProfile Basal profile to set.
      * @throws IllegalArgumentException if the basal profile does not contain
      *         exactly 24 values (the factors), or if at least one of the factors
-     *         is <0.
+     *         is <0, or if the factors aren't correctly rounded (for example,
+     *         when trying to use 0.03 as one of the 24 factors).
      * @throws AlertScreenException if an alert occurs during this call.
+     * @throws IllegalStateException if the [Pump] instance's background worker
+     *         has failed or the pump is not connected.
      */
     suspend fun setBasalProfile(basalProfile: List<Int>) =
         dispatchCommand(PumpIO.Mode.REMOTE_TERMINAL, expectedWarningCode = null) {
         require(basalProfile.size == NUM_BASAL_PROFILE_FACTORS)
-        require(basalProfile.all { it >= 0 })
+
+        basalProfile.forEachIndexed { index, factor ->
+            require(factor >= 0) { "Basal profile factor #$index is <0 (value: $factor)" }
+            require(
+                ((factor >= 50) && (factor <= 1000) && ((factor % 10) == 0)) || // 0.05 to 1 IU range rounding check with the 0.01 IU steps
+                ((factor >= 1000) && (factor <= 10000) && ((factor % 50) == 0)) // 1 to 10 IU range rounding check with the 0.05 IU steps
+            ) { "Basal profile factor #$index is not correctly rounded (value: $factor)" }
+        }
 
         basalProfileProgressReporter.reset()
 
@@ -336,6 +356,8 @@ class PumpCommandDispatcher(private val pump: Pump) {
      *         about duration being ignored with percentage 100 above though).
      * @throws AlertScreenException if alerts occurs during this call, and they
      *         aren't a W6 warning (those are handled by this function).
+     * @throws IllegalStateException if the [Pump] instance's background worker
+     *         has failed or the pump is not connected.
      */
     suspend fun setTemporaryBasalRate(percentage: Int, durationInMinutes: Int) =
         dispatchCommand(PumpIO.Mode.REMOTE_TERMINAL, expectedWarningCode = 6) {
@@ -430,6 +452,8 @@ class PumpCommandDispatcher(private val pump: Pump) {
      *
      * @throws AlertScreenException if alerts occur during this call.
      * @throws NoUsableRTScreenException if the quickinfo screen could not be found.
+     * @throws IllegalStateException if the [Pump] instance's background worker
+     *         has failed or the pump is not connected.
      * @return The [Quickinfo].
      */
     suspend fun readQuickinfo() = dispatchCommand(PumpIO.Mode.REMOTE_TERMINAL, expectedWarningCode = null) {
@@ -482,6 +506,8 @@ class PumpCommandDispatcher(private val pump: Pump) {
      * @throws BolusCancelledByUserException when the bolus was cancelled by the user.
      * @throws BolusAbortedDueToErrorException when the bolus delivery failed due
      *         to an error.
+     * @throws IllegalStateException if the [Pump] instance's background worker
+     *         has failed or the pump is not connected.
      */
     suspend fun deliverBolus(bolusAmount: Int, bolusStatusUpdateIntervalInMs: Long = 250) =
         dispatchCommand(PumpIO.Mode.COMMAND, expectedWarningCode = null) {
@@ -607,6 +633,8 @@ class PumpCommandDispatcher(private val pump: Pump) {
      * @param enabledParts Which parts of the history to fetch.
      * @return Retrieved history. Not all fields may be filled, depending
      *         on what is specified in [enabledParts].
+     * @throws IllegalStateException if the [Pump] instance's background worker
+     *         has failed or the pump is not connected.
      */
     suspend fun fetchHistory(enabledParts: Set<HistoryPart>) =
         dispatchCommand<History>(pumpMode = null, expectedWarningCode = null) {
@@ -734,6 +762,8 @@ class PumpCommandDispatcher(private val pump: Pump) {
      * [getDateTime] counterpart.
      *
      * @param newDateTime Date and time to set.
+     * @throws IllegalStateException if the [Pump] instance's background worker
+     *         has failed or the pump is not connected.
      */
     suspend fun setDateTime(newDateTime: DateTime) =
         dispatchCommand(PumpIO.Mode.REMOTE_TERMINAL, expectedWarningCode = null) {
@@ -783,6 +813,8 @@ class PumpCommandDispatcher(private val pump: Pump) {
      * Retrieves the Combo's current date and time.
      *
      * The time is given as localtime, since the Combo is not timezone-aware.
+     * @throws IllegalStateException if the [Pump] instance's background worker
+     *         has failed or the pump is not connected.
      */
     suspend fun getDateTime() = dispatchCommand<DateTime>(PumpIO.Mode.COMMAND, expectedWarningCode = null) {
         pump.readCMDDateTime()
@@ -798,6 +830,8 @@ class PumpCommandDispatcher(private val pump: Pump) {
         expectedWarningCode: Int?,
         block: suspend () -> T
     ): T = commandMutex.withLock {
+        check(pump.isConnected()) { "Pump is not connected" }
+
         if (pumpMode != null)
             pump.switchMode(pumpMode)
 
