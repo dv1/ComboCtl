@@ -15,6 +15,8 @@ import info.nightscout.comboctl.parser.ParsedScreen
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 private val logger = Logger.get("PumpCommandDispatcher")
 
@@ -170,6 +172,7 @@ object RTCommandProgressStage {
 class PumpCommandDispatcher(private val pump: Pump) {
     private val rtNavigationContext = RTNavigationContext(pump)
     private var parsedScreenFlow = rtNavigationContext.getParsedScreenFlow(ignoreAlertScreens = false)
+    private val commandMutex = Mutex()
 
     private val basalProfileProgressReporter = ProgressReporter(
         listOf(
@@ -236,7 +239,7 @@ class PumpCommandDispatcher(private val pump: Pump) {
      * @throws AlertScreenException if an alert occurs during this call.
      */
     suspend fun setBasalProfile(basalProfile: List<Int>) =
-        dispatchCommand(PumpIO.Mode.REMOTE_TERMINAL, null) {
+        dispatchCommand(PumpIO.Mode.REMOTE_TERMINAL, expectedWarningCode = null) {
         require(basalProfile.size == NUM_BASAL_PROFILE_FACTORS)
         require(basalProfile.all { it >= 0 })
 
@@ -429,7 +432,7 @@ class PumpCommandDispatcher(private val pump: Pump) {
      * @throws NoUsableRTScreenException if the quickinfo screen could not be found.
      * @return The [Quickinfo].
      */
-    suspend fun readQuickinfo() = dispatchCommand(PumpIO.Mode.REMOTE_TERMINAL, null) {
+    suspend fun readQuickinfo() = dispatchCommand(PumpIO.Mode.REMOTE_TERMINAL, expectedWarningCode = null) {
         navigateToRTScreen(rtNavigationContext, ParsedScreen.QuickinfoMainScreen::class)
         val parsedScreen = parsedScreenFlow.first()
 
@@ -481,7 +484,7 @@ class PumpCommandDispatcher(private val pump: Pump) {
      *         to an error.
      */
     suspend fun deliverBolus(bolusAmount: Int, bolusStatusUpdateIntervalInMs: Long = 250) =
-        dispatchCommand(PumpIO.Mode.COMMAND, null) {
+        dispatchCommand(PumpIO.Mode.COMMAND, expectedWarningCode = null) {
         logger(LogLevel.DEBUG) { "Beginning bolus delivery of ${bolusAmount.toStringWithDecimal(1)} IU" }
         val didDeliver = pump.deliverCMDStandardBolus(bolusAmount)
         if (!didDeliver) {
@@ -605,9 +608,10 @@ class PumpCommandDispatcher(private val pump: Pump) {
      * @return Retrieved history. Not all fields may be filled, depending
      *         on what is specified in [enabledParts].
      */
-    suspend fun fetchHistory(enabledParts: Set<HistoryPart>): History {
-        // Not using dispatchCommand() here, since we may have to switch
-        // between modes multiple times.
+    suspend fun fetchHistory(enabledParts: Set<HistoryPart>) =
+        dispatchCommand<History>(pumpMode = null, expectedWarningCode = null) {
+        // Calling dispatchCommand with pump mode set to null, since we
+        // may have to switch between modes multiple times.
 
         historyProgressReporter.reset()
 
@@ -698,7 +702,7 @@ class PumpCommandDispatcher(private val pump: Pump) {
             // operation and returns to the main screen.
             checkForAlerts(null)
 
-            return History(deltaEvents, tddEvents, tbrEvents)
+            History(deltaEvents, tddEvents, tbrEvents)
         } catch (e: Exception) {
             historyProgressReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
             throw e
@@ -731,7 +735,8 @@ class PumpCommandDispatcher(private val pump: Pump) {
      *
      * @param newDateTime Date and time to set.
      */
-    suspend fun setDateTime(newDateTime: DateTime) = dispatchCommand(PumpIO.Mode.REMOTE_TERMINAL, null) {
+    suspend fun setDateTime(newDateTime: DateTime) =
+        dispatchCommand(PumpIO.Mode.REMOTE_TERMINAL, expectedWarningCode = null) {
         setDateTimeProgressReporter.reset()
 
         try {
@@ -779,12 +784,22 @@ class PumpCommandDispatcher(private val pump: Pump) {
      *
      * The time is given as localtime, since the Combo is not timezone-aware.
      */
-    suspend fun getDateTime() = dispatchCommand<DateTime>(PumpIO.Mode.COMMAND, null) {
+    suspend fun getDateTime() = dispatchCommand<DateTime>(PumpIO.Mode.COMMAND, expectedWarningCode = null) {
         pump.readCMDDateTime()
     }
 
-    private suspend fun <T> dispatchCommand(pumpMode: PumpIO.Mode, expectedWarningCode: Int?, block: suspend () -> T): T {
-        pump.switchMode(pumpMode)
+    // Dispatches higher-level pump commands by running the specified block
+    // and applying extra post-run alert checks. Also, the pump mode is
+    // switched prior to running the block if required. Finally, all of this
+    // happens inside the commandMutex to make sure the commands never
+    // run concurrently (since this is not supported by the Combo).
+    private suspend fun <T> dispatchCommand(
+        pumpMode: PumpIO.Mode?,
+        expectedWarningCode: Int?,
+        block: suspend () -> T
+    ): T = commandMutex.withLock {
+        if (pumpMode != null)
+            pump.switchMode(pumpMode)
 
         val retval = block.invoke()
 
@@ -793,7 +808,7 @@ class PumpCommandDispatcher(private val pump: Pump) {
         // operation and returns to the main screen.
         checkForAlerts(expectedWarningCode)
 
-        return retval
+        retval
     }
 
     private suspend fun checkForAlerts(expectedWarningCode: Int?) {
