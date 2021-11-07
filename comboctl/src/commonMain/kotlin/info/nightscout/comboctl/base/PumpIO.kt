@@ -404,25 +404,23 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      * the worker. Some functions such as [startLongRTButtonPress] also
      * launch coroutines. They use this same coroutine scope.
      *
-     * The actual connection procedure also happens in that scope. If
-     * during the connection setup an exception is thrown, then the
-     * connection is rolled back to the disconnected state, and
-     * [onBackgroundIOException] is called. If an exception happens
-     * inside the worker _after_ the connection is established, then
-     * [onBackgroundIOException] will be called. However, unlike with
-     * exceptions during the connection setup, exceptions from inside
-     * the worker cause the worker to "fail". In that failed state, any
-     * of the functions mentioned above will immediately fail with an
-     * [IllegalStateException]. The user has to call [disconnect] to
-     * change the worker from a failed to a disconnected state.
-     * Then, the user can attempt to connect again.
+     * The actual connection procedure also happens in that scope, in its
+     * own coroutine. That coroutine is represented by the instance of
+     * [kotlinx.coroutines.Deferred] that is returned by this function.
+     * If an exception occurs _during_ connection setup, the connection
+     * attempt is aborted, this Pump instance reverts to the disconnected
+     * state, and the exception is caught by the returned Deferred value.
+     * Users call [kotlinx.coroutines.Deferred.await] to wait for the
+     * connection procedure to finish; if an exception occurred during
+     * that procedure, it is re-thrown by that function.
      *
-     * The coroutine that runs connection setup procedure is represented
-     * by the [kotlinx.coroutines.Job] instance that is returned by this
-     * function. This makes it possible to wait until the connection is
-     * established or an error occurs. To do that, the user calls
-     * [kotlinx.coroutines.Job.join]. In case of an error, that function
-     * throws a [CancellationException].
+     * If any exceptions that happen inside the worker _after_ the
+     * connection is established, [onBackgroundWorkerException] will be
+     * called. Exceptions from inside the worker cause the worker to "fail".
+     * In that failed state, any of the Pump functions ([switchMode] etc.)
+     * mentioned above will immediately fail with an [IllegalStateException].
+     * The user has to call [disconnect] to change the worker from a failed
+     * to a disconnected state. Then, the user can attempt to connect again.
      *
      * [isConnected] will return true if the connection was established.
      *
@@ -448,9 +446,8 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      *        that repeatedly sends out RT_KEEP_ALIVE or CMD_PING packets
      *        if the pump is running in the REMOTE_TERMINAL or COMMAND mode
      *        respectively.
-     * @return [kotlinx.coroutines.Job] representing the coroutine that
-     *         runs the connection setup procedure. If an error occurs
-     *         during the connection setup, that coroutine is cancelled.
+     * @return [kotlinx.coroutines.Deferred] representing the coroutine
+     *         that runs the connection setup procedure.
      * @throws IllegalStateException if IO was already started by a
      *         previous [startIO] call or if the [PumpStateStore]
      *         that was passed to the class constructor isn't initialized
@@ -462,7 +459,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
         onBackgroundIOException: (e: Exception) -> Unit = { },
         initialMode: Mode = Mode.REMOTE_TERMINAL,
         runKeepAliveLoop: Boolean = true
-    ): Job {
+    ): Deferred<Unit> {
         // Prerequisites.
 
         if (!pumpStateStore.hasPumpState(pumpAddress)) {
@@ -490,7 +487,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
         progressReporter?.setCurrentProgressStage(BasicProgressStage.PerformingConnectionHandshake)
 
         // Launch the coroutine that sets up the connection.
-        return backgroundIOScope.launch {
+        return backgroundIOScope.async {
             try {
                 logger(LogLevel.DEBUG) { "Sending regular connection request" }
 

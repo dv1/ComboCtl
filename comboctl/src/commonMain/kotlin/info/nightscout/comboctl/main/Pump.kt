@@ -16,10 +16,10 @@ import info.nightscout.comboctl.base.PumpStateStore
 import info.nightscout.comboctl.base.ioDispatcher
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private val logger = Logger.get("Pump")
@@ -298,24 +298,23 @@ class Pump(
      * the worker. Some functions such as [startLongRTButtonPress] also
      * launch coroutines. They use this same coroutine scope.
      *
-     * The actual connection procedure also happens in that scope. If
-     * during the connection setup an exception is thrown, then the
-     * connection is rolled back to the disconnected state, and
-     * [onBackgroundWorkerException] is called. If an exception happens
-     * inside the worker _after_ the connection is established, then
-     * [onBackgroundWorkerException] will be called. However, unlike with
-     * exceptions during the connection setup, exceptions from inside
-     * the worker cause the worker to "fail". In that failed state, any
-     * of the functions mentioned above will immediately fail with an
-     * [IllegalStateException]. The user has to call [disconnect] to
-     * change the worker from a failed to a disconnected state.
-     * Then, the user can attempt to connect again.
+     * The actual connection procedure also happens in that scope, in its
+     * own coroutine. That coroutine is represented by the instance of
+     * [kotlinx.coroutines.Deferred] that is returned by this function.
+     * If an exception occurs _during_ connection setup, the connection
+     * attempt is aborted, this Pump instance reverts to the disconnected
+     * state, and the exception is caught by the returned Deferred value.
+     * Users call [kotlinx.coroutines.Deferred.await] to wait for the
+     * connection procedure to finish; if an exception occurred during
+     * that procedure, it is re-thrown by that function.
      *
-     * The coroutine that runs connection setup procedure is represented
-     * by the [kotlinx.coroutines.Job] instance that is returned by this
-     * function. This makes it possible to wait until the connection is
-     * established or an error occurs. To do that, the user calls
-     * [kotlinx.coroutines.Job.join].
+     * If any exceptions that happen inside the worker _after_ the
+     * connection is established, [onBackgroundWorkerException] will be
+     * called. Exceptions from inside the worker cause the worker to "fail".
+     * In that failed state, any of the Pump functions ([switchMode] etc.)
+     * mentioned above will immediately fail with an [IllegalStateException].
+     * The user has to call [disconnect] to change the worker from a failed
+     * to a disconnected state. Then, the user can attempt to connect again.
      *
      * [isConnected] will return true if the connection was established.
      *
@@ -338,8 +337,8 @@ class Pump(
      * @param onBackgroundWorkerException Optional callback for notifying
      *        about exceptions that get thrown inside the worker.
      * @param initialMode What mode to initially switch to.
-     * @return [kotlinx.coroutines.Job] representing the coroutine that
-     *         runs the connection setup procedure.
+     * @return [kotlinx.coroutines.Deferred] representing the coroutine
+     *         that runs the connection setup procedure.
      * @throws IllegalStateException if IO was already started by a
      *         previous [startIO] call or if the [PumpStateStore]
      *         that was passed to the class constructor isn't initialized
@@ -349,7 +348,7 @@ class Pump(
         backgroundIOScope: CoroutineScope,
         onBackgroundWorkerException: (e: Exception) -> Unit = { },
         initialMode: PumpIO.Mode = PumpIO.Mode.REMOTE_TERMINAL
-    ): Job {
+    ): Deferred<Unit> {
         if (pumpIO.isConnected())
             throw IllegalStateException("Already connected to Combo")
 
@@ -365,7 +364,7 @@ class Pump(
         connectProgressReporter.setCurrentProgressStage(BasicProgressStage.StartingConnectionSetup)
 
         // Run the actual connection attempt in the background IO scope.
-        return backgroundIOScope.launch {
+        return backgroundIOScope.async {
             // Suspend the coroutine until Bluetooth is connected.
             // Do this in a separate coroutine with an IO dispatcher
             // since the connection setup may block.
@@ -384,7 +383,7 @@ class Pump(
                         onBackgroundIOException = onBackgroundWorkerException,
                         initialMode = initialMode,
                         runKeepAliveLoop = true
-                    ).join()
+                    ).await()
 
                     connectProgressReporter.setCurrentProgressStage(BasicProgressStage.Finished)
                 } catch (e: Exception) {
