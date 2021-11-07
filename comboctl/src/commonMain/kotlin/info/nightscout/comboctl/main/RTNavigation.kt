@@ -136,6 +136,17 @@ internal fun findRTNavigationPath(fromScreenType: KClassifier, toScreenType: KCl
 open class RTNavigationException(message: String) : ComboException(message)
 
 /**
+ * Exception thrown when the RT navigation encountered an unexpected screen type.
+ *
+ * @property expectedScreenType Type of the screen that was expected.
+ * @property encounteredScreenType Type of the screen that was encountered.
+ */
+class UnexpectedRTScreenException(
+    val expectedScreenType: KClassifier,
+    val encounteredScreenType: KClassifier
+) : RTNavigationException("Unexpected RT screen; expected $expectedScreenType, encountered $encounteredScreenType")
+
+/**
  * Exception thrown when the RT navigation could not find a screen of the searched type.
  *
  * @property targetScreenType Type of the screen that was searched.

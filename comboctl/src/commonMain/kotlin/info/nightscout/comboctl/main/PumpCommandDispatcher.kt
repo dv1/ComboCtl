@@ -67,15 +67,15 @@ class BolusAbortedDueToErrorException(deliveredAmount: Int, totalAmount: Int) :
 
 object RTCommandProgressStage {
     /**
-     * Basal profile setting stage.
+     * Basal profile setting/getting stage.
      *
-     * @property numSetFactors How many basal rate factors have been set by now.
-     *           When the basal profile has been fully set, this value equals
+     * @property numSetFactors How many basal rate factors have been accessed by now.
+     *           When the basal profile has been fully accessed, this value equals
      *           the value of totalNumFactors.
      * @property totalNumFactors Total number of basal rate factors.
      */
-    data class SettingBasalProfile(val numSetFactors: Int, val totalNumFactors: Int = NUM_BASAL_PROFILE_FACTORS) :
-        ProgressStage("settingBasalProfile")
+    data class BasalProfileAccess(val numSetFactors: Int, val totalNumFactors: Int = NUM_BASAL_PROFILE_FACTORS) :
+        ProgressStage("basalProfileAccess")
 
     /**
      * TBR percentage setting stage.
@@ -174,9 +174,9 @@ class PumpCommandDispatcher(private val pump: Pump) {
     private var parsedScreenFlow = rtNavigationContext.getParsedScreenFlow(ignoreAlertScreens = false)
     private val commandMutex = Mutex()
 
-    private val basalProfileProgressReporter = ProgressReporter(
+    private val basalProfileAccessReporter = ProgressReporter(
         listOf(
-            RTCommandProgressStage.SettingBasalProfile::class
+            RTCommandProgressStage.BasalProfileAccess::class
         )
     )
 
@@ -211,20 +211,20 @@ class PumpCommandDispatcher(private val pump: Pump) {
     )
 
     /**
-     * [StateFlow] for reporting progress during the [setBasalProfile] call.
+     * [StateFlow] for reporting progress during the [setBasalProfile] and [getBasalProfile] calls.
      *
      * See the [ProgressReporter] documentation for details.
      *
      * This flow only consists of one stage (aside from Finished/Aborted/Idle),
-     * and that is [RTCommandProgressStage.SettingBasalProfile].
+     * and that is [RTCommandProgressStage.BasalProfileAccess].
      */
-    val basalProfileProgressFlow = basalProfileProgressReporter.progressFlow
+    val basalProfileAccessFlow = basalProfileAccessReporter.progressFlow
 
     /**
      * Sets the Combo's basal profile via the remote terminal (RT) mode.
      *
-     * This function suspends until the basal profile is fully set. The,
-     * [bolusDeliveryProgressFlow] can be used to get informed about the basal
+     * This function suspends until the basal profile is fully set. The
+     * [basalProfileAccessFlow] can be used to get informed about the basal
      * profile setting progress. Since setting a profile can take quite a
      * while, it is recommended to make use of this to show some sort of progress
      * indicator on a GUI.
@@ -263,9 +263,9 @@ class PumpCommandDispatcher(private val pump: Pump) {
             ) { "Basal profile factor #$index is not correctly rounded (value: $factor)" }
         }
 
-        basalProfileProgressReporter.reset()
+        basalProfileAccessReporter.reset()
 
-        basalProfileProgressReporter.setCurrentProgressStage(RTCommandProgressStage.SettingBasalProfile(0))
+        basalProfileAccessReporter.setCurrentProgressStage(RTCommandProgressStage.BasalProfileAccess(0))
 
         try {
             navigateToRTScreen(rtNavigationContext, ParsedScreen.BasalRateFactorSettingScreen::class)
@@ -282,7 +282,7 @@ class PumpCommandDispatcher(private val pump: Pump) {
                     (it as ParsedScreen.BasalRateFactorSettingScreen).numUnits
                 }
 
-                basalProfileProgressReporter.setCurrentProgressStage(RTCommandProgressStage.SettingBasalProfile(index + 1))
+                basalProfileAccessReporter.setCurrentProgressStage(RTCommandProgressStage.BasalProfileAccess(index + 1))
 
                 // By pushing MENU we move to the next basal rate factor.
                 rtNavigationContext.shortPressButton(RTNavigationButton.MENU)
@@ -309,9 +309,159 @@ class PumpCommandDispatcher(private val pump: Pump) {
             rtNavigationContext.shortPressButton(RTNavigationButton.CHECK)
             waitUntilScreenAppears(rtNavigationContext, ParsedScreen.MainScreen::class)
 
-            basalProfileProgressReporter.setCurrentProgressStage(BasicProgressStage.Finished)
+            basalProfileAccessReporter.setCurrentProgressStage(BasicProgressStage.Finished)
         } catch (e: Exception) {
-            basalProfileProgressReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
+            basalProfileAccessReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
+            throw e
+        }
+    }
+
+    /**
+     * Sets the Combo's basal profile via the remote terminal (RT) mode.
+     *
+     * This function suspends until the basal profile is fully retrieved. The
+     * [basalProfileAccessFlow] can be used to get informed about the basal
+     * profile retrieval progress. Since getting a profile can take quite a
+     * while, it is recommended to make use of this to show some sort of progress
+     * indicator on a GUI.
+     *
+     * The retrieved basal profile always contains exactly 24 integers (one for
+     * each basal profile factor). Each factor is an integer-encoded-decimal.
+     * The last 3 digits of the integer make up the 3 most significant fractional
+     * digits of a decimal. For example, 10 IU are encoded as 10000, 2.5 IU are
+     * encoded as 2500, 0.06 IU are encoded as 60 etc. For the list of valid
+     * value ranges to expect, see the [setBasalProfile] documentation.
+     *
+     * @return Basal profile, as 24 IU decimals, encoded as integers.
+     * @throws AlertScreenException if an alert occurs during this call.
+     * @throws IllegalStateException if the [Pump] instance's background worker
+     *         has failed or the pump is not connected.
+     * @throws UnexpectedRTScreenException if during the basal profile
+     *         retrieval, an unexpected RT screen is encountered.
+     */
+    suspend fun getBasalProfile() = dispatchCommand<List<Int>>(PumpIO.Mode.REMOTE_TERMINAL, expectedWarningCode = null) {
+        basalProfileAccessReporter.reset()
+
+        basalProfileAccessReporter.setCurrentProgressStage(RTCommandProgressStage.BasalProfileAccess(0))
+
+        try {
+            val basalProfile = MutableList<Int>(NUM_BASAL_PROFILE_FACTORS) { -1 }
+
+            navigateToRTScreen(rtNavigationContext, ParsedScreen.BasalRateFactorSettingScreen::class)
+
+            var numObservedScreens = 0
+            var numRetrievedFactors = 0
+
+            // Do a long RT MENU button press to quickly navigate
+            // through all basal profile factors, keeping count on
+            // all observed screens and all retrieved factors to
+            // be able to later check if all factors were observed.
+            longPressRTButtonUntil(rtNavigationContext, RTNavigationButton.MENU) { parsedScreen ->
+                if (parsedScreen !is ParsedScreen.BasalRateFactorSettingScreen) {
+                    logger(LogLevel.ERROR) { "Got a non-profile screen ($parsedScreen)" }
+                    throw UnexpectedRTScreenException(
+                        ParsedScreen.BasalRateFactorSettingScreen::class,
+                        parsedScreen::class
+                    )
+                }
+
+                numObservedScreens++
+
+                val factorIndexOnScreen = parsedScreen.beginTime.hour
+
+                // numUnits null means the basal profile factor
+                // is currently not shown due to blinking.
+                if (parsedScreen.numUnits == null)
+                    return@longPressRTButtonUntil false
+
+                // If the factor in the profile is >= 0, it
+                // means it was already set earlier.
+                if (basalProfile[factorIndexOnScreen] >= 0)
+                    return@longPressRTButtonUntil false
+
+                val factor = parsedScreen.numUnits
+                basalProfile[factorIndexOnScreen] = factor
+                logger(LogLevel.DEBUG) { "Got basal profile factor #$factorIndexOnScreen : $factor" }
+
+                basalProfileAccessReporter.setCurrentProgressStage(
+                    RTCommandProgressStage.BasalProfileAccess(numRetrievedFactors)
+                )
+
+                numRetrievedFactors++
+
+                (numObservedScreens >= NUM_BASAL_PROFILE_FACTORS)
+            }
+
+            // Failsafe in the unlikely case that the longPressRTButtonUntil()
+            // call above skipped over some of the basal profile factors. In such
+            // a case, numRetrievedFactors will be less than 24 (the value of
+            // NUM_BASAL_PROFILE_FACTORS).
+            // The corresponding items in the basalProfile int list will be set to
+            // -1, since those items will have been skipped as well. Therefore,
+            // for each negative item, revisit the corresponding screen.
+            if (numRetrievedFactors < NUM_BASAL_PROFILE_FACTORS) {
+                for (index in basalProfile.indices) {
+                    // We are only interested in those entries that have been
+                    // skipped. Those entries are set to their initial value (-1).
+                    if (basalProfile[index] >= 0)
+                        continue
+
+                    logger(LogLevel.DEBUG) { "Re-reading missing basal profile factor $index" }
+
+                    shortPressRTButtonsUntil(rtNavigationContext) { parsedScreen ->
+                        if (parsedScreen !is ParsedScreen.BasalRateFactorSettingScreen) {
+                            logger(LogLevel.ERROR) { "Got a non-profile screen ($parsedScreen)" }
+                            throw UnexpectedRTScreenException(
+                                ParsedScreen.BasalRateFactorSettingScreen::class,
+                                parsedScreen::class
+                            )
+                        }
+
+                        val factorIndexOnScreen = parsedScreen.beginTime.hour
+
+                        if (factorIndexOnScreen == index) {
+                            val factor = parsedScreen.numUnits
+                            // Do nothing if the factor is currently not
+                            // shown due to blinking so we can retry.
+                            // Eventually, the factor becomes visible again.
+                            if (factor == null)
+                                return@shortPressRTButtonsUntil ShortPressRTButtonsCommand.DoNothing
+
+                            basalProfile[index] = factor
+                            logger(LogLevel.DEBUG) { "Got basal profile factor #$index : $factor" }
+
+                            // We got the factor, so we can stop short-pressing the RT button.
+                            return@shortPressRTButtonsUntil ShortPressRTButtonsCommand.Stop
+                        } else {
+                            // This is not the correct basal profile factor, so keep
+                            // navigating through them to find the correct factor.
+                            return@shortPressRTButtonsUntil ShortPressRTButtonsCommand.PressButton(
+                                RTNavigationButton.MENU)
+                        }
+                    }
+
+                    basalProfileAccessReporter.setCurrentProgressStage(
+                        RTCommandProgressStage.BasalProfileAccess(numRetrievedFactors)
+                    )
+                    numRetrievedFactors++
+                }
+            }
+
+            // All factors retrieved. Press CHECK once to get back to the total
+            // basal rate screen, and then CHECK again to return to the main menu.
+
+            rtNavigationContext.shortPressButton(RTNavigationButton.CHECK)
+            waitUntilScreenAppears(rtNavigationContext, ParsedScreen.BasalRateTotalScreen::class)
+
+            rtNavigationContext.shortPressButton(RTNavigationButton.CHECK)
+            waitUntilScreenAppears(rtNavigationContext, ParsedScreen.MainScreen::class)
+
+            basalProfileAccessReporter.setCurrentProgressStage(BasicProgressStage.Finished)
+
+            // Return the resulting profile.
+            basalProfile
+        } catch (e: Exception) {
+            basalProfileAccessReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
             throw e
         }
     }
