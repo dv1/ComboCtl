@@ -421,7 +421,8 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      * by the [kotlinx.coroutines.Job] instance that is returned by this
      * function. This makes it possible to wait until the connection is
      * established or an error occurs. To do that, the user calls
-     * [kotlinx.coroutines.Job.join].
+     * [kotlinx.coroutines.Job.join]. In case of an error, that function
+     * throws a [CancellationException].
      *
      * [isConnected] will return true if the connection was established.
      *
@@ -448,7 +449,8 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      *        if the pump is running in the REMOTE_TERMINAL or COMMAND mode
      *        respectively.
      * @return [kotlinx.coroutines.Job] representing the coroutine that
-     *         runs the connection setup procedure.
+     *         runs the connection setup procedure. If an error occurs
+     *         during the connection setup, that coroutine is cancelled.
      * @throws IllegalStateException if IO was already started by a
      *         previous [startIO] call or if the [PumpStateStore]
      *         that was passed to the class constructor isn't initialized
@@ -512,9 +514,9 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
             } catch (e: Exception) {
                 disconnect()
                 onBackgroundIOException(e)
-                // TODO: Should this throw here? It would make it possible
-                // to check the returned Job instance for failure, but what
-                // would this throw do to the coroutine scope?
+                // Re-throw the exception to let this Job fail. This makes
+                // sure that any ongoing join() call detects the failure
+                // and throws a CancellationException.
                 throw e
             }
         }

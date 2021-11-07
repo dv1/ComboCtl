@@ -118,8 +118,12 @@ class PumpManager(
      *        This is called from within the [miscEventHandlingScope].
      */
     fun setup(onPumpUnpaired: (pumpAddress: BluetoothAddress) -> Unit = { }) {
-        // TODO: Actually wipe the states from the pump state store.
-        bluetoothInterface.onDeviceUnpaired = { deviceAddress -> onPumpUnpaired(deviceAddress) }
+        bluetoothInterface.onDeviceUnpaired = { deviceAddress ->
+            onPumpUnpaired(deviceAddress)
+            // Explicitly wipe the pump state in case the onPumpUnpaired callback did
+            // not do that already. This makes sure that no stale pump state remains.
+            pumpStateStore.deletePumpState(deviceAddress)
+        }
 
         val pairedDeviceAddresses = bluetoothInterface.getPairedDeviceAddresses()
         logger(LogLevel.DEBUG) { "${pairedDeviceAddresses.size} known device(s)" }

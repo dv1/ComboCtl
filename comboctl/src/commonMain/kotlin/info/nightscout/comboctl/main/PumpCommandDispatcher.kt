@@ -783,19 +783,8 @@ class PumpCommandDispatcher(private val pump: Pump) {
         pump.readCMDDateTime()
     }
 
-    // TODO: Is this still necessary?
-    private fun resetNavigation() {
-        parsedScreenFlow = rtNavigationContext.getParsedScreenFlow()
-    }
-
     private suspend fun <T> dispatchCommand(pumpMode: PumpIO.Mode, expectedWarningCode: Int?, block: suspend () -> T): T {
         pump.switchMode(pumpMode)
-
-        if (pumpMode == PumpIO.Mode.REMOTE_TERMINAL) {
-            // Make sure any previously parsed screen is not reused,
-            // since these may contain stale states.
-            resetNavigation()
-        }
 
         val retval = block.invoke()
 
