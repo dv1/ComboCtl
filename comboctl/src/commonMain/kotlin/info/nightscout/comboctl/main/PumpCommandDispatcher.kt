@@ -495,6 +495,7 @@ class PumpCommandDispatcher(private val pump: Pump) {
      * and an integer multiple of 10.
      * [durationInMinutes] must be at least 15 (since the Combo cannot do TBRs
      * that are shorter than 15 minutes), and must an integer multiple of 15.
+     * Maximum allowed duration is 24 hours, so the maximum valid value is 1440.
      * However, if [percentage] is 100, the value of [durationInMinutes]
      * is ignored.
      *
@@ -515,7 +516,10 @@ class PumpCommandDispatcher(private val pump: Pump) {
         // duration can only be an integer multiple of 15 minutes.
         require((percentage >= 0) && (percentage <= 500))
         require((percentage % 10) == 0)
-        require((percentage == 100) || ((durationInMinutes >= 15) && ((durationInMinutes % 15) == 0)))
+        require(
+            (percentage == 100) ||
+            ((durationInMinutes >= 15) && (durationInMinutes <= (24 * 60)) && ((durationInMinutes % 15) == 0))
+        )
 
         tbrProgressReporter.reset()
 
@@ -648,9 +652,10 @@ class PumpCommandDispatcher(private val pump: Pump) {
      * To cancel the bolus, simply cancel the coroutine that is suspended by this function.
      *
      * @param bolusAmount Bolus amount to deliver. Note that this is given
-     *        in 0.1 IU units, so for example, "57" means 5.7 IU.
+     *        in 0.1 IU units, so for example, "57" means 5.7 IU. Valid range
+     *        is 0.0 IU to 25.0 IU (that is, integer values 0-250).
      * @param bolusStatusUpdateIntervalInMs Interval between status updates,
-     *        in milliseconds.
+     *        in milliseconds. Must be at least 1
      * @throws BolusNotDeliveredException if the pump did not deliver the bolus.
      *         This typically happens because the pump is currently stopped.
      * @throws BolusCancelledByUserException when the bolus was cancelled by the user.
@@ -661,6 +666,10 @@ class PumpCommandDispatcher(private val pump: Pump) {
      */
     suspend fun deliverBolus(bolusAmount: Int, bolusStatusUpdateIntervalInMs: Long = 250) =
         dispatchCommand(PumpIO.Mode.COMMAND, expectedWarningCode = null) {
+
+        require((bolusAmount >= 0) && (bolusAmount <= 250))
+        require(bolusStatusUpdateIntervalInMs >= 1)
+
         logger(LogLevel.DEBUG) { "Beginning bolus delivery of ${bolusAmount.toStringWithDecimal(1)} IU" }
         val didDeliver = pump.deliverCMDStandardBolus(bolusAmount)
         if (!didDeliver) {
