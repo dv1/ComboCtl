@@ -1174,10 +1174,24 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
             // (for example due to a system crash).
             while (true) {
                 logger(LogLevel.VERBOSE) { "Transmitting CMD ping packet" }
-                applicationLayerIO.sendPacketWithResponse(
-                    ApplicationLayerIO.createCMDPingPacket(),
-                    ApplicationLayerIO.Command.CMD_PING_RESPONSE
-                )
+                try {
+                    applicationLayerIO.sendPacketWithResponse(
+                        ApplicationLayerIO.createCMDPingPacket(),
+                        ApplicationLayerIO.Command.CMD_PING_RESPONSE
+                    )
+                } catch (e: CancellationException) {
+                    cmdPingJob = null
+                    throw e
+                } catch (e: Exception) {
+                    logger(LogLevel.ERROR) {
+                        "Exception caught when attempting to transmit CMD ping packet - stopping CMD ping loop"
+                    }
+                    logger(LogLevel.ERROR) {
+                        "Exception: ${e.stackTraceToString()}"
+                    }
+                    cmdPingJob = null
+                    break
+                }
                 delay(1000)
             }
         }
@@ -1237,7 +1251,21 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
                 // behavior described above.
                 delay(1000)
                 logger(LogLevel.VERBOSE) { "Transmitting RT keep-alive packet" }
-                applicationLayerIO.sendPacketNoResponse(ApplicationLayerIO.createRTKeepAlivePacket())
+                try {
+                    applicationLayerIO.sendPacketNoResponse(ApplicationLayerIO.createRTKeepAlivePacket())
+                } catch (e: CancellationException) {
+                    rtKeepAliveJob = null
+                    throw e
+                } catch (e: Exception) {
+                    logger(LogLevel.ERROR) {
+                        "Exception caught when attempting to transmit RT keep-alive packet - stopping RT keep-alive loop"
+                    }
+                    logger(LogLevel.ERROR) {
+                        "Exception: ${e.stackTraceToString()}"
+                    }
+                    rtKeepAliveJob = null
+                    break
+                }
             }
         }
     }
