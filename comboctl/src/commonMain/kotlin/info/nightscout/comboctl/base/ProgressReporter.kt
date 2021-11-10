@@ -127,7 +127,7 @@ class ProgressReporter(private val plannedSequence: List<KClassifier>) {
     private val mutableProgressFlow = MutableStateFlow(ProgressReport(0, plannedSequence.size, BasicProgressStage.Idle))
 
     /**
-     * [StateFlow] for getting progress reports.
+     * Flow for getting progress reports.
      */
     val progressFlow = mutableProgressFlow.asStateFlow()
 

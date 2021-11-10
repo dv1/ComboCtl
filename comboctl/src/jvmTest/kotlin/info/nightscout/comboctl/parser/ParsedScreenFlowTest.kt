@@ -16,7 +16,7 @@ class ParsedScreenFlowTest {
             testFrameStandardBolusMenuScreen
         ).asFlow()
 
-        val screenFlow = parsedScreenFlow(displayFrameFlow) { Unit }
+        val screenFlow = parsedScreenFlow(displayFrameFlow) { }
         val flowResult = mutableListOf<ParsedScreen>()
         screenFlow.toList(flowResult)
         val flowResultIter = flowResult.listIterator()
@@ -67,7 +67,7 @@ class ParsedScreenFlowTest {
             testFrameStandardBolusMenuScreen
         ).asFlow()
 
-        val screenFlow = parsedScreenFlow(displayFrameFlow) { Unit }
+        val screenFlow = parsedScreenFlow(displayFrameFlow) { }
         val flowResult = mutableListOf<ParsedScreen>()
         screenFlow.toList(flowResult)
         val flowResultIter = flowResult.listIterator()
@@ -122,7 +122,7 @@ class ParsedScreenFlowTest {
             testTimeAndDateSettingsHourPolishScreen // This screen frame has "2 PM" (= 13 in 24h format) as hour
         ).asFlow()
 
-        val screenFlow = parsedScreenFlow(displayFrameFlow) { Unit }
+        val screenFlow = parsedScreenFlow(displayFrameFlow) { }
         val flowResult = mutableListOf<ParsedScreen>()
         screenFlow.toList(flowResult)
         val flowResultIter = flowResult.listIterator()

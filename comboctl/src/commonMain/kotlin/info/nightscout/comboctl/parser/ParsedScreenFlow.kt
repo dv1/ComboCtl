@@ -86,7 +86,7 @@ internal class AlertScreenFilterFlow(
             } else {
                 if (!alertScreenContents.isEmpty()) {
                     val finishedContents = alertScreenContents
-                    alertScreenContents = mutableListOf<AlertScreenContent>()
+                    alertScreenContents = mutableListOf()
                     throw AlertScreenException(finishedContents)
                 }
                 collector.emit(parsedScreen)

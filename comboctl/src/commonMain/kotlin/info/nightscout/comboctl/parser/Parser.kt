@@ -311,7 +311,7 @@ class SingleGlyphTypeParser(private val glyphType: KClassifier) : Parser() {
  * This also parses whitespaces and adds them to the produced string.
  * Whitespaces are detected by measuring the distance between glyphs.
  */
-class StringParser() : Parser() {
+class StringParser : Parser() {
     override fun parseImpl(parseContext: ParseContext): ParseResult {
         var parsedString = ""
         var lastToken: Token? = null
@@ -1286,7 +1286,7 @@ class TimeAndDateSettingsScreenParser(val titleId: TitleID) : Parser() {
     }
 }
 
-class MyDataBolusDataScreenParser() : Parser() {
+class MyDataBolusDataScreenParser : Parser() {
     override fun parseImpl(parseContext: ParseContext): ParseResult {
         val parseResult = SequenceParser(
             listOf(
@@ -1334,7 +1334,7 @@ class MyDataBolusDataScreenParser() : Parser() {
     }
 }
 
-class MyDataErrorDataScreenParser() : Parser() {
+class MyDataErrorDataScreenParser : Parser() {
     override fun parseImpl(parseContext: ParseContext): ParseResult {
         val parseResult = SequenceParser(
             listOf(
@@ -1375,7 +1375,7 @@ class MyDataErrorDataScreenParser() : Parser() {
     }
 }
 
-class MyDataDailyTotalsScreenParser() : Parser() {
+class MyDataDailyTotalsScreenParser : Parser() {
     override fun parseImpl(parseContext: ParseContext): ParseResult {
         val parseResult = SequenceParser(
             listOf(
@@ -1410,7 +1410,7 @@ class MyDataDailyTotalsScreenParser() : Parser() {
     }
 }
 
-class MyDataTbrDataScreenParser() : Parser() {
+class MyDataTbrDataScreenParser : Parser() {
     override fun parseImpl(parseContext: ParseContext): ParseResult {
         val parseResult = SequenceParser(
             listOf(

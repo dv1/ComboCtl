@@ -159,7 +159,7 @@ class CouldNotFindRTScreenException(val targetScreenType: KClassifier) : RTNavig
  * Typically, this happens because a display frame could not be parsed
  * (= the screen is [ParsedScreen.UnrecognizedScreen]).
  */
-class NoUsableRTScreenException() : RTNavigationException("No usable RT screen available")
+class NoUsableRTScreenException : RTNavigationException("No usable RT screen available")
 
 /**
  * Context class for housing states related to navigating through RT screens.

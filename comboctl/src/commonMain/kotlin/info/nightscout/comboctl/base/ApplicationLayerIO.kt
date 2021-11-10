@@ -83,11 +83,9 @@ const val MAX_VALID_AL_PAYLOAD_SIZE = 65535 - PACKET_HEADER_SIZE
  * error handling in that worker.
  *
  * NOTE: This class is not designed to allow multiple concurrent
- * [sendPacket] or [receiveAppLayerPacket]/[receiveTpLayerPacket] calls.
- * Such a use case is currently not considered relevant for this class.
- * So, adding synchronization primitives to make them thread safe would
- * add cost and not yield enough benefit. This may change in the future
- * though.
+ * packet send and receive operations. Such a use case is currently not
+ * considered relevant for this class. Adding synchronization primitives
+ * to make them thread safe would add cost and not yield enough benefit.
  *
  * @param pumpStateStore Pump state store to use.
  * @param pumpAddress Bluetooth address of the pump. Used for
@@ -1731,8 +1729,8 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
     /**
      * Starts IO activities.
      *
-     * This must be called before [sendPacket], [receiveAppLayerPacket],
-     * and [receiveTpLayerPacket] can be used.
+     * This must be called before any send and receive operations can
+     * be performed.
      *
      * This starts the background worker coroutines that are necessary
      * for getting the actual IO with the Combo done. These coroutines
@@ -1972,7 +1970,7 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
     /**
      * Sends transport layer packets to the Combo, and waits for a response.
      *
-     * This is essentially a combination of [transportLayerIO.sendPacket]
+     * This is essentially a combination of [TransportLayerIO.sendPacket]
      * and [receiveTpLayerPacket], but synchronized to prevent multiple
      * sendPacketWithResponse calls from happening concurrently. This is
      * necessary with many commands that have corresponding response commands

@@ -345,7 +345,7 @@ class PumpCommandDispatcher(private val pump: Pump) {
         basalProfileAccessReporter.setCurrentProgressStage(RTCommandProgressStage.BasalProfileAccess(0))
 
         try {
-            val basalProfile = MutableList<Int>(NUM_BASAL_PROFILE_FACTORS) { -1 }
+            val basalProfile = MutableList(NUM_BASAL_PROFILE_FACTORS) { -1 }
 
             navigateToRTScreen(rtNavigationContext, ParsedScreen.BasalRateFactorSettingScreen::class)
 
