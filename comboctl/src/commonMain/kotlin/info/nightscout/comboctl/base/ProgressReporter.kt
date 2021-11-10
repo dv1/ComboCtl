@@ -47,13 +47,13 @@ object BasicProgressStage {
 /**
  * Report with updated progress information.
  *
- * @property stepNumber Current progress step number, starting at 0.
- *           If stepNumber == numSteps, then the stage is always
+ * @property stageNumber Current progress stage number, starting at 0.
+ *           If stageNumber == numStages, then the stage is always
  *           [BasicProgressStage.Finished] or [BasicProgressStage.Aborted].
- * @property numSteps Total number of steps in the progress sequence.
+ * @property numStages Total number of stages in the progress sequence.
  * @property stage Information about the current stage.
  */
-data class ProgressReport(val stepNumber: Int, val numSteps: Int, val stage: ProgressStage)
+data class ProgressReport(val stageNumber: Int, val numStages: Int, val stage: ProgressStage)
 
 /**
  * Class for reporting progress updates.
@@ -70,13 +70,13 @@ data class ProgressReport(val stepNumber: Int, val numSteps: Int, val stage: Pro
  * is always set as the current flow value when the reporter is created and when
  * [reset] is called. The other two are passed to [setCurrentProgressStage], which
  * then immediately forwards them in a [ProgressReport] instance, with that instance's
- * step number set to [numSteps] (since both of these stages define the end of a sequence).
+ * stage number set to [numStages] (since both of these stages define the end of a sequence).
  *
  * In code that reports progress, the [setCurrentProgressStage] function is called
  * to deliver updates to the reporter, which then forwards that update to subscribers
  * of the [progressFlow]. The reporter takes care of checking where in the sequence
- * that stage is. The index of the stage in the sequence is called a "step". The
- * size of the sequence equals [numSteps].
+ * that stage is. Stages are indexed by stage numbers, which start at 0. The size
+ * of the sequence equals [numStages].
  *
  * Updates to the flow are communicated as [ProgressReport] instances. They provide
  * subscribers with the necessary information to show details about the current
@@ -104,11 +104,11 @@ data class ProgressReport(val stepNumber: Int, val numSteps: Int, val stage: Pro
  * [progressFlow], looking like this:
  *
  * ```
- * ProgressReport(stepNumber = 1, numSteps = 3, stage = BasicProgressStage.EstablishingBtConnection(1, 4))
+ * ProgressReport(stageNumber = 1, numStages = 3, stage = BasicProgressStage.EstablishingBtConnection(1, 4))
  * ```
  *
  * This allows code to report progress without having to know what its current
- * step number is (so it does not have to concern itself about providing a correct
+ * stage number is (so it does not have to concern itself about providing a correct
  * progress percentage). Also, that way, code that reports progress can be combined.
  * For example, if function A contains setCurrentProgressStage calls, then the
  * function that called A can continue to report progress. And, the setCurrentProgressStage
@@ -122,7 +122,7 @@ data class ProgressReport(val stepNumber: Int, val numSteps: Int, val stage: Pro
  *        [BasicProgressStage.Aborted], or [BasicProgressStage.Finished].
  */
 class ProgressReporter(private val plannedSequence: List<KClassifier>) {
-    private var currentStepNumber = 0
+    private var currentStageNumber = 0
 
     private val mutableProgressFlow = MutableStateFlow(ProgressReport(0, plannedSequence.size, BasicProgressStage.Idle))
 
@@ -132,9 +132,9 @@ class ProgressReporter(private val plannedSequence: List<KClassifier>) {
     val progressFlow = mutableProgressFlow.asStateFlow()
 
     /**
-     * Total number of steps in the sequence.
+     * Total number of stages in the sequence.
      */
-    val numSteps = plannedSequence.size
+    val numStages = plannedSequence.size
 
     /**
      * Resets the reporter to its initial state.
@@ -142,8 +142,8 @@ class ProgressReporter(private val plannedSequence: List<KClassifier>) {
      * The flow's state will be set to a report whose stage is [BasicProgressStage.Idle].
      */
     fun reset() {
-        currentStepNumber = 0
-        mutableProgressFlow.value = ProgressReport(0, numSteps, BasicProgressStage.Idle)
+        currentStageNumber = 0
+        mutableProgressFlow.value = ProgressReport(0, numStages, BasicProgressStage.Idle)
     }
 
     /**
@@ -151,8 +151,8 @@ class ProgressReporter(private val plannedSequence: List<KClassifier>) {
      *
      * If the process that is being tracked by this reported was cancelled
      * or aborted due to an error, pass [BasicProgressStage.Aborted] as
-     * the stage argument. This will trigger a report with the step number
-     * set to the total number of steps (to signify that the work is over)
+     * the stage argument. This will trigger a report with the stage number
+     * set to the total number of stages (to signify that the work is over)
      * and the stage set to [BasicProgressStage.Aborted].
      *
      * If the process finished successfully, do the same as written above,
@@ -164,45 +164,45 @@ class ProgressReporter(private val plannedSequence: List<KClassifier>) {
         when (stage) {
             is BasicProgressStage.Finished,
             is BasicProgressStage.Aborted -> {
-                currentStepNumber = numSteps
-                mutableProgressFlow.value = ProgressReport(currentStepNumber, numSteps, stage)
+                currentStageNumber = numStages
+                mutableProgressFlow.value = ProgressReport(currentStageNumber, numStages, stage)
                 return
             }
             else -> Unit
         }
 
-        if (stage::class != plannedSequence[currentStepNumber]) {
+        if (stage::class != plannedSequence[currentStageNumber]) {
             // Search forward first. Typically, this succeeds, since stages
             // are reported in the order specified in the sequence.
-            var succeedingStepNumber = plannedSequence.subList(currentStepNumber + 1, numSteps).indexOfFirst {
+            var succeedingStageNumber = plannedSequence.subList(currentStageNumber + 1, numStages).indexOfFirst {
                 stage::class == it
             }
 
-            currentStepNumber = if (succeedingStepNumber == -1) {
+            currentStageNumber = if (succeedingStageNumber == -1) {
                 // Unusual case: An _earlier_ stage was reported. This is essentially
                 // a backwards progress (= a regress?). It is not unthinkable that
                 // this can happen, but it should be rare. In that case, we have
                 // to search backwards in the sequence.
-                val precedingStepNumber = plannedSequence.subList(0, currentStepNumber).indexOfFirst {
+                val precedingStageNumber = plannedSequence.subList(0, currentStageNumber).indexOfFirst {
                     stage::class == it
                 }
 
                 // If the progress info was not found in the sequence, log this and exit.
                 // Do not throw; a missing progress info ID in the sequence is not
                 // a fatal error, so do not break the application because of it.
-                if (precedingStepNumber == -1) {
+                if (precedingStageNumber == -1) {
                     logger(LogLevel.WARN) { "Progress stage \"$stage\" not found in stage sequence; not passing it to flow" }
                     return
                 }
 
-                precedingStepNumber
+                precedingStageNumber
             } else {
-                // Need to add (currentStepNumber + 1) as an offset, since the indexOfFirst
+                // Need to add (currentStageNumber + 1) as an offset, since the indexOfFirst
                 // call returns indices that are based on the sub list, not the entire list.
-                succeedingStepNumber + (currentStepNumber + 1)
+                succeedingStageNumber + (currentStageNumber + 1)
             }
         }
 
-        mutableProgressFlow.value = ProgressReport(currentStepNumber, numSteps, stage)
+        mutableProgressFlow.value = ProgressReport(currentStageNumber, numStages, stage)
     }
 }
