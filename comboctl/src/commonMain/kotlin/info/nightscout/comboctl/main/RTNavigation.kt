@@ -154,6 +154,15 @@ class UnexpectedRTScreenException(
 class CouldNotFindRTScreenException(val targetScreenType: KClassifier) : RTNavigationException("Could not find RT screen $targetScreenType")
 
 /**
+ * Exception thrown when in spite of repeatedly trying to exit to the main screen, no recognizable RT screen is found.
+ *
+ * This is different from [NoUsableRTScreenException] in that the code tried to get out
+ * of whatever unrecognized part of the RT menu and failed because it kept seeing unfamiliar
+ * screens, while that other exception is about not getting a specific RT screen.
+ */
+class CouldNotRecognizeAnyRTScreenException : RTNavigationException("Could not recognize any RT screen")
+
+/**
  * Exception thrown when a function needed a specific screen type but could not get it.
  *
  * Typically, this happens because a display frame could not be parsed
@@ -234,6 +243,7 @@ class RTNavigationContext(
  * @param rtNavigationContext Context for navigating to the target screen.
  * @param button Button to press for cycling to the target screen.
  * @param targetScreenType Type of the target screen.
+ * @return The last observed [ParsedScreen].
  * @throws CouldNotFindRTScreenException if the screen was not found even
  *         after this function moved [RTNavigationContext.maxNumCycleAttempts]
  *         times from screen to screen.
@@ -243,9 +253,9 @@ suspend fun cycleToRTScreen(
     rtNavigationContext: RTNavigationContext,
     button: RTNavigationButton,
     targetScreenType: KClassifier
-) {
+): ParsedScreen {
     var cycleCount = 0
-    rtNavigationContext.getParsedScreenFlow(ignoreAlertScreens = false)
+    return rtNavigationContext.getParsedScreenFlow(ignoreAlertScreens = false)
         .first { parsedScreen ->
             if (cycleCount >= rtNavigationContext.maxNumCycleAttempts)
                 throw CouldNotFindRTScreenException(targetScreenType)
@@ -301,16 +311,25 @@ suspend fun waitUntilScreenAppears(rtNavigationContext: RTNavigationContext, tar
  *         this function observed [RTNavigationContext.maxNumCycleAttempts]
  *         screens coming in, or if no path from the current screen to
  *         [targetScreenType] could be found.
+ * @throws CouldNotRecognizeAnyRTScreenException if the RT menu is at an
+ *         unknown, unrecognized screen at the moment, and in spite of repeatedly
+ *         pressing the BACK button to exit back to the main menu, the code
+ *         kept seeing unrecognized screens.
  * @throws AlertScreenException if alert screens are seen.
  */
 suspend fun navigateToRTScreen(
     rtNavigationContext: RTNavigationContext,
     targetScreenType: KClassifier
 ) {
-    // Get the current screen so we know the starting point.
-    val currentParsedScreen = rtNavigationContext.getParsedScreenFlow(ignoreAlertScreens = false)
+    // Get the current screen so we know the starting point. If it is an
+    // unrecognized screen, press BACK until we are at the main screen.
+    var numAttemptsToRecognizeScreen = 0
+    var currentParsedScreen = rtNavigationContext.getParsedScreenFlow(ignoreAlertScreens = false)
         .first { parsedScreen ->
             if (parsedScreen is ParsedScreen.UnrecognizedScreen) {
+                numAttemptsToRecognizeScreen++
+                if (numAttemptsToRecognizeScreen >= rtNavigationContext.maxNumCycleAttempts)
+                    throw CouldNotRecognizeAnyRTScreenException()
                 rtNavigationContext.shortPressButton(RTNavigationButton.BACK)
                 false
             } else {
@@ -319,9 +338,38 @@ suspend fun navigateToRTScreen(
         }
 
     // Figure out the shortest path.
-    val path = findRTNavigationPath(currentParsedScreen::class, targetScreenType)
-    if (path.isEmpty())
-        throw CouldNotFindRTScreenException(targetScreenType)
+    var path = try {
+        findRTNavigationPath(currentParsedScreen::class, targetScreenType)
+    } catch (e: IllegalArgumentException) {
+        // Happens when currentParsedScreen::class is not found in the navigation tree.
+        setOf()
+    }
+
+    if (path.isEmpty()) {
+        // If we are getting an unknown screen, try exiting by repeatedly pressing BACK.
+        // cycleToRTScreen() takes care of that. If it fails to find the main screen,
+        // it throws a CouldNotFindRTScreenException.
+
+        logger(LogLevel.WARN) {
+            "We are at screen of type ${currentParsedScreen::class}, which is unknown " +
+            "to findRTNavigationPath(); exiting back to the main screen"
+        }
+        currentParsedScreen = cycleToRTScreen(rtNavigationContext, RTNavigationButton.BACK, ParsedScreen.MainScreen::class)
+
+        // Now try again to find a path. We should get a valid path now. We would
+        // not be here otherwise, since cycleToRTScreen() throws an exception then.
+        path = try {
+            findRTNavigationPath(currentParsedScreen::class, targetScreenType)
+        } catch (e: IllegalArgumentException) {
+            setOf()
+        }
+
+        if (path.isEmpty()) {
+            // Should not happen due to the cycleToRTScreen() call above.
+            logger(LogLevel.ERROR) { "Could not find RT navigation path even after navigating back to the main menu" }
+            throw CouldNotFindRTScreenException(targetScreenType)
+        }
+    }
 
     // Navigate from the current to the target screen.
     var cycleCount = 0
