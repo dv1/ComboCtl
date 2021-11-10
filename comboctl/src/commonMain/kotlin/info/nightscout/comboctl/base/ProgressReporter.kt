@@ -52,8 +52,11 @@ object BasicProgressStage {
  *           [BasicProgressStage.Finished] or [BasicProgressStage.Aborted].
  * @property numStages Total number of stages in the progress sequence.
  * @property stage Information about the current stage.
+ * @property overallProgress Numerical indicator for the overall progress.
+ *           Valid range is 0.0 - 1.0, with 0.0 being the beginning of
+ *           the progress, and 1.0 specifying the end.
  */
-data class ProgressReport(val stageNumber: Int, val numStages: Int, val stage: ProgressStage)
+data class ProgressReport(val stageNumber: Int, val numStages: Int, val stage: ProgressStage, val overallProgress: Double)
 
 /**
  * Class for reporting progress updates.
@@ -120,11 +123,22 @@ data class ProgressReport(val stageNumber: Int, val numStages: Int, val stage: P
  * @param plannedSequence The planned progress sequence, as a list of ProgressStage
  *        classes. This never contains [BasicProgressStage.Idle],
  *        [BasicProgressStage.Aborted], or [BasicProgressStage.Finished].
+ * @param context User defined contxt to pass to computeOverallProgressCallback.
+ *        This can be updated via [reset] calls.
+ * @param computeOverallProgressCallback Callback for computing an overall progress
+ *        indication out of the current stage. Valid range for the return value
+ *        is 0.0 to 1.0. See [ProgressReport] for an explanation of the arguments.
+ *        Default callback calculates (stageNumber / numStages) and uses the result.
  */
-class ProgressReporter(private val plannedSequence: List<KClassifier>) {
+class ProgressReporter<Context>(
+    private val plannedSequence: List<KClassifier>,
+    private var context: Context,
+    private val computeOverallProgressCallback: (stageNumber: Int, numStages: Int, stage: ProgressStage, context: Context) -> Double =
+        { stageNumber: Int, numStages: Int, _: ProgressStage, _: Context -> stageNumber.toDouble() / numStages.toDouble() }
+) {
     private var currentStageNumber = 0
-
-    private val mutableProgressFlow = MutableStateFlow(ProgressReport(0, plannedSequence.size, BasicProgressStage.Idle))
+    private val mutableProgressFlow =
+        MutableStateFlow(ProgressReport(0, plannedSequence.size, BasicProgressStage.Idle, 0.0))
 
     /**
      * Flow for getting progress reports.
@@ -140,10 +154,14 @@ class ProgressReporter(private val plannedSequence: List<KClassifier>) {
      * Resets the reporter to its initial state.
      *
      * The flow's state will be set to a report whose stage is [BasicProgressStage.Idle].
+     *
+     * @param context User defined contxt to pass to computeOverallProgressCallback.
+     *        Replaces the context passed to the constructor.
      */
-    fun reset() {
+    fun reset(context: Context) {
+        this.context = context
         currentStageNumber = 0
-        mutableProgressFlow.value = ProgressReport(0, numStages, BasicProgressStage.Idle)
+        mutableProgressFlow.value = ProgressReport(0, numStages, BasicProgressStage.Idle, 0.0)
     }
 
     /**
@@ -165,7 +183,7 @@ class ProgressReporter(private val plannedSequence: List<KClassifier>) {
             is BasicProgressStage.Finished,
             is BasicProgressStage.Aborted -> {
                 currentStageNumber = numStages
-                mutableProgressFlow.value = ProgressReport(currentStageNumber, numStages, stage)
+                mutableProgressFlow.value = ProgressReport(currentStageNumber, numStages, stage, 1.0)
                 return
             }
             else -> Unit
@@ -203,6 +221,9 @@ class ProgressReporter(private val plannedSequence: List<KClassifier>) {
             }
         }
 
-        mutableProgressFlow.value = ProgressReport(currentStageNumber, numStages, stage)
+        mutableProgressFlow.value = ProgressReport(
+            currentStageNumber, numStages, stage,
+            computeOverallProgressCallback(currentStageNumber, numStages, stage, context)
+        )
     }
 }

@@ -38,7 +38,7 @@ class AndroidBluetoothDevice(
 
     // Base class overrides.
 
-    override fun connect(progressReporter: ProgressReporter?) {
+    override fun connect(progressReporter: ProgressReporter<Unit>?) {
         if (systemBluetoothSocket != null)
             throw IllegalStateException("Connection already established")
 

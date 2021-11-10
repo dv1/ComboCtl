@@ -38,7 +38,7 @@ class BlueZDevice(
     override fun blockingSend(dataToSend: List<Byte>) = sendImpl(dataToSend.toByteArray())
     override fun blockingReceive(): List<Byte> = receiveImpl().toList()
 
-    override fun connect(progressReporter: ProgressReporter?) {
+    override fun connect(progressReporter: ProgressReporter<Unit>?) {
         progressReporter?.setCurrentProgressStage(BasicProgressStage.EstablishingBtConnection(1, 1))
         connectImpl()
     }

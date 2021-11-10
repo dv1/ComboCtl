@@ -283,7 +283,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      */
     suspend fun performPairing(
         bluetoothFriendlyName: String,
-        progressReporter: ProgressReporter?,
+        progressReporter: ProgressReporter<Unit>?,
         pairingPINCallback: PairingPINCallback
     ) {
         if (isConnected())
@@ -455,7 +455,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      */
     fun connect(
         backgroundIOScope: CoroutineScope,
-        progressReporter: ProgressReporter?,
+        progressReporter: ProgressReporter<Unit>?,
         onBackgroundIOException: (e: Exception) -> Unit = { },
         initialMode: Mode = Mode.REMOTE_TERMINAL,
         runKeepAliveLoop: Boolean = true

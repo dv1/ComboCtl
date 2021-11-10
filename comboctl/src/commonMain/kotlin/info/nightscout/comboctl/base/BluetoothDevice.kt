@@ -28,7 +28,7 @@ abstract class BluetoothDevice(private val bluetoothInterface: BluetoothInterfac
      *         that does not permit connecting, such as a device
      *         that has been shut down.
      */
-    abstract fun connect(progressReporter: ProgressReporter? = null)
+    abstract fun connect(progressReporter: ProgressReporter<Unit>? = null)
 
     /**
      * Explicitly disconnect the device's RFCOMM connection now.

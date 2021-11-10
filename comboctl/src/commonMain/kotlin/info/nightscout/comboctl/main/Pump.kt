@@ -175,7 +175,7 @@ class Pump(
      */
     suspend fun performPairing(
         bluetoothFriendlyName: String,
-        progressReporter: ProgressReporter?,
+        progressReporter: ProgressReporter<Unit>?,
         pairingPINCallback: PairingPINCallback
     ) {
         // This function is called once the Bluetooth pairing
@@ -268,12 +268,13 @@ class Pump(
         logger(LogLevel.INFO) { "Unpaired from Combo with address ${bluetoothDevice.address}" }
     }
 
-    private val connectProgressReporter = ProgressReporter(
+    private val connectProgressReporter = ProgressReporter<Unit>(
         listOf(
             BasicProgressStage.StartingConnectionSetup::class,
             BasicProgressStage.EstablishingBtConnection::class,
             BasicProgressStage.PerformingConnectionHandshake::class
-        )
+        ),
+        Unit
     )
 
     /**
@@ -360,7 +361,7 @@ class Pump(
         // a previous connection.
         framedComboIO.reset()
 
-        connectProgressReporter.reset()
+        connectProgressReporter.reset(Unit)
         connectProgressReporter.setCurrentProgressStage(BasicProgressStage.StartingConnectionSetup)
 
         // Run the actual connection attempt in the background IO scope.

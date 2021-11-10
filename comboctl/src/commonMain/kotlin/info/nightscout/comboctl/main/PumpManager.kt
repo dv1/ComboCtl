@@ -144,14 +144,15 @@ class PumpManager(
         }
     }
 
-    private val pairingProgressReporter = ProgressReporter(
+    private val pairingProgressReporter = ProgressReporter<Unit>(
         listOf(
             BasicProgressStage.StartingConnectionSetup::class,
             BasicProgressStage.EstablishingBtConnection::class,
             BasicProgressStage.ComboPairingStarting::class,
             BasicProgressStage.ComboPairingKeyAndPinRequested::class,
             BasicProgressStage.ComboPairingFinishing::class
-        )
+        ),
+        Unit
     )
 
     /**
@@ -203,7 +204,7 @@ class PumpManager(
 
         lateinit var result: PairingResult
 
-        pairingProgressReporter.reset()
+        pairingProgressReporter.reset(Unit)
 
         coroutineScope {
             val thisScope = this
@@ -359,7 +360,7 @@ class PumpManager(
         (deviceAddress[1] == 0x0E.toByte()) &&
         (deviceAddress[2] == 0x2F.toByte())
 
-    private suspend fun performPairing(pumpAddress: BluetoothAddress, progressReporter: ProgressReporter?) {
+    private suspend fun performPairing(pumpAddress: BluetoothAddress, progressReporter: ProgressReporter<Unit>?) {
         // NOTE: Pairing can be aborted either by calling stopDiscovery()
         // or by throwing an exception in the pairing PIN callback.
 

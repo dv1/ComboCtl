@@ -12,6 +12,7 @@ import info.nightscout.comboctl.base.PumpIO
 import info.nightscout.comboctl.base.toStringWithDecimal
 import info.nightscout.comboctl.parser.AlertScreenException
 import info.nightscout.comboctl.parser.ParsedScreen
+import kotlin.reflect.KClassifier
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
@@ -177,37 +178,127 @@ class PumpCommandDispatcher(private val pump: Pump) {
     private val basalProfileAccessReporter = ProgressReporter(
         listOf(
             RTCommandProgressStage.BasalProfileAccess::class
-        )
-    )
+        ),
+        Unit
+    ) { _: Int, _: Int, stage: ProgressStage, _: Unit ->
+        // Basal profile access progress is determined by the single
+        // stage in the reporter, which is BasalProfileAccess.
+        // That stage contains how many basal profile factors have
+        // been accessed so far, which is suitable for a progress
+        // indicator, so we use that for the overall progress.
+        when (stage) {
+            BasicProgressStage.Finished,
+            BasicProgressStage.Aborted -> 1.0
+            is RTCommandProgressStage.BasalProfileAccess ->
+                stage.numSetFactors.toDouble() / stage.totalNumFactors.toDouble()
+            else -> 0.0
+        }
+    }
 
     private val tbrProgressReporter = ProgressReporter(
         listOf(
             RTCommandProgressStage.SettingTBRPercentage::class,
             RTCommandProgressStage.SettingTBRDuration::class
-        )
-    )
+        ),
+        Unit
+    ) { _: Int, _: Int, stage: ProgressStage, _: Unit ->
+        // TBR progress is divided in two stages, each of which have
+        // their own individual progress. Combine them by letting the
+        // SettingTBRPercentage stage cover the 0.0 - 0.5 progress
+        // range, and SettingTBRDuration cover the remaining 0.5 -1.0
+        // progress range.
+        when (stage) {
+            BasicProgressStage.Finished,
+            BasicProgressStage.Aborted -> 1.0
+            is RTCommandProgressStage.SettingTBRPercentage ->
+                0.0 + stage.settingProgress.toDouble() / 100.0 * 0.5
+            is RTCommandProgressStage.SettingTBRDuration ->
+                0.5 + stage.settingProgress.toDouble() / 100.0 * 0.5
+            else -> 0.0
+        }
+    }
 
     private val bolusDeliveryProgressReporter = ProgressReporter(
         listOf(
             RTCommandProgressStage.DeliveringBolus::class
-        )
+        ),
+        Unit
+    ) { _: Int, _: Int, stage: ProgressStage, _: Unit ->
+        // Bolus delivery progress is determined by the single
+        // stage in the reporter, which is DeliveringBolus.
+        // That stage contains how many IU have been delivered
+        // so far, which is suitable for a progress indicator,
+        // so we use that for the overall progress.
+        when (stage) {
+            BasicProgressStage.Finished,
+            BasicProgressStage.Aborted -> 1.0
+            is RTCommandProgressStage.DeliveringBolus ->
+                stage.deliveredAmount.toDouble() / stage.totalAmount.toDouble()
+            else -> 0.0
+        }
+    }
+
+    private class HistoryProgressContext(
+        val enabledParts: Set<HistoryPart>,
+        var curHistoryPart: Int = 0,
+        var prevObservedStageType: KClassifier = Nothing::class
     )
 
-    private val historyProgressReporter = ProgressReporter(
+    private val historyProgressReporter = ProgressReporter<HistoryProgressContext>(
         listOf(
             RTCommandProgressStage.FetchingTDDHistory::class,
             RTCommandProgressStage.FetchingTBRHistory::class
-        )
-    )
+        ),
+        HistoryProgressContext(setOf(), 0, RTCommandProgressStage.FetchingTDDHistory::class)
+    ) {
+        _: Int, _: Int, stage: ProgressStage, context: HistoryProgressContext ->
+        // History fetch progress is more complex than that of other
+        // reporters because the fetch process can be configured
+        // such that only parts of the history are fetched. This
+        // has to be taken into account here. The progress is divided
+        // into the enabled parts. Up to 3 parts can be enabled (those
+        // are the 3 parts from the HistoryPart enum). Divide the
+        // 0.0 - 1.0 progress range equally among the parts that are
+        // enabled (= contained in the context.enabledParts set).
+        // We also have to keep track of when progress moves on to
+        // another part. For that purpose, the context stores the
+        // type of the last observed stage. If the stage changes
+        // (for example, from FetchingTDDHistory to FetchingTBRHistory),
+        // we consider this a transition to the next part. (The
+        // start case is covered by using Nothing::class as the special
+        // initial type stored in prevObservedStageType.)
+        if (context.enabledParts.isEmpty()) {
+            0.0
+        } else {
+            if (context.prevObservedStageType == Nothing::class)
+                context.curHistoryPart = 0
+            else if (context.prevObservedStageType != stage::class)
+                context.curHistoryPart++
 
-    private val setDateTimeProgressReporter = ProgressReporter(
+            context.prevObservedStageType = stage::class
+
+            val numParts = context.enabledParts.size.toDouble()
+            val progressOffset = context.curHistoryPart.toDouble() / numParts
+
+            when (stage) {
+                is RTCommandProgressStage.FetchingTDDHistory ->
+                    progressOffset + stage.historyEntryIndex.toDouble() / stage.totalNumEntries.toDouble() / numParts
+                is RTCommandProgressStage.FetchingTBRHistory ->
+                    progressOffset + stage.historyEntryIndex.toDouble() / stage.totalNumEntries.toDouble() / numParts
+                else -> 0.0
+            }
+        }
+    }
+
+    private val setDateTimeProgressReporter = ProgressReporter<Unit>(
         listOf(
             RTCommandProgressStage.SettingDateTimeHour::class,
             RTCommandProgressStage.SettingDateTimeMinute::class,
             RTCommandProgressStage.SettingDateTimeYear::class,
             RTCommandProgressStage.SettingDateTimeMonth::class,
             RTCommandProgressStage.SettingDateTimeDay::class
-        )
+        ),
+        Unit
     )
 
     /**
@@ -263,7 +354,7 @@ class PumpCommandDispatcher(private val pump: Pump) {
             ) { "Basal profile factor #$index is not correctly rounded (value: $factor)" }
         }
 
-        basalProfileAccessReporter.reset()
+        basalProfileAccessReporter.reset(Unit)
 
         basalProfileAccessReporter.setCurrentProgressStage(RTCommandProgressStage.BasalProfileAccess(0))
 
@@ -340,7 +431,7 @@ class PumpCommandDispatcher(private val pump: Pump) {
      *         retrieval, an unexpected RT screen is encountered.
      */
     suspend fun getBasalProfile() = dispatchCommand<List<Int>>(PumpIO.Mode.REMOTE_TERMINAL, expectedWarningCode = null) {
-        basalProfileAccessReporter.reset()
+        basalProfileAccessReporter.reset(Unit)
 
         basalProfileAccessReporter.setCurrentProgressStage(RTCommandProgressStage.BasalProfileAccess(0))
 
@@ -521,7 +612,7 @@ class PumpCommandDispatcher(private val pump: Pump) {
             ((durationInMinutes >= 15) && (durationInMinutes <= (24 * 60)) && ((durationInMinutes % 15) == 0))
         )
 
-        tbrProgressReporter.reset()
+        tbrProgressReporter.reset(Unit)
 
         tbrProgressReporter.setCurrentProgressStage(RTCommandProgressStage.SettingTBRPercentage(0))
 
@@ -677,7 +768,7 @@ class PumpCommandDispatcher(private val pump: Pump) {
             throw BolusNotDeliveredException(bolusAmount)
         }
 
-        bolusDeliveryProgressReporter.reset()
+        bolusDeliveryProgressReporter.reset(Unit)
 
         logger(LogLevel.DEBUG) { "Waiting until bolus delivery is complete" }
 
@@ -800,7 +891,7 @@ class PumpCommandDispatcher(private val pump: Pump) {
         // Calling dispatchCommand with pump mode set to null, since we
         // may have to switch between modes multiple times.
 
-        historyProgressReporter.reset()
+        historyProgressReporter.reset(HistoryProgressContext(enabledParts))
 
         try {
             val deltaEvents = if (HistoryPart.HISTORY_DELTA in enabledParts) {
@@ -926,7 +1017,7 @@ class PumpCommandDispatcher(private val pump: Pump) {
      */
     suspend fun setDateTime(newDateTime: DateTime) =
         dispatchCommand(PumpIO.Mode.REMOTE_TERMINAL, expectedWarningCode = null) {
-        setDateTimeProgressReporter.reset()
+        setDateTimeProgressReporter.reset(Unit)
 
         try {
             setDateTimeProgressReporter.setCurrentProgressStage(RTCommandProgressStage.SettingDateTimeHour)
