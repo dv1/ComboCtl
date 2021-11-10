@@ -180,6 +180,12 @@ class PumpManager(
      * [pumpPairingPINCallback] is called when the Combo-level pairing process
      * reaches a point where the user must be asked for the 10-digit PIN.
      *
+     * Note that the [pumpPairingPINCallback] is called by a coroutine that
+     * belongs to the background worker. With some UI frameworks like JavaFX,
+     * it is invalid to operate UI controls in coroutines that are not
+     * associated with a particular UI coroutine context. Consider using
+     * [withContext] in this callback for this reason.
+     *
      * @param discoveryDuration How long the discovery shall go on,
      *        in seconds. Must be a value between 1 and 300.
      * @param pumpPairingPINCallback Callback to ask the user for
