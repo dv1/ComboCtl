@@ -111,6 +111,13 @@ class PumpStateDoesNotExistException(val pumpAddress: BluetoothAddress) :
  * such an error occurs. Callers must then also unpair the pump at the Bluetooth
  * level. The user must be told about this error, and instructed that the pump
  * must be paired again.
+ *
+ * Different pump states can be accessed, created, deleted concurrently.
+ * However, operations on the same state must not happen concurrently.
+ * For example, it is valid to create a pump state while an existing [Pump]
+ * instance updates the Tx nonce of its associated state, but no two threads
+ * may update the Tx nonce at the same time, or try to access state data
+ * and delete the same state simultaneously.
  */
 interface PumpStateStore {
     /**
