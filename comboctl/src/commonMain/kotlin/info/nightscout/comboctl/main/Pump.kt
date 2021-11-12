@@ -311,7 +311,7 @@ class Pump(
      *
      * Exceptions from inside the running worker cause the worker to "fail".
      * In that failed state, any of the Pump functions ([switchMode] etc.)
-     * mentioned above will immediately fail with an [IllegalStateException].
+     * mentioned above will immediately fail with an [TransportLayerIO.BackgroundIOException].
      * The user has to call [disconnect] to change the worker from a failed
      * to a disconnected state. Then, the user can attempt to connect again.
      *
@@ -319,13 +319,6 @@ class Pump(
      *
      * [disconnect] is the counterpart to this function. It terminates
      * an existing connection and stops the worker.
-     *
-     * This also laucnhes a loop inside the worker that keeps sending
-     * out RT_KEEP_ALIVE packets if the pump is operating in the
-     * REMOTE_TERMINAL (RT) mode. This is necessary to keep the connection
-     * alive (if the pump does not get these in RT mode it closes the
-     * connection). This is enabled by default, but can be disabled if
-     * needed. This is useful for unit tests for example.
      *
      * This internally uses [PumpIO.connect], but also
      * handles the Bluetooth connection setup. Also, it terminates
@@ -439,8 +432,10 @@ class Pump(
      *
      * @return The current datetime.
      * @throws IllegalStateException if the pump is not in the comand
-     *         mode, the worker has failed (see [connect]), or the
-     *         pump is not connected.
+     *         mode or the pump is not connected.
+     * @throws TransportLayerIO.BackgroundIOException if an exception is thrown
+     *         inside the worker while this call is waiting for a packet or if
+     *         an exception was thrown inside the worker prior to this call.
      * @throws ApplicationLayerIO.InvalidPayloadException if the size
      *         of a packet's payload does not match the expected size.
      * @throws ComboIOException if IO with the pump fails.
@@ -461,8 +456,10 @@ class Pump(
      *
      * @return The current status.
      * @throws IllegalStateException if the pump is not in the comand
-     *         mode, the worker has failed (see [connect]), or the
-     *         pump is not connected.
+     *         mode or the pump is not connected.
+     * @throws TransportLayerIO.BackgroundIOException if an exception is thrown
+     *         inside the worker while this call is waiting for a packet or if
+     *         an exception was thrown inside the worker prior to this call.
      * @throws ApplicationLayerIO.InvalidPayloadException if the size
      *         of a packet's payload does not match the expected size.
      * @throws ComboIOException if IO with the pump fails.
@@ -481,8 +478,10 @@ class Pump(
      *
      * @return The current status.
      * @throws IllegalStateException if the pump is not in the comand
-     *         mode, the worker has failed (see [connect]), or the
-     *         pump is not connected.
+     *         mode or the pump is not connected.
+     * @throws TransportLayerIO.BackgroundIOException if an exception is thrown
+     *         inside the worker while this call is waiting for a packet or if
+     *         an exception was thrown inside the worker prior to this call.
      * @throws ApplicationLayerIO.InvalidPayloadException if the size
      *         of a packet's payload does not match the expected size.
      * @throws ComboIOException if IO with the pump fails.
@@ -519,11 +518,17 @@ class Pump(
      * @return The history delta.
      * @throws IllegalArgumentException if maxRequests is less than 10.
      * @throws IllegalStateException if the pump is not in the comand
-     *         mode, the worker has failed (see [connect]), or the
-     *         pump is not connected.
-     * @throws ApplicationLayerIO.DataCorruptionException if packet data
-     *         integrity is compromised or if the call did not ever get
-     *         a history block that marked an end to the history.
+     *         mode or the pump is not connected.
+     * @throws TransportLayerIO.BackgroundIOException if an exception is thrown
+     *         inside the worker while this call is waiting for a packet or if
+     *         an exception was thrown inside the worker prior to this call.
+     * @throws ApplicationLayerIO.InvalidPayloadException if the size
+     *         of a packet's payload does not match the expected size.
+     * @throws ApplicationLayerIO.PayloadDataCorruptionException if
+     *         packet data integrity is compromised.
+     * @throws ApplicationLayerIO.InfiniteHistoryDataException if the
+     *         call did not ever get a history block that marked an end
+     *         to the history.
      * @throws ComboIOException if IO with the pump fails.
      */
     suspend fun getCMDHistoryDelta(maxRequests: Int = 40): List<ApplicationLayerIO.CMDHistoryEvent> {
@@ -544,8 +549,10 @@ class Pump(
      *
      * @return The current status.
      * @throws IllegalStateException if the pump is not in the comand
-     *         mode, the worker has failed (see [connect]), or the
-     *         pump is not connected.
+     *         mode or the pump is not connected.
+     * @throws TransportLayerIO.BackgroundIOException if an exception is thrown
+     *         inside the worker while this call is waiting for a packet or if
+     *         an exception was thrown inside the worker prior to this call.
      * @throws ApplicationLayerIO.InvalidPayloadException if the size
      *         of a packet's payload does not match the expected size.
      * @throws ApplicationLayerIO.DataCorruptionException if some of
@@ -578,6 +585,11 @@ class Pump(
      * @param bolusAmount Bolus amount to deliver. Note that this is given
      *        in 0.1 IU units, so for example, "57" means 5.7 IU.
      * @return true if the bolus could be delivered, false otherwise.
+     * @throws IllegalStateException if the pump is not in the comand
+     *         mode or the pump is not connected.
+     * @throws TransportLayerIO.BackgroundIOException if an exception is thrown
+     *         inside the worker while this call is waiting for a packet or if
+     *         an exception was thrown inside the worker prior to this call.
      * @throws ApplicationLayerIO.InvalidPayloadException if the size
      *         of a packet's payload does not match the expected size.
      * @throws ComboIOException if IO with the pump fails.
@@ -597,8 +609,10 @@ class Pump(
      * @return true if the bolus was cancelled, false otherwise.
      *         If no bolus is ongoing, this returns false as well.
      * @throws IllegalStateException if the pump is not in the command
-     *         mode, the worker has failed (see [connect]), or the
-     *         pump is not connected.
+     *         mode or the pump is not connected.
+     * @throws TransportLayerIO.BackgroundIOException if an exception is thrown
+     *         inside the worker while this call is waiting for a packet or if
+     *         an exception was thrown inside the worker prior to this call.
      */
     suspend fun cancelCMDStandardBolus() {
         if (!pumpIO.isConnected())
@@ -631,8 +645,10 @@ class Pump(
      * @throws IllegalArgumentException If the buttons list is empty.
      * @throws IllegalStateException if a long button press is
      *         ongoing, the pump is not in the RT mode, or the
-     *         worker has failed (see [connect]), or the pump
-     *         is not connected.
+     *         pump is not connected.
+     * @throws TransportLayerIO.BackgroundIOException if an exception is thrown
+     *         inside the worker while this call is waiting for a packet or if
+     *         an exception was thrown inside the worker prior to this call.
      */
     suspend fun sendShortRTButtonPress(buttons: List<PumpIO.Button>) {
         if (!pumpIO.isConnected())
@@ -676,9 +692,11 @@ class Pump(
      *        continue the internal loop. If this is set to null,
      *        the loop behaves as if this returned true all the time.
      * @throws IllegalArgumentException If the buttons list is empty.
-     * @throws IllegalStateException if the pump is not in the RT mode,
-     *         or the worker has failed (see [connect]), or the pump
-     *         is not connected.
+     * @throws IllegalStateException if the pump is not in the RT mode
+     *         or the pump is not connected.
+     * @throws TransportLayerIO.BackgroundIOException if an exception is thrown
+     *         inside the worker while this call is waiting for a packet or if
+     *         an exception was thrown inside the worker prior to this call.
      */
     suspend fun startLongRTButtonPress(buttons: List<PumpIO.Button>, keepGoing: (suspend () -> Boolean)? = null) {
         if (!pumpIO.isConnected())
@@ -753,6 +771,9 @@ class Pump(
      *
      * @param newMode Mode to switch to.
      * @throws IllegalStateException if the pump is not connected.
+     * @throws TransportLayerIO.BackgroundIOException if an exception is thrown
+     *         inside the worker while this call is waiting for a packet or if
+     *         an exception was thrown inside the worker prior to this call.
      * @throws ComboIOException if IO with the pump fails.
      */
     suspend fun switchMode(newMode: PumpIO.Mode) {

@@ -416,7 +416,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      *
      * Exceptions from inside the running worker cause the worker to "fail".
      * In that failed state, any of the Pump functions ([switchMode] etc.)
-     * mentioned above will immediately fail with an [IllegalStateException].
+     * mentioned above will immediately throw [TransportLayerIO.BackgroundIOException].
      * The user has to call [disconnect] to change the worker from a failed
      * to a disconnected state. Then, the user can attempt to connect again.
      *
@@ -432,7 +432,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      * connection). This is enabled by default, but can be disabled if
      * needed. This is useful for unit tests for example. If the pump
      * is operating in COMMAND mode, it transmits CMD_PING packets in
-     * that loop instead.
+     * that loop instead. That loop is stopped if the worker fails.
      *
      * @param backgroundIOScope Coroutine scope to start the background
      *        worker in.
@@ -556,15 +556,17 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      *
      * @return The current datetime.
      * @throws IllegalStateException if the pump is not in the comand
-     *         mode, the worker has failed (see [connect]), or the
-     *         pump is not connected.
+     *         mode or the pump is not connected.
+     * @throws TransportLayerIO.BackgroundIOException if an exception is thrown
+     *         inside the worker while this call is waiting for a packet or if
+     *         an exception was thrown inside the worker prior to this call.
      * @throws ApplicationLayerIO.InvalidPayloadException if the size
      *         of a packet's payload does not match the expected size.
      * @throws ComboIOException if IO with the pump fails.
      */
     suspend fun readCMDDateTime(): DateTime {
         if (!isConnected())
-            throw IllegalStateException("Cannot get current pump datetime because the background worker is not running")
+            throw IllegalStateException("Cannot get current pump datetime because the pump is not connected")
 
         if (mutableCurrentModeFlow.value != Mode.COMMAND)
             throw IllegalStateException("Cannot get current pump datetime while being in ${mutableCurrentModeFlow.value} mode")
@@ -583,15 +585,17 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      *
      * @return The current status.
      * @throws IllegalStateException if the pump is not in the comand
-     *         mode, the worker has failed (see [connect]), or the
-     *         pump is not connected.
+     *         mode or the pump is not connected.
+     * @throws TransportLayerIO.BackgroundIOException if an exception is thrown
+     *         inside the worker while this call is waiting for a packet or if
+     *         an exception was thrown inside the worker prior to this call.
      * @throws ApplicationLayerIO.InvalidPayloadException if the size
      *         of a packet's payload does not match the expected size.
      * @throws ComboIOException if IO with the pump fails.
      */
     suspend fun readCMDPumpStatus(): ApplicationLayerIO.CMDPumpStatus {
         if (!isConnected())
-            throw IllegalStateException("Cannot get pump status because the background worker is not running")
+            throw IllegalStateException("Cannot get pump status because the pump is not connected")
 
         if (mutableCurrentModeFlow.value != Mode.COMMAND)
             throw IllegalStateException("Cannot get pump status while being in ${mutableCurrentModeFlow.value} mode")
@@ -608,15 +612,17 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      *
      * @return The current status.
      * @throws IllegalStateException if the pump is not in the comand
-     *         mode, the worker has failed (see [connect]), or the
-     *         pump is not connected.
+     *         mode or the pump is not connected.
+     * @throws TransportLayerIO.BackgroundIOException if an exception is thrown
+     *         inside the worker while this call is waiting for a packet or if
+     *         an exception was thrown inside the worker prior to this call.
      * @throws ApplicationLayerIO.InvalidPayloadException if the size
      *         of a packet's payload does not match the expected size.
      * @throws ComboIOException if IO with the pump fails.
      */
     suspend fun readCMDErrorWarningStatus(): ApplicationLayerIO.CMDErrorWarningStatus {
         if (!isConnected())
-            throw IllegalStateException("Cannot get error/warning status because the background worker is not running")
+            throw IllegalStateException("Cannot get error/warning status because the pump is not connected")
 
         if (mutableCurrentModeFlow.value != Mode.COMMAND)
             throw IllegalStateException("Cannot get error/warning status while being in ${mutableCurrentModeFlow.value} mode")
@@ -651,8 +657,10 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      * @return The history delta.
      * @throws IllegalArgumentException if maxRequests is less than 10.
      * @throws IllegalStateException if the pump is not in the comand
-     *         mode, the worker has failed (see [connect]), or the
-     *         pump is not connected.
+     *         mode or the pump is not connected.
+     * @throws TransportLayerIO.BackgroundIOException if an exception is thrown
+     *         inside the worker while this call is waiting for a packet or if
+     *         an exception was thrown inside the worker prior to this call.
      * @throws ApplicationLayerIO.InvalidPayloadException if the size
      *         of a packet's payload does not match the expected size.
      * @throws ApplicationLayerIO.PayloadDataCorruptionException if
@@ -667,7 +675,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
             throw IllegalArgumentException("Maximum amount of requests must be at least 10; caller specified $maxRequests")
 
         if (!isConnected())
-            throw IllegalStateException("Cannot get history delta because the background worker is not running")
+            throw IllegalStateException("Cannot get history delta because the pump is not connected")
 
         if (mutableCurrentModeFlow.value != Mode.COMMAND)
             throw IllegalStateException("Cannot get history delta while being in ${mutableCurrentModeFlow.value} mode")
@@ -732,8 +740,10 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      *
      * @return The current status.
      * @throws IllegalStateException if the pump is not in the comand
-     *         mode, the worker has failed (see [connect]), or the
-     *         pump is not connected.
+     *         mode or the pump is not connected.
+     * @throws TransportLayerIO.BackgroundIOException if an exception is thrown
+     *         inside the worker while this call is waiting for a packet or if
+     *         an exception was thrown inside the worker prior to this call.
      * @throws ApplicationLayerIO.InvalidPayloadException if the size
      *         of a packet's payload does not match the expected size.
      * @throws ApplicationLayerIO.DataCorruptionException if some of
@@ -743,7 +753,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      */
     suspend fun getCMDCurrentBolusDeliveryStatus(): ApplicationLayerIO.CMDBolusDeliveryStatus {
         if (!isConnected())
-            throw IllegalStateException("Cannot get history delta because the background worker is not running")
+            throw IllegalStateException("Cannot get history delta because the pump is not connected")
 
         if (mutableCurrentModeFlow.value != Mode.COMMAND)
             throw IllegalStateException("Cannot get history delta while being in ${mutableCurrentModeFlow.value} mode")
@@ -769,19 +779,21 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      * recommended to keep track of the current bolus status by periodically
      * calling [getCMDCurrentBolusDeliveryStatus].
      *
-     * @throws IllegalStateException if the pump is not in the comand
-     *         mode, the worker has failed (see [connect]), or the
-     *         pump is not connected.
      * @param bolusAmount Bolus amount to deliver. Note that this is given
      *        in 0.1 IU units, so for example, "57" means 5.7 IU.
      * @return true if the bolus could be delivered, false otherwise.
+     * @throws IllegalStateException if the pump is not in the comand
+     *         mode or the pump is not connected.
+     * @throws TransportLayerIO.BackgroundIOException if an exception is thrown
+     *         inside the worker while this call is waiting for a packet or if
+     *         an exception was thrown inside the worker prior to this call.
      * @throws ApplicationLayerIO.InvalidPayloadException if the size
      *         of a packet's payload does not match the expected size.
      * @throws ComboIOException if IO with the pump fails.
      */
     suspend fun deliverCMDStandardBolus(bolusAmount: Int): Boolean {
         if (!isConnected())
-            throw IllegalStateException("Cannot deliver standard bolus because the background worker is not running")
+            throw IllegalStateException("Cannot deliver standard bolus because the pump is not connected")
 
         if (mutableCurrentModeFlow.value != Mode.COMMAND)
             throw IllegalStateException("Cannot deliver standard bolus while being in ${mutableCurrentModeFlow.value} mode")
@@ -800,14 +812,16 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      * @return true if the bolus was cancelled, false otherwise.
      *         If no bolus is ongoing, this returns false as well.
      * @throws IllegalStateException if the pump is not in the command
-     *         mode, the worker has failed (see [connect]), or the
-     *         pump is not connected.
+     *         mode or the pump is not connected.
+     * @throws TransportLayerIO.BackgroundIOException if an exception is thrown
+     *         inside the worker while this call is waiting for a packet or if
+     *         an exception was thrown inside the worker prior to this call.
      */
     suspend fun cancelCMDStandardBolus(): Boolean {
         // TODO: Test that this function does the expected thing
         // when no bolus is actually ongoing.
         if (!isConnected())
-            throw IllegalStateException("Cancel bolus because the background worker is not running")
+            throw IllegalStateException("Cancel bolus because the pump is not connected")
 
         if (mutableCurrentModeFlow.value != Mode.COMMAND)
             throw IllegalStateException("Cannot cancel bolus while being in ${mutableCurrentModeFlow.value} mode")
@@ -838,11 +852,14 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      * @throws IllegalArgumentException If the buttons list is empty.
      * @throws IllegalStateException if a long button press is
      *         ongoing, the pump is not in the RT mode, or the
-     *         worker has failed (see [connect]).
+     *         pump is not connected.
+     * @throws TransportLayerIO.BackgroundIOException if an exception is thrown
+     *         inside the worker while this call is waiting for a packet or if
+     *         an exception was thrown inside the worker prior to this call.
      */
     suspend fun sendShortRTButtonPress(buttons: List<Button>) {
         if (!isConnected())
-            throw IllegalStateException("Cannot send short RT button press because the background worker is not running")
+            throw IllegalStateException("Cannot send short RT button press because the pump is not connected")
 
         if (currentLongRTPressJob != null)
             throw IllegalStateException("Cannot send short RT button press while a long RT button press is ongoing")
@@ -927,11 +944,14 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      *        the loop behaves as if this returned true all the time.
      * @throws IllegalArgumentException If the buttons list is empty.
      * @throws IllegalStateException if the pump is not in the RT mode
-     *         or the worker has failed (see [connect]).
+     *         or the pump is not connected.
+     * @throws TransportLayerIO.BackgroundIOException if an exception is thrown
+     *         inside the worker while this call is waiting for a packet or if
+     *         an exception was thrown inside the worker prior to this call.
      */
     suspend fun startLongRTButtonPress(buttons: List<Button>, keepGoing: (suspend () -> Boolean)? = null) {
         if (!isConnected())
-            throw IllegalStateException("Cannot send long RT button press because the background worker is not running")
+            throw IllegalStateException("Cannot send long RT button press because the pump is not connected")
 
         if (buttons.isEmpty())
             throw IllegalArgumentException("Cannot send long RT button press since the specified buttons list is empty")
@@ -980,7 +1000,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      */
     suspend fun stopLongRTButtonPress() {
         if (!isConnected())
-            throw IllegalStateException("Cannot stop long RT button press because the background worker is not running")
+            throw IllegalStateException("Cannot stop long RT button press because the pump is not connected")
 
         if (currentLongRTPressJob == null) {
             logger(LogLevel.DEBUG) {
@@ -1038,11 +1058,14 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      * @param runKeepAliveLoop Whether or not to run a loop in the worker
      *        that repeatedly sends out RT_KEEP_ALIVE or CMD_PING packets.
      * @throws IllegalStateException if the pump is not connected.
+     * @throws TransportLayerIO.BackgroundIOException if an exception is thrown
+     *         inside the worker while this call is waiting for a packet or if
+     *         an exception was thrown inside the worker prior to this call.
      * @throws ComboIOException if IO with the pump fails.
      */
     suspend fun switchMode(newMode: Mode, runKeepAliveLoop: Boolean = true) {
         if (!isConnected())
-            throw IllegalStateException("Cannot switch mode because the background worker is not running")
+            throw IllegalStateException("Cannot switch mode because the pump is not connected")
 
         if (mutableCurrentModeFlow.value == newMode)
             return
@@ -1177,6 +1200,12 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
                 } catch (e: CancellationException) {
                     cmdPingJob = null
                     throw e
+                } catch (e: TransportLayerIO.BackgroundIOException) {
+                    logger(LogLevel.ERROR) {
+                        "Could not send CMD ping packet because background IO worker failed - stopping CMD ping loop"
+                    }
+                    cmdPingJob = null
+                    break
                 } catch (e: Exception) {
                     logger(LogLevel.ERROR) {
                         "Exception caught when attempting to transmit CMD ping packet - stopping CMD ping loop"
@@ -1251,6 +1280,12 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
                 } catch (e: CancellationException) {
                     rtKeepAliveJob = null
                     throw e
+                } catch (e: TransportLayerIO.BackgroundIOException) {
+                    logger(LogLevel.ERROR) {
+                        "Could not send RT keep-alive packet because background IO worker failed - stopping RT keep-alive loop"
+                    }
+                    rtKeepAliveJob = null
+                    break
                 } catch (e: Exception) {
                     logger(LogLevel.ERROR) {
                         "Exception caught when attempting to transmit RT keep-alive packet - stopping RT keep-alive loop"
