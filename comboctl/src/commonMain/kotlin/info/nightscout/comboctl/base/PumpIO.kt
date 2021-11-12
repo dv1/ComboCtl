@@ -1303,6 +1303,8 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
         currentLongRTPressedButtons = buttons
         val buttonCodes = getCombinedButtonCodes(buttons)
 
+        var endButtonSequence = true
+
         // Set this to true to make sure the flow will keep running
         // once it is started. (If its value is true, it runs. If it
         // is false, it is cancelled.)
@@ -1406,6 +1408,12 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
                         }
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger(LogLevel.ERROR) { "Caught exception during long RT press loop: $e" }
+                endButtonSequence = false
+                throw e
             } finally {
                 // We must make sure that the long press sequence
                 // is ended with a NO_BUTTON code. This is why the
@@ -1424,10 +1432,18 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
                 // immediately and not run its block. By cancelling
                 // the inner flow instead, this is circumvented,
                 // and the NO_BUTTON status is sent successfully.
-                logger(LogLevel.DEBUG) { "Ending long RT button press by sending NO_BUTTON" }
-                sendPacketNoResponse(
-                    ApplicationLayerIO.createRTButtonStatusPacket(ApplicationLayerIO.RTButtonCode.NO_BUTTON.id, true)
-                )
+                // The endButtonSequence check exists to avoid an
+                // attempt to send NO_BUTTON if an exception other
+                // than CancellationException occurred.
+                if (endButtonSequence) {
+                    logger(LogLevel.DEBUG) { "Ending long RT button press by sending NO_BUTTON" }
+                    sendPacketNoResponse(
+                        ApplicationLayerIO.createRTButtonStatusPacket(
+                            ApplicationLayerIO.RTButtonCode.NO_BUTTON.id,
+                            buttonStatusChanged = true
+                        )
+                    )
+                }
             }
         }
     }
