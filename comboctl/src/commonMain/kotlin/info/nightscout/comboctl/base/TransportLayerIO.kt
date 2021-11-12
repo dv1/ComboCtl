@@ -641,7 +641,8 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val pumpAddr
      * will never end, and stopIO will also never end. Thus, it is
      * necessary to unblock that receive() call. By invoking the
      * disconnectDeviceCallback _before_ stopping the worker, this
-     * problem is avoided.
+     * problem is avoided. NOTE: Any exceptions that are thrown by
+     * this callback (other than [CancellationException]) are discarded.
      *
      * @param disconnectPacketInfo Information about the final packet
      *        to generate and send after the worker was shut down but
@@ -702,7 +703,15 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val pumpAddr
             //
             // We call this in a finally block to make sure it is always
             // called, even if for example a CancellationException is thrown.
-            disconnectDeviceCallback()
+            try {
+                disconnectDeviceCallback()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger(LogLevel.WARN) { "Exception in disconnectDeviceCallback: $e ; swallowing this exception" }
+                // We are tearing down the worker job already,
+                // so we swallow exceptions here.
+            }
 
             // Now shut down the worker.
             logger(LogLevel.DEBUG) { "Stopping background IO worker" }
