@@ -283,10 +283,10 @@ class TransportLayerIOTest {
     @Test
     fun checkBackgroundWorkerExceptionHandling() {
         // Test how exceptions in the background worker are handled.
-        // We expect that the worker invokes a specified callback
-        // (which is optional), stops itself, and marks itself as
-        // failed. Subsequent send and receive call attempts need
-        // to throw the exception that caused the worker to fail.
+        // We expect that the worker and marks itself as fails
+        // Subsequent send and receive call attempts need to throw
+        // a BackgroundIOException which in turn contains the
+        // exception that caused the worker to fail.
 
         runBlockingWithWatchdog(5000) {
             val testPumpStateStore = TestPumpStateStore()
@@ -325,23 +325,6 @@ class TransportLayerIOTest {
             // it into the test IO object. Since this packet contains an
             // error report by the simulated Combo, the worker throws an
             // exception to cause itself to fail.
-            // Also, we start the IO with an exception callback
-            // so we can test that said callback is invoked.
-
-            // Use a CompletableDeferred, since the worker runs in the
-            // background, and therefore, exceptions also are thrown in
-            // the background. (This is why we can't use a simple try-catch
-            // blocks in application code to catch those - they happen in
-            // a separate coroutine, where the worker runs, and that
-            // coroutine may be running in a separate thread.) When we
-            // feed the "received" packet into the test IO, that packet
-            // is processed asynchronously. This means that we somehow
-            // need to wait until the exception is thrown in the worker.
-            // We accomplish that by using this CompletableDeferred.
-            // In our exception callback, we complete this deferred
-            // by passing the exception as its value. The await() call
-            // below suspends until the deferred is completed.
-            //
 
             tpLayerIO.startIO(
                 backgroundIOScope = this,
@@ -359,7 +342,7 @@ class TransportLayerIOTest {
             // caused the worker to fail. This allows for propagating
             // that error in a POSIX-esque style, where return codes
             // inform about a failure that previously happened.
-            val exceptionThrownBySendCall = assertFailsWith<IllegalStateException> {
+            val exceptionThrownBySendCall = assertFailsWith<TransportLayerIO.BackgroundIOException> {
                 // The actual packet does not matter here. We just
                 // use createRequestPairingConnectionPacketInfo() to
                 // be able to build the code. Might as well use any
@@ -370,12 +353,19 @@ class TransportLayerIOTest {
                 "Details about exception thrown by sendPacket() call (this exception was expected by the test): " +
                 exceptionThrownBySendCall
             )
-            val exceptionThrownByReceiveCall = assertFailsWith<IllegalStateException> {
+            assertTrue(
+                exceptionThrownBySendCall.cause is TransportLayerIO.ErrorResponseException
+            )
+
+            val exceptionThrownByReceiveCall = assertFailsWith<TransportLayerIO.BackgroundIOException> {
                 tpLayerIO.receivePacket()
             }
             System.err.println(
                 "Details about exception thrown by receivePacket() call (this exception was expected by the test): " +
                 exceptionThrownByReceiveCall
+            )
+            assertTrue(
+                exceptionThrownByReceiveCall.cause is TransportLayerIO.ErrorResponseException
             )
 
             tpLayerIO.stopIO()
@@ -432,19 +422,26 @@ class TransportLayerIOTest {
             // the background worker fails.
             delay(200)
 
-            val exceptionThrownBySendCall = assertFailsWith<IllegalStateException> {
+            val exceptionThrownBySendCall = assertFailsWith<TransportLayerIO.BackgroundIOException> {
                 tpLayerIO.sendPacket(TransportLayerIO.createRequestPairingConnectionPacketInfo())
             }
             System.err.println(
                 "Details about exception thrown by sendPacket() call (this exception was expected by the test): " +
                 exceptionThrownBySendCall
             )
-            val exceptionThrownByReceiveCall = assertFailsWith<IllegalStateException> {
+            assertTrue(
+                exceptionThrownBySendCall.cause is TransportLayerIO.PairingAbortedException
+            )
+
+            val exceptionThrownByReceiveCall = assertFailsWith<TransportLayerIO.BackgroundIOException> {
                 tpLayerIO.receivePacket()
             }
             System.err.println(
                 "Details about exception thrown by receivePacket() call (this exception was expected by the test): " +
                 exceptionThrownByReceiveCall
+            )
+            assertTrue(
+                exceptionThrownByReceiveCall.cause is TransportLayerIO.PairingAbortedException
             )
 
             tpLayerIO.stopIO()

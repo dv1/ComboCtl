@@ -133,6 +133,11 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val pumpAddr
     // Used for throttling the output.
     private var lastSentPacketTimestamp: Long? = null
 
+    // If an exception is thrown inside the worker, and it fails as
+    // a result, then this is set to refer to that exception. Used
+    // in sendPacket and receivePacket calls.
+    private var backgroundIOWorkerException: Exception? = null
+
     /************************************
      *** PUBLIC FUNCTIONS AND CLASSES ***
      ************************************/
@@ -574,6 +579,7 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val pumpAddr
         this.pairingPINCallback = pairingPINCallback
 
         lastSentPacketTimestamp = null
+        backgroundIOWorkerException = null
 
         logger(LogLevel.DEBUG) { "Starting background IO worker" }
 
@@ -598,6 +604,9 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val pumpAddr
 
                 // Close the channel, citing the exception as the reason why.
                 incomingPacketChannel.close(e)
+
+                // Store the exception to let future send and receive calls know what happened.
+                backgroundIOWorkerException = e
             }
         }
     }
@@ -790,8 +799,9 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val pumpAddr
      * is complete, or an exception is thrown.
      *
      * @param packetInfo Information about the packet to generate and send.
-     * @throws IllegalStateException if the background IO worker is not
-     *         running or if it has failed.
+     * @throws IllegalStateException if the background IO worker is not running.
+     * @throws BackgroundIOException if an exception was thrown inside the
+     *         worker prior to this call.
      * @throws ComboIOException if sending fails due to an underlying IO error.
      * @throws PumpStateStoreAccessException if accessing the current Tx
      *         nonce in the pump state store failed while preparing the packet
@@ -803,7 +813,7 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val pumpAddr
         }
 
         if (hasWorkerFailed())
-            throw IllegalStateException("Attempted to send packet even though the background IO worker failed or was cancelled")
+            throw BackgroundIOException(backgroundIOWorkerException ?: Error("FATAL: Background IO worker failed for unknown reason!!"))
 
         withContext(workerThreadDispatcherManager.dispatcher) {
             // It is important to throttle the output to not overload
@@ -849,7 +859,8 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val pumpAddr
      * See [startIO] for details.
      *
      * If an exception happens while waiting for the worker to receive a
-     * packet, this function will throw a [BackgroundIOException], and the
+     * packet, or an exception happened inside the worker before this call,
+     * this function will throw a [BackgroundIOException], and the
      * background worker will be considered as "failed".
      *
      * Optionally, this function can check if a received packet has a
@@ -857,10 +868,10 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val pumpAddr
      * command is expected. This is done if expectedCommand is non-null.
      *
      * @param expectedCommand Optional TransportLayerIO Packet command to check for.
-     * @throws IllegalStateException if the background IO worker is not
-     *         running or if it has failed.
+     * @throws IllegalStateException if the background IO worker is not running.
      * @throws BackgroundIOException if an exception is thrown inside the
-     *         worker while this call is waiting for a packet.
+     *         worker while this call is waiting for a packet or if an
+     *         exception was thrown inside the worker prior to this call.
      * @throws IncorrectPacketException if expectedCommand is non-null and
      *         the received packet's command does not match expectedCommand.
      */
@@ -872,7 +883,7 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val pumpAddr
         }
 
         if (hasWorkerFailed())
-            throw IllegalStateException("Attempted to receive packet even though the background IO worker failed or was cancelled")
+            throw BackgroundIOException(backgroundIOWorkerException ?: Error("FATAL: Background IO worker failed for unknown reason!!"))
 
         // Receive the packet from the background worker.
         // Also handle exceptions while receiving.
@@ -891,7 +902,9 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val pumpAddr
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            logger(LogLevel.ERROR) { "Exception thrown while receiving packet info from background worker: $e" }
+            logger(LogLevel.ERROR) {
+                "Receiving a packet failed because an exception was thrown in background IO worker; exception: $e"
+            }
             throw BackgroundIOException(e)
         }
 
