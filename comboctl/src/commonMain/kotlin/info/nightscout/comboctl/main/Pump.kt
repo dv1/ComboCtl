@@ -309,9 +309,7 @@ class Pump(
      * connection procedure to finish; if an exception occurred during
      * that procedure, it is re-thrown by that function.
      *
-     * If any exceptions that happen inside the worker _after_ the
-     * connection is established, [onBackgroundWorkerException] will be
-     * called. Exceptions from inside the worker cause the worker to "fail".
+     * Exceptions from inside the running worker cause the worker to "fail".
      * In that failed state, any of the Pump functions ([switchMode] etc.)
      * mentioned above will immediately fail with an [IllegalStateException].
      * The user has to call [disconnect] to change the worker from a failed
@@ -335,8 +333,6 @@ class Pump(
      *
      * @param backgroundIOScope Coroutine scope to start the background
      *        worker in.
-     * @param onBackgroundWorkerException Optional callback for notifying
-     *        about exceptions that get thrown inside the worker.
      * @param initialMode What mode to initially switch to.
      * @return [kotlinx.coroutines.Deferred] representing the coroutine
      *         that runs the connection setup procedure.
@@ -347,7 +343,6 @@ class Pump(
      */
     fun connect(
         backgroundIOScope: CoroutineScope,
-        onBackgroundWorkerException: (e: Exception) -> Unit = { },
         initialMode: PumpIO.Mode = PumpIO.Mode.REMOTE_TERMINAL
     ): Deferred<Unit> {
         if (pumpIO.isConnected())
@@ -386,7 +381,6 @@ class Pump(
                     pumpIO.connect(
                         backgroundIOScope = backgroundIOScope,
                         progressReporter = connectProgressReporter,
-                        onBackgroundIOException = onBackgroundWorkerException,
                         initialMode = initialMode,
                         runKeepAliveLoop = true
                     ).await()

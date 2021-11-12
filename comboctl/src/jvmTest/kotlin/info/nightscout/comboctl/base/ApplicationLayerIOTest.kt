@@ -10,7 +10,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
-import kotlin.test.fail
 
 class ApplicationLayerIOTest {
     @Test
@@ -51,7 +50,6 @@ class ApplicationLayerIOTest {
 
             appLayerIO.startIO(
                 backgroundIOScope = this,
-                onBackgroundIOException = { e -> fail("Exception thrown in background worker: $e") },
                 pairingPINCallback = { nullPairingPIN() }
             )
 
@@ -117,7 +115,6 @@ class ApplicationLayerIOTest {
 
             appLayerIO.startIO(
                 backgroundIOScope = this,
-                onBackgroundIOException = { e -> fail("Exception thrown in background worker: $e") },
                 pairingPINCallback = { nullPairingPIN() }
             )
 
@@ -204,7 +201,6 @@ class ApplicationLayerIOTest {
 
             appLayerIO.startIO(
                 backgroundIOScope = this,
-                onBackgroundIOException = { e -> fail("Exception thrown in background worker: $e") },
                 pairingPINCallback = { nullPairingPIN() }
             )
 

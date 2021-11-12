@@ -111,8 +111,6 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val pumpAddr
     // The hasWorkerFailed() function does this check.
     private var backgroundIOWorkerJob: Job? = null
 
-    private var onBackgroundIOException: (e: Exception) -> Unit = { }
-
     // Flag set to suppress exceptions happening during shutdown.
     // This is accessed only from within the single-threaded worker
     // thread dispatcher (see below) to avoid race conditions.
@@ -538,11 +536,6 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val pumpAddr
      * This also resets internal packet related states and channels
      * to properly start from scratch.
      *
-     * [onBackgroundIOException] is an optional callback for when an exception
-     * is thrown inside the background worker. If the exception is thrown during
-     * a [receivePacket] call, this function will throw [BackgroundIOException]
-     * and wrap the exception that happened in the worker.
-     *
      * [pairingPINCallback] is only used during pairing, otherwise it is
      * set to null. During pairing, when the KEY_RESPONSE packet is received,
      * this will be called to get a PIN from the user.
@@ -555,8 +548,6 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val pumpAddr
      *
      * @param backgroundIOScope Coroutine scope to start the background
      *        worker in.
-     * @param onBackgroundIOException Optional callback for notifying
-     *        about exceptions that get thrown inside the worker.
      * @param pairingPINCallback Callback to be used during pairing
      *        for asking the user for the 10-digit PIN.
      * @throws IllegalStateException if IO was already started by a
@@ -564,7 +555,6 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val pumpAddr
      */
     fun startIO(
         backgroundIOScope: CoroutineScope,
-        onBackgroundIOException: (e: Exception) -> Unit = { },
         pairingPINCallback: PairingPINCallback = { nullPairingPIN() }
     ) {
         if (backgroundIOWorkerJob != null) {
@@ -580,8 +570,6 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val pumpAddr
 
         // Make sure we get an incoming packet channel that is in its initial state.
         resetIncomingPacketChannel()
-
-        this.onBackgroundIOException = onBackgroundIOException
 
         this.pairingPINCallback = pairingPINCallback
 
@@ -606,9 +594,6 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val pumpAddr
                     }
                 } else {
                     logger(LogLevel.DEBUG) { "Caught exception in background IO worker: $e" }
-
-                    // Notify about the exception.
-                    onBackgroundIOException(e)
                 }
 
                 // Close the channel, citing the exception as the reason why.

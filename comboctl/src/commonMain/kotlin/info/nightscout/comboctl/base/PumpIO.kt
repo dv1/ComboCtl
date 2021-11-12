@@ -414,9 +414,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      * connection procedure to finish; if an exception occurred during
      * that procedure, it is re-thrown by that function.
      *
-     * If any exceptions that happen inside the worker _after_ the
-     * connection is established, [onBackgroundWorkerException] will be
-     * called. Exceptions from inside the worker cause the worker to "fail".
+     * Exceptions from inside the running worker cause the worker to "fail".
      * In that failed state, any of the Pump functions ([switchMode] etc.)
      * mentioned above will immediately fail with an [IllegalStateException].
      * The user has to call [disconnect] to change the worker from a failed
@@ -439,8 +437,6 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      * @param backgroundIOScope Coroutine scope to start the background
      *        worker in.
      * @param progressReporter [ProgressReporter] for tracking connect progress.
-     * @param onBackgroundIOException Optional callback for notifying
-     *        about exceptions that get thrown inside the worker.
      * @param initialMode What mode to initially switch to.
      * @param runKeepAliveLoop Whether or not to run a loop in the worker
      *        that repeatedly sends out RT_KEEP_ALIVE or CMD_PING packets
@@ -456,7 +452,6 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
     fun connect(
         backgroundIOScope: CoroutineScope,
         progressReporter: ProgressReporter<Unit>?,
-        onBackgroundIOException: (e: Exception) -> Unit = { },
         initialMode: Mode = Mode.REMOTE_TERMINAL,
         runKeepAliveLoop: Boolean = true
     ): Deferred<Unit> {
@@ -480,7 +475,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
         displayFrameAssembler.reset()
 
         // Start the actual IO activity.
-        applicationLayerIO.startIO(backgroundIOScope, onBackgroundIOException)
+        applicationLayerIO.startIO(backgroundIOScope)
 
         logger(LogLevel.DEBUG) { "Pump IO connecting asynchronously" }
 

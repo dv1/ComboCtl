@@ -9,7 +9,6 @@ import info.nightscout.comboctl.base.testUtils.runBlockingWithWatchdog
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import kotlin.test.fail
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -182,7 +181,6 @@ class PumpIOTest {
             pumpIO.connect(
                 backgroundIOScope = mainScope,
                 progressReporter = null,
-                onBackgroundIOException = { e -> fail("Exception thrown in background worker: $e") },
                 runKeepAliveLoop = false
             ).join()
 
@@ -204,7 +202,6 @@ class PumpIOTest {
             pumpIO.connect(
                 backgroundIOScope = mainScope,
                 progressReporter = null,
-                onBackgroundIOException = { e -> fail("Exception thrown in background worker: $e") },
                 runKeepAliveLoop = false
             ).join()
 
@@ -235,7 +232,6 @@ class PumpIOTest {
             pumpIO.connect(
                 backgroundIOScope = mainScope,
                 progressReporter = null,
-                onBackgroundIOException = { e -> fail("Exception thrown in background worker: $e") },
                 runKeepAliveLoop = false
             ).join()
 
@@ -267,7 +263,6 @@ class PumpIOTest {
             pumpIO.connect(
                 backgroundIOScope = mainScope,
                 progressReporter = null,
-                onBackgroundIOException = { e -> fail("Exception thrown in background worker: $e") },
                 runKeepAliveLoop = false
             ).join()
 
@@ -302,7 +297,6 @@ class PumpIOTest {
             pumpIO.connect(
                 backgroundIOScope = mainScope,
                 progressReporter = null,
-                onBackgroundIOException = { e -> fail("Exception thrown in background worker: $e") },
                 runKeepAliveLoop = false
             ).join()
 
@@ -375,7 +369,6 @@ class PumpIOTest {
             pumpIO.connect(
                 backgroundIOScope = mainScope,
                 progressReporter = null,
-                onBackgroundIOException = { e -> fail("Exception thrown in background worker: $e") },
                 initialMode = PumpIO.Mode.COMMAND,
                 runKeepAliveLoop = false
             ).join()
@@ -574,7 +567,6 @@ class PumpIOTest {
             pumpIO.connect(
                 backgroundIOScope = mainScope,
                 progressReporter = null,
-                onBackgroundIOException = { e -> fail("Exception thrown in background worker: $e") },
                 initialMode = PumpIO.Mode.COMMAND,
                 runKeepAliveLoop = false
             ).join()

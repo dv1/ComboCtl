@@ -1740,9 +1740,6 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
      * This also resets internal packet related states and channels
      * to properly start from scratch.
      *
-     * [onBackgroundIOException] is an optional callback for when an
-     * exception is thrown inside the background worker.
-     *
      * [pairingPINCallback] is only used during pairing, otherwise it is
      * set to null. During pairing, when the KEY_RESPONSE packet is received,
      * this will be called to get a PIN from the user.
@@ -1755,8 +1752,6 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
      *
      * @param backgroundIOScope Coroutine scope to start the background
      *        worker in.
-     * @param onBackgroundIOException Optional callback for notifying
-     *        about exceptions that get thrown inside the worker.
      * @param pairingPINCallback Callback to be used during pairing
      *        for asking the user for the 10-digit PIN.
      * @throws IllegalStateException if IO was already started by a
@@ -1764,11 +1759,10 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
      */
     fun startIO(
         backgroundIOScope: CoroutineScope,
-        onBackgroundIOException: (e: Exception) -> Unit = { },
         pairingPINCallback: PairingPINCallback = { nullPairingPIN() }
     ) {
         currentRTSequence = 0
-        transportLayerIO.startIO(backgroundIOScope, onBackgroundIOException, pairingPINCallback)
+        transportLayerIO.startIO(backgroundIOScope, pairingPINCallback)
     }
 
     /**

@@ -9,8 +9,6 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
-import kotlin.test.fail
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 
 class TransportLayerIOTest {
@@ -171,8 +169,7 @@ class TransportLayerIOTest {
             )
 
             tpLayerIO.startIO(
-                backgroundIOScope = this,
-                onBackgroundIOException = { e -> fail("Exception thrown in background worker: $e") }
+                backgroundIOScope = this
             )
 
             tpLayerIO.sendPacket(TransportLayerIO.createRequestPairingConnectionPacketInfo())
@@ -256,7 +253,6 @@ class TransportLayerIOTest {
 
             tpLayerIO.startIO(
                 backgroundIOScope = this,
-                onBackgroundIOException = { e -> fail("Exception thrown in background worker: $e") },
                 pairingPINCallback = { testPIN }
             )
 
@@ -346,20 +342,13 @@ class TransportLayerIOTest {
             // by passing the exception as its value. The await() call
             // below suspends until the deferred is completed.
             //
-            // As a side benefit, this also tests that the callback is
-            // actually called as it should be.
-            val deferredException = CompletableDeferred<Exception>()
 
             tpLayerIO.startIO(
                 backgroundIOScope = this,
-                onBackgroundIOException = { e -> deferredException.complete(e) },
                 pairingPINCallback = { nullPairingPIN() }
             )
 
             testComboIO.feedIncomingData(errorResponsePacket.toByteList())
-
-            // Wait until the exception is thrown in the worker.
-            val caughtBackgroundWorkerException = deferredException.await()
 
             // TODO: There is a race condition with this test. See the
             // checkCanceledPINDeferredHandling test below for details.
@@ -390,17 +379,13 @@ class TransportLayerIOTest {
             )
 
             tpLayerIO.stopIO()
-
-            // Test what we received in the exception callback.
-            assertNotNull(caughtBackgroundWorkerException)
-            assertTrue(caughtBackgroundWorkerException is TransportLayerIO.ErrorResponseException)
         }
     }
 
     @Test
     fun checkCanceledPINDeferredHandling() {
         // Test how a canceled CompletableDeferred for PIN requests is handled.
-        // When that Deferred is canceled, the worker should fail with a
+        // When that Deferred is cancelled, the worker should fail with a
         // PairingAbortedException.
         //
         // This test is a lot like the checkBackgroundWorkerExceptionHandling
@@ -426,8 +411,6 @@ class TransportLayerIOTest {
                 machineAuthenticationCode = MachineAuthCode(byteArrayListOfInts(0x25, 0xA0, 0x26, 0x47, 0x29, 0x37, 0xFF, 0x66))
             )
 
-            val deferredException = CompletableDeferred<Exception>()
-
             // As soon as we feed the KEY_RESPONSE packet, the worker will
             // invoke the specified PIN callback. Our callback will cancel
             // the getPINDeferred. This will cause an exception to be thrown.
@@ -435,25 +418,18 @@ class TransportLayerIOTest {
 
             tpLayerIO.startIO(
                 backgroundIOScope = this,
-                onBackgroundIOException = { e -> deferredException.complete(e) },
                 pairingPINCallback = { throw TransportLayerIO.PairingAbortedException("PIN canceled") }
             )
 
             testComboIO.feedIncomingData(keyResponsePacket.toByteList())
 
-            // Wait until the exception is thrown in the worker.
-            val caughtBackgroundWorkerException = deferredException.await()
-
-            // TODO: There is a race condition with this test. We assume
-            // that as soon as the await() method above no longer suspends
-            // the worker has been marked as failed. This is not necessarily
-            // the case, however. The onBackgroundIOException callback passed
-            // to startIO() above is called before the worker is marked as
-            // failed, so if the worker's coroutine takes longer to finish
-            // than await() takes to wake up, we might end up in a situation
-            // where the sendPacket() call below still suceeds, because the
-            // worker is not yet marked as failed. This delay() call is a
-            // dirty workaround for now.
+            // TODO: There is a race condition in this test. The exception
+            // thrown in pairingPINCallback stops the background worker, which
+            // in turn causes the expected sendPacket() and receivePacket()
+            // failures below. However, the background worker failure cannot
+            // be waited for here, so we currently have to use delay(). If
+            // this is not used, the code below runs too soon, that is, _before_
+            // the background worker fails.
             delay(200)
 
             val exceptionThrownBySendCall = assertFailsWith<IllegalStateException> {
@@ -472,10 +448,6 @@ class TransportLayerIOTest {
             )
 
             tpLayerIO.stopIO()
-
-            // Test what we received in the exception callback.
-            assertNotNull(caughtBackgroundWorkerException)
-            assertTrue(caughtBackgroundWorkerException is TransportLayerIO.PairingAbortedException)
         }
     }
 }
