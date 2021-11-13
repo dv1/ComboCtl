@@ -26,6 +26,7 @@ import javafx.scene.layout.BorderPane
 import javafx.scene.layout.HBox
 import javafx.stage.Stage
 import kotlin.random.Random
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.launchIn
@@ -393,6 +394,10 @@ class PumpViewController {
                 block.invoke()
                 if (setRTModeAtEnd)
                     pump!!.switchMode(PumpIO.Mode.REMOTE_TERMINAL)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                println("Got exception while running command: $e")
             } finally {
                 currentJob = null
             }
