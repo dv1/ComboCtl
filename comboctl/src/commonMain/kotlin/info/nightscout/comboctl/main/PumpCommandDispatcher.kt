@@ -2,6 +2,7 @@ package info.nightscout.comboctl.main
 
 import info.nightscout.comboctl.base.ApplicationLayerIO
 import info.nightscout.comboctl.base.BasicProgressStage
+import info.nightscout.comboctl.base.BluetoothAddress
 import info.nightscout.comboctl.base.ComboException
 import info.nightscout.comboctl.base.DateTime
 import info.nightscout.comboctl.base.LogLevel
@@ -10,11 +11,11 @@ import info.nightscout.comboctl.base.ProgressReporter
 import info.nightscout.comboctl.base.ProgressStage
 import info.nightscout.comboctl.base.PumpIO
 import info.nightscout.comboctl.base.toStringWithDecimal
+import info.nightscout.comboctl.parser.AlertScreenContent
 import info.nightscout.comboctl.parser.AlertScreenException
 import info.nightscout.comboctl.parser.ParsedScreen
 import kotlin.reflect.KClassifier
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -170,10 +171,13 @@ object RTCommandProgressStage {
  *
  * @property pump [Pump] instance to use for dispatching commands.
  */
-class PumpCommandDispatcher(private val pump: Pump) {
+class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event: Event) -> Unit = { }) {
     private val rtNavigationContext = RTNavigationContext(pump)
     private var parsedScreenFlow = rtNavigationContext.getParsedScreenFlow()
     private val commandMutex = Mutex()
+
+    private var dismissalCount = 0
+    private var lastObservedAlertScreenContent: AlertScreenContent? = null
 
     private val basalProfileAccessReporter = ProgressReporter(
         listOf(
@@ -302,6 +306,28 @@ class PumpCommandDispatcher(private val pump: Pump) {
     )
 
     /**
+     * Exception thrown when an idempotent command failed every time.
+     *
+     * Idempotent commands are retried multiple times if they fail. If all attempts
+     * fail, the dispatcher gives up, and throws this exception instead.
+     */
+    class CommandExecutionAttemptsFailedException :
+        ComboException("All attempts to execute the command failed")
+
+    /**
+     * Events that can occur during operation and are shown through RT warning screens.
+     *
+     * These are announced as remote terminal warning screens and are automatically
+     * dismissed. Then, they are forwarded through the [onEvent] property, and the
+     * command that was being executed at the time of the event is retried if
+     * it is an idempotent command.
+     */
+    enum class Event {
+        BATTERY_LOW,
+        RESERVOIR_LOW
+    }
+
+    /**
      * [StateFlow] for reporting progress during the [setBasalProfile] and [getBasalProfile] calls.
      *
      * See the [ProgressReporter] documentation for details.
@@ -343,7 +369,7 @@ class PumpCommandDispatcher(private val pump: Pump) {
      *         has failed or the pump is not connected.
      */
     suspend fun setBasalProfile(basalProfile: List<Int>) =
-        dispatchCommand(PumpIO.Mode.REMOTE_TERMINAL) {
+        dispatchCommand(PumpIO.Mode.REMOTE_TERMINAL, isIdempotent = true) {
         require(basalProfile.size == NUM_BASAL_PROFILE_FACTORS)
 
         basalProfile.forEachIndexed { index, factor ->
@@ -430,7 +456,7 @@ class PumpCommandDispatcher(private val pump: Pump) {
      * @throws UnexpectedRTScreenException if during the basal profile
      *         retrieval, an unexpected RT screen is encountered.
      */
-    suspend fun getBasalProfile() = dispatchCommand<List<Int>>(PumpIO.Mode.REMOTE_TERMINAL) {
+    suspend fun getBasalProfile() = dispatchCommand<List<Int>>(PumpIO.Mode.REMOTE_TERMINAL, isIdempotent = true) {
         basalProfileAccessReporter.reset(Unit)
 
         basalProfileAccessReporter.setCurrentProgressStage(RTCommandProgressStage.BasalProfileAccess(0))
@@ -602,7 +628,7 @@ class PumpCommandDispatcher(private val pump: Pump) {
      *         has failed or the pump is not connected.
      */
     suspend fun setTemporaryBasalRate(percentage: Int, durationInMinutes: Int) =
-        dispatchCommand(PumpIO.Mode.REMOTE_TERMINAL) {
+        dispatchCommand(PumpIO.Mode.REMOTE_TERMINAL, isIdempotent = true) {
         // The Combo can only set TBRs of up to 500%, and the
         // duration can only be an integer multiple of 15 minutes.
         require((percentage >= 0) && (percentage <= 500))
@@ -701,7 +727,7 @@ class PumpCommandDispatcher(private val pump: Pump) {
      *         has failed or the pump is not connected.
      * @return The [Quickinfo].
      */
-    suspend fun readQuickinfo() = dispatchCommand(PumpIO.Mode.REMOTE_TERMINAL) {
+    suspend fun readQuickinfo() = dispatchCommand(PumpIO.Mode.REMOTE_TERMINAL, isIdempotent = true) {
         navigateToRTScreen(rtNavigationContext, ParsedScreen.QuickinfoMainScreen::class)
         val parsedScreen = parsedScreenFlow.first()
 
@@ -756,7 +782,7 @@ class PumpCommandDispatcher(private val pump: Pump) {
      *         has failed or the pump is not connected.
      */
     suspend fun deliverBolus(bolusAmount: Int, bolusStatusUpdateIntervalInMs: Long = 250) =
-        dispatchCommand(PumpIO.Mode.COMMAND) {
+        dispatchCommand(PumpIO.Mode.COMMAND, isIdempotent = false) {
 
         require((bolusAmount >= 0) && (bolusAmount <= 250))
         require(bolusStatusUpdateIntervalInMs >= 1)
@@ -887,7 +913,7 @@ class PumpCommandDispatcher(private val pump: Pump) {
      *         has failed or the pump is not connected.
      */
     suspend fun fetchHistory(enabledParts: Set<HistoryPart>) =
-        dispatchCommand<History>(pumpMode = null) {
+        dispatchCommand<History>(pumpMode = null, isIdempotent = true) {
         // Calling dispatchCommand with pump mode set to null, since we
         // may have to switch between modes multiple times.
 
@@ -975,11 +1001,6 @@ class PumpCommandDispatcher(private val pump: Pump) {
 
             historyProgressReporter.setCurrentProgressStage(BasicProgressStage.Finished)
 
-            // Check if an alert appeared. Alert screens can show up at any moment,
-            // but typically, they appear when the user is done with the current
-            // operation and returns to the main screen.
-            checkForAlerts()
-
             History(deltaEvents, tddEvents, tbrEvents)
         } catch (e: Exception) {
             historyProgressReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
@@ -1016,7 +1037,7 @@ class PumpCommandDispatcher(private val pump: Pump) {
      *         has failed or the pump is not connected.
      */
     suspend fun setDateTime(newDateTime: DateTime) =
-        dispatchCommand(PumpIO.Mode.REMOTE_TERMINAL) {
+        dispatchCommand(PumpIO.Mode.REMOTE_TERMINAL, isIdempotent = true) {
         setDateTimeProgressReporter.reset(Unit)
 
         try {
@@ -1066,32 +1087,52 @@ class PumpCommandDispatcher(private val pump: Pump) {
      * @throws IllegalStateException if the [Pump] instance's background worker
      *         has failed or the pump is not connected.
      */
-    suspend fun getDateTime() = dispatchCommand<DateTime>(PumpIO.Mode.COMMAND) {
+    suspend fun getDateTime() = dispatchCommand<DateTime>(PumpIO.Mode.COMMAND, isIdempotent = true) {
         pump.readCMDDateTime()
     }
 
-    // Dispatches higher-level pump commands by running the specified block
-    // and applying extra post-run alert checks. Also, the pump mode is
-    // switched prior to running the block if required. Finally, all of this
-    // happens inside the commandMutex to make sure the commands never
-    // run concurrently (since this is not supported by the Combo).
     private suspend fun <T> dispatchCommand(
         pumpMode: PumpIO.Mode?,
+        isIdempotent: Boolean,
         block: suspend () -> T
     ): T = commandMutex.withLock {
         check(pump.isConnected()) { "Pump is not connected" }
 
-        if (pumpMode != null)
-            pump.switchMode(pumpMode)
-
-        val retval = block.invoke()
-
-        // Check if an alert appeared. Alert screens can show up at any moment,
-        // but typically, they appear when the user is done with the current
-        // operation and returns to the main screen.
         checkForAlerts()
 
-        retval
+        var retval: T? = null
+        var attemptNr = 0
+        val maxNumAttempts = if (isIdempotent) 10 else 1
+
+        dismissalCount = 0
+        lastObservedAlertScreenContent = null
+
+        while (attemptNr < maxNumAttempts) {
+            var incrementAttemptNr = true
+
+            try {
+                if (pumpMode != null)
+                    pump.switchMode(pumpMode)
+
+                retval = block.invoke()
+
+                checkForAlerts()
+
+                break
+            } catch (e: AlertScreenException) {
+                // We enter this catch block if any alert screens appear
+                // _during_ the command execution. In such a case, the
+                // command is considered aborted, and we have to try again
+                // (if isIdempotent is set to true).
+                if (!handleAlertScreenException(e))
+                    incrementAttemptNr = false
+            }
+
+            if (incrementAttemptNr)
+                attemptNr++
+        }
+
+        retval ?: throw CommandExecutionAttemptsFailedException()
     }
 
     private suspend fun checkForAlerts() {
@@ -1100,11 +1141,74 @@ class PumpCommandDispatcher(private val pump: Pump) {
 
         if (pumpStatus.warningOccurred || pumpStatus.errorOccurred) {
             pump.switchMode(PumpIO.Mode.REMOTE_TERMINAL)
-            // Since the parsed screen flow gets data from an upstream
-            // hot flow, collect() would normally never end. However,
-            // an alert was seen, so at some point, the flow will see
-            // an alert screen and throw an AlertScreenException.
-            parsedScreenFlow.collect()
+
+            while (true) {
+                try {
+                    parsedScreenFlow.first()
+                    break
+                } catch (e: AlertScreenException) {
+                    handleAlertScreenException(e)
+                }
+            }
+        }
+    }
+
+    private suspend fun handleAlertScreenException(e: AlertScreenException): Boolean {
+        when (e.alertScreenContent) {
+            // Alert screens blink. When the content is "blinked out",
+            // it cannot be recognized, and is set as this type.
+            // Ignore contents of this type. The next time
+            // handleAlertScreenException() is called, we hopefully
+            // get recognizable content.
+            is AlertScreenContent.None -> return false
+            // Error screen contents always cause a rethrow since all error
+            // screens are considered non-recoverable errors that must not
+            // be ignored / dismissed. Instead, let the code fail by rethrowing
+            // the exception. The user needs to check out the error manually.
+            is AlertScreenContent.Error -> throw e
+            is AlertScreenContent.Warning -> {
+                // Check if the alert screen content changed in case
+                // several warnings appear one after the other. In
+                // such a case, we need to reset the dismissal count
+                // to be able to properly dismiss followup warnings.
+                if (lastObservedAlertScreenContent != e.alertScreenContent) {
+                    lastObservedAlertScreenContent = e.alertScreenContent
+                    dismissalCount = 0
+                }
+
+                val warningCode = e.alertScreenContent.code
+
+                // W1 is the "reservoir almost empty" warning. Notify the caller
+                // about this, then dismiss it.
+                // W1 is the "battery almost empty" warning. Notify the caller
+                // about this, then dismiss it.
+                // W6 informs about an aborted TBR.
+                // W7 informs about a finished TBR.
+                // W8 informs about an aborted bolus.
+                // All three are pure informational, and should be dismissed.
+                // Any other warnings are intentionally rethrown for safety.
+                when (warningCode) {
+                    1 -> onEvent(Event.RESERVOIR_LOW)
+                    2 -> onEvent(Event.BATTERY_LOW)
+                    6, 7, 8 -> Unit
+                    else -> throw e
+                }
+
+                // Warning screens are dismissed by pressing CHECK twice.
+                // First time, the CHECK button press transitions the state
+                // on that screen from alert to confirm. Second time, the
+                // screen is finally dismissed. Due to the blinking screen
+                // though, we might end up getting the warning screen more
+                // than twice, so use a counter to not accidentally press
+                // CHECK more than twice.
+                if (dismissalCount < 2) {
+                    logger(LogLevel.DEBUG) { "Dismissing W$warningCode by short-pressing CHECK" }
+                    rtNavigationContext.shortPressButton(RTNavigationButton.CHECK)
+                    dismissalCount++
+                }
+
+                return true
+            }
         }
     }
 }
