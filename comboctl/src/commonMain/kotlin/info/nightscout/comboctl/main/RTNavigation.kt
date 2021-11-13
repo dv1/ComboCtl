@@ -208,24 +208,12 @@ class RTNavigationContext(
      * This function creates one such flow whose dismissAlertAction is to press
      * the CHECK button.
      *
-     * IMPORTANT: If multiple parsed screen flows are created, and all of them are
-     * used at the same time, then only one of them can have [ignoreAlertScreens]
-     * set to false. All the others must set this argument to true. Otherwise, the
-     * flows may dismiss screens more often than necessary, possibly causing undefined
-     * behavior. Also, that way, only the flow that actually dismisses alert screens
-     * throws [AlertScreenException].
-     *
      * @param filterDuplicates Whether or not to filter out duplicates. Filtering is
      *        enabled by default.
-     * @param ignoreAlertScreens If set to true, alert screens are ignored and dropped.
-     *        If set to false, alert screens are processed, and an exception is thrown.
-     *        Set to false by default.
      * @return The [ParsedScreen] flow.
      */
-    fun getParsedScreenFlow(filterDuplicates: Boolean = true, ignoreAlertScreens: Boolean = false) =
-        parsedScreenFlow(pump.displayFrameFlow, filterDuplicates, ignoreAlertScreens) {
-            shortPressButton(RTNavigationButton.CHECK)
-        }
+    fun getParsedScreenFlow(filterDuplicates: Boolean = true) =
+        parsedScreenFlow(pump.displayFrameFlow, filterDuplicates)
 
     suspend fun startLongButtonPress(button: RTNavigationButton, keepGoing: (suspend () -> Boolean)? = null) =
         pump.startLongRTButtonPress(button.rtButtonCodes, keepGoing)
@@ -255,7 +243,7 @@ suspend fun cycleToRTScreen(
     targetScreenType: KClassifier
 ): ParsedScreen {
     var cycleCount = 0
-    return rtNavigationContext.getParsedScreenFlow(ignoreAlertScreens = false)
+    return rtNavigationContext.getParsedScreenFlow()
         .first { parsedScreen ->
             if (cycleCount >= rtNavigationContext.maxNumCycleAttempts)
                 throw CouldNotFindRTScreenException(targetScreenType)
@@ -282,7 +270,7 @@ suspend fun cycleToRTScreen(
  */
 suspend fun waitUntilScreenAppears(rtNavigationContext: RTNavigationContext, targetScreenType: KClassifier) {
     var cycleCount = 0
-    rtNavigationContext.getParsedScreenFlow(ignoreAlertScreens = false)
+    rtNavigationContext.getParsedScreenFlow()
         .first { parsedScreen ->
             if (cycleCount >= rtNavigationContext.maxNumCycleAttempts)
                 throw CouldNotFindRTScreenException(targetScreenType)
@@ -324,7 +312,7 @@ suspend fun navigateToRTScreen(
     // Get the current screen so we know the starting point. If it is an
     // unrecognized screen, press BACK until we are at the main screen.
     var numAttemptsToRecognizeScreen = 0
-    var currentParsedScreen = rtNavigationContext.getParsedScreenFlow(ignoreAlertScreens = false)
+    var currentParsedScreen = rtNavigationContext.getParsedScreenFlow()
         .first { parsedScreen ->
             if (parsedScreen is ParsedScreen.UnrecognizedScreen) {
                 numAttemptsToRecognizeScreen++
@@ -375,7 +363,7 @@ suspend fun navigateToRTScreen(
     var cycleCount = 0
     val pathIt = path.iterator()
     var nextTargetPathItem = pathIt.next()
-    rtNavigationContext.getParsedScreenFlow(ignoreAlertScreens = false)
+    rtNavigationContext.getParsedScreenFlow()
         .first { parsedScreen ->
             if (cycleCount >= rtNavigationContext.maxNumCycleAttempts)
                 throw CouldNotFindRTScreenException(targetScreenType)
@@ -422,7 +410,7 @@ suspend fun longPressRTButtonUntil(
 
     try {
         logger(LogLevel.DEBUG) { "Starting long RT button press:  button: $button" }
-        val screenFlow = rtNavigationContext.getParsedScreenFlow(ignoreAlertScreens = false)
+        val screenFlow = rtNavigationContext.getParsedScreenFlow()
 
         return screenFlow
             .first { parsedScreen ->
@@ -492,7 +480,7 @@ suspend fun shortPressRTButtonsUntil(
     rtNavigationContext: RTNavigationContext,
     checkScreen: (parsedScreen: ParsedScreen) -> ShortPressRTButtonsCommand
 ): ParsedScreen {
-    return rtNavigationContext.getParsedScreenFlow(ignoreAlertScreens = false)
+    return rtNavigationContext.getParsedScreenFlow()
         .first { parsedScreen ->
             when (val command = checkScreen(parsedScreen)) {
                 ShortPressRTButtonsCommand.DoNothing -> Unit
@@ -538,7 +526,7 @@ suspend fun adjustQuantityOnScreen(
     // This is necessary to (a) check if anything needs to
     // be done at all and (b) decide what button to long-press
     // in the code block below.
-    rtNavigationContext.getParsedScreenFlow(ignoreAlertScreens = false)
+    rtNavigationContext.getParsedScreenFlow()
         .first { parsedScreen ->
             val quantity = getQuantity(parsedScreen)
             if (quantity != null) {

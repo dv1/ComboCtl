@@ -172,7 +172,7 @@ object RTCommandProgressStage {
  */
 class PumpCommandDispatcher(private val pump: Pump) {
     private val rtNavigationContext = RTNavigationContext(pump)
-    private var parsedScreenFlow = rtNavigationContext.getParsedScreenFlow(ignoreAlertScreens = false)
+    private var parsedScreenFlow = rtNavigationContext.getParsedScreenFlow()
     private val commandMutex = Mutex()
 
     private val basalProfileAccessReporter = ProgressReporter(
@@ -343,7 +343,7 @@ class PumpCommandDispatcher(private val pump: Pump) {
      *         has failed or the pump is not connected.
      */
     suspend fun setBasalProfile(basalProfile: List<Int>) =
-        dispatchCommand(PumpIO.Mode.REMOTE_TERMINAL, expectedWarningCode = null) {
+        dispatchCommand(PumpIO.Mode.REMOTE_TERMINAL) {
         require(basalProfile.size == NUM_BASAL_PROFILE_FACTORS)
 
         basalProfile.forEachIndexed { index, factor ->
@@ -430,7 +430,7 @@ class PumpCommandDispatcher(private val pump: Pump) {
      * @throws UnexpectedRTScreenException if during the basal profile
      *         retrieval, an unexpected RT screen is encountered.
      */
-    suspend fun getBasalProfile() = dispatchCommand<List<Int>>(PumpIO.Mode.REMOTE_TERMINAL, expectedWarningCode = null) {
+    suspend fun getBasalProfile() = dispatchCommand<List<Int>>(PumpIO.Mode.REMOTE_TERMINAL) {
         basalProfileAccessReporter.reset(Unit)
 
         basalProfileAccessReporter.setCurrentProgressStage(RTCommandProgressStage.BasalProfileAccess(0))
@@ -602,7 +602,7 @@ class PumpCommandDispatcher(private val pump: Pump) {
      *         has failed or the pump is not connected.
      */
     suspend fun setTemporaryBasalRate(percentage: Int, durationInMinutes: Int) =
-        dispatchCommand(PumpIO.Mode.REMOTE_TERMINAL, expectedWarningCode = 6) {
+        dispatchCommand(PumpIO.Mode.REMOTE_TERMINAL) {
         // The Combo can only set TBRs of up to 500%, and the
         // duration can only be an integer multiple of 15 minutes.
         require((percentage >= 0) && (percentage <= 500))
@@ -701,7 +701,7 @@ class PumpCommandDispatcher(private val pump: Pump) {
      *         has failed or the pump is not connected.
      * @return The [Quickinfo].
      */
-    suspend fun readQuickinfo() = dispatchCommand(PumpIO.Mode.REMOTE_TERMINAL, expectedWarningCode = null) {
+    suspend fun readQuickinfo() = dispatchCommand(PumpIO.Mode.REMOTE_TERMINAL) {
         navigateToRTScreen(rtNavigationContext, ParsedScreen.QuickinfoMainScreen::class)
         val parsedScreen = parsedScreenFlow.first()
 
@@ -756,7 +756,7 @@ class PumpCommandDispatcher(private val pump: Pump) {
      *         has failed or the pump is not connected.
      */
     suspend fun deliverBolus(bolusAmount: Int, bolusStatusUpdateIntervalInMs: Long = 250) =
-        dispatchCommand(PumpIO.Mode.COMMAND, expectedWarningCode = null) {
+        dispatchCommand(PumpIO.Mode.COMMAND) {
 
         require((bolusAmount >= 0) && (bolusAmount <= 250))
         require(bolusStatusUpdateIntervalInMs >= 1)
@@ -887,7 +887,7 @@ class PumpCommandDispatcher(private val pump: Pump) {
      *         has failed or the pump is not connected.
      */
     suspend fun fetchHistory(enabledParts: Set<HistoryPart>) =
-        dispatchCommand<History>(pumpMode = null, expectedWarningCode = null) {
+        dispatchCommand<History>(pumpMode = null) {
         // Calling dispatchCommand with pump mode set to null, since we
         // may have to switch between modes multiple times.
 
@@ -978,7 +978,7 @@ class PumpCommandDispatcher(private val pump: Pump) {
             // Check if an alert appeared. Alert screens can show up at any moment,
             // but typically, they appear when the user is done with the current
             // operation and returns to the main screen.
-            checkForAlerts(null)
+            checkForAlerts()
 
             History(deltaEvents, tddEvents, tbrEvents)
         } catch (e: Exception) {
@@ -1016,7 +1016,7 @@ class PumpCommandDispatcher(private val pump: Pump) {
      *         has failed or the pump is not connected.
      */
     suspend fun setDateTime(newDateTime: DateTime) =
-        dispatchCommand(PumpIO.Mode.REMOTE_TERMINAL, expectedWarningCode = null) {
+        dispatchCommand(PumpIO.Mode.REMOTE_TERMINAL) {
         setDateTimeProgressReporter.reset(Unit)
 
         try {
@@ -1066,7 +1066,7 @@ class PumpCommandDispatcher(private val pump: Pump) {
      * @throws IllegalStateException if the [Pump] instance's background worker
      *         has failed or the pump is not connected.
      */
-    suspend fun getDateTime() = dispatchCommand<DateTime>(PumpIO.Mode.COMMAND, expectedWarningCode = null) {
+    suspend fun getDateTime() = dispatchCommand<DateTime>(PumpIO.Mode.COMMAND) {
         pump.readCMDDateTime()
     }
 
@@ -1077,7 +1077,6 @@ class PumpCommandDispatcher(private val pump: Pump) {
     // run concurrently (since this is not supported by the Combo).
     private suspend fun <T> dispatchCommand(
         pumpMode: PumpIO.Mode?,
-        expectedWarningCode: Int?,
         block: suspend () -> T
     ): T = commandMutex.withLock {
         check(pump.isConnected()) { "Pump is not connected" }
@@ -1090,27 +1089,22 @@ class PumpCommandDispatcher(private val pump: Pump) {
         // Check if an alert appeared. Alert screens can show up at any moment,
         // but typically, they appear when the user is done with the current
         // operation and returns to the main screen.
-        checkForAlerts(expectedWarningCode)
+        checkForAlerts()
 
         retval
     }
 
-    private suspend fun checkForAlerts(expectedWarningCode: Int?) {
+    private suspend fun checkForAlerts() {
         pump.switchMode(PumpIO.Mode.COMMAND)
         val pumpStatus = pump.readCMDErrorWarningStatus()
 
-        try {
-            if (pumpStatus.warningOccurred || pumpStatus.errorOccurred) {
-                pump.switchMode(PumpIO.Mode.REMOTE_TERMINAL)
-                // Since the parsed screen flow gets data from an upstream
-                // hot flow, collect() would normally never end. However,
-                // an alert was seen, so at some point, the flow will see
-                // an alert screen and throw an AlertScreenException.
-                parsedScreenFlow.collect()
-            }
-        } catch (e: AlertScreenException) {
-            if ((expectedWarningCode == null) || (e.getSingleWarningCode() != expectedWarningCode))
-                throw e
+        if (pumpStatus.warningOccurred || pumpStatus.errorOccurred) {
+            pump.switchMode(PumpIO.Mode.REMOTE_TERMINAL)
+            // Since the parsed screen flow gets data from an upstream
+            // hot flow, collect() would normally never end. However,
+            // an alert was seen, so at some point, the flow will see
+            // an alert screen and throw an AlertScreenException.
+            parsedScreenFlow.collect()
         }
     }
 }

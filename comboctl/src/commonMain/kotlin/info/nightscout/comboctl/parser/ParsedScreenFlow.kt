@@ -2,37 +2,18 @@ package info.nightscout.comboctl.parser
 
 import info.nightscout.comboctl.base.ComboException
 import info.nightscout.comboctl.base.DisplayFrame
-import info.nightscout.comboctl.base.LogLevel
-import info.nightscout.comboctl.base.Logger
-import kotlinx.coroutines.flow.AbstractFlow
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.FlowCollector
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 
-private val logger = Logger.get("ParsedScreenFlow")
-
 /**
- * Exception thrown when alert screens appear in the [parsedScreenFlow].
+ * Exception thrown when an alert screens appear in the [parsedScreenFlow].
  *
- * @property alertScreenContents The content of the alert screen(s).
+ * @property alertScreenContent The content of the alert screen(s).
  */
-class AlertScreenException(val alertScreenContents: List<AlertScreenContent>) :
-    ComboException("RT alert screen appeared with contents: $alertScreenContents") {
-    /** Returns true if there is at least one [AlertScreenContent.Warning] in [alertScreenContents]. */
-    fun containsWarnings() = alertScreenContents.any { it is AlertScreenContent.Warning }
-
-    /** Returns true if there is at least one [AlertScreenContent.Error] in [alertScreenContents]. */
-    fun containsErrors() = alertScreenContents.any { it is AlertScreenContent.Error }
-
-    /** Returns the warning code if [alertScreenContents] only contains a single warning, and null otherwise. */
-    fun getSingleWarningCode() =
-        if ((alertScreenContents.size == 1) && (alertScreenContents[0] is AlertScreenContent.Warning))
-            (alertScreenContents[0] as AlertScreenContent.Warning).code
-        else
-            null
-}
+class AlertScreenException(val alertScreenContent: AlertScreenContent) :
+    ComboException("RT alert screen appeared with content: $alertScreenContent")
 
 internal fun areParsedScreensEqual(
     first: Pair<ParsedScreen, DisplayFrame>,
@@ -58,46 +39,6 @@ internal fun areParsedScreensEqual(
         (firstParsedScreen == secondParsedScreen)
 }
 
-// Flow that retains state about the last observed alert screens.
-// This is necessary, since sometimes, one alert screen may follow another.
-// With this flow, we can collect all of those and return them as one list.
-internal class AlertScreenFilterFlow(
-    private val parsedScreenFlow: Flow<ParsedScreen>,
-    private val ignoreAlertScreens: Boolean,
-    private val dismissAlertScreenAction: suspend () -> Unit
-) : AbstractFlow<ParsedScreen>() {
-    private var alertScreenContents = mutableListOf<AlertScreenContent>()
-
-    override suspend fun collectSafely(collector: FlowCollector<ParsedScreen>) {
-        parsedScreenFlow.collect { parsedScreen ->
-            if (parsedScreen is ParsedScreen.AlertScreen) {
-                if (!ignoreAlertScreens) {
-                    when (val alertScreenContent = parsedScreen.content) {
-                        is AlertScreenContent.Warning,
-                        is AlertScreenContent.Error -> {
-                            logger(LogLevel.WARN) { "Got alert screen with content $alertScreenContent" }
-                            if (alertScreenContent !in alertScreenContents)
-                                alertScreenContents.add(alertScreenContent)
-                            dismissAlertScreenAction()
-                        }
-                        else -> Unit
-                    }
-                }
-            } else {
-                if (!alertScreenContents.isEmpty()) {
-                    val finishedContents = alertScreenContents
-                    alertScreenContents = mutableListOf()
-                    throw AlertScreenException(finishedContents)
-                }
-                collector.emit(parsedScreen)
-            }
-        }
-    }
-}
-
-internal fun Flow<ParsedScreen>.alertScreenFilterFlow(ignoreAlertScreens: Boolean, dismissAlertScreenAction: suspend () -> Unit): Flow<ParsedScreen> =
-    AlertScreenFilterFlow(this, ignoreAlertScreens, dismissAlertScreenAction)
-
 /**
  * Creates a [Flow] of [ParsedScreen] instances that are the result of parsing [DisplayFrame] instances.
  *
@@ -111,43 +52,14 @@ internal fun Flow<ParsedScreen>.alertScreenFilterFlow(ignoreAlertScreens: Boolea
  *
  * The remaining [ParsedScreen] instances are the output of this flow.
  *
- * Alert screens are automatically dismissed (by [dismissAlertScreenAction]), and their
- * contents (error/warning number) are communicated to the user via [AlertScreenException].
- * When this exception is thrown, and the screens got dismissed, the user should expect
- * the Combo to have returned to the main screen. Any operation that was being performed
- * when the alert screen(s) appeared (setting a TBR for example) must be considered aborted.
- *
- * IMPORTANT: If multiple parsed screen flows are created from the same display frame flow,
- * it is essential that only one of those flows that are active at the same time actually does
- * any alert screen dismissals. The others must set [ignoreAlertScreens] to true. Otherwise,
- * the flows may dismiss screens more often than necessary, possibly causing undefined behavior.
- * Also, that way, only the flow that actually dismisses alert screens throws [AlertScreenException].
- * Typically, flows with ignoreAlertScreens set to false are flows that are used by RT navigation
- * and quantity adjustment functions (like navigating to a specific screen or adjusting a TBR
- * on screen), while flows with ignoreAlertScreens set to true are those that are used for
- * purely observing the screens. (If multiple flows exist with ignoreAlertScreens set to false,
- * but only one of them is in use at the same time, then this will not cause problems, since
- * these are cold flows and don't run on their own.)
- *
  * @param displayFrameFlow Flow of [DisplayFrame] instances that will be parsed.
  * @param filterDuplicates Whether or not to filter out duplicates. Filtering is
  *        enabled by default.
- * @param ignoreAlertScreens If set to true, alert screens are ignored and dropped. If
- *        set to false, alert screens are processed, and an exception is thrown. set to
- *        true by default to help prevent potential duplicate dismissals (see above).
- * @param dismissAlertScreenAction Callback that gets invoked whenever an alert screen
- *        needs to be dismissed. Typically, the CHECK button is pressed in here.
- *        Only gets called if [ignoreAlertScreens] is set to false.
- *        Default callback does nothing.
  * @return The [ParsedScreen] flow.
- * @throws AlertScreenException if alert screens are seen. Only thrown if
- *         [ignoreAlertScreens] is set to false.
  */
 fun parsedScreenFlow(
     displayFrameFlow: Flow<DisplayFrame>,
-    filterDuplicates: Boolean = true,
-    ignoreAlertScreens: Boolean = true,
-    dismissAlertScreenAction: suspend () -> Unit = { }
+    filterDuplicates: Boolean = true
 ): Flow<ParsedScreen> =
     if (filterDuplicates) {
         displayFrameFlow
@@ -160,12 +72,22 @@ fun parsedScreenFlow(
             .distinctUntilChanged { firstParsedScreen, secondParsedScreen -> areParsedScreensEqual(firstParsedScreen, secondParsedScreen) }
             // Discard the display frames since we do not need them anymore (we are only interested in the parsed screens at this point)
             .map { pair -> pair.first }
-            // Check for alert screens and throw an exception if some are seen
-            .alertScreenFilterFlow(ignoreAlertScreens, dismissAlertScreenAction)
+            // Check for alert screen and throw an exception if one is seen
+            .filter { parsedScreen ->
+                if (parsedScreen is ParsedScreen.AlertScreen)
+                    throw AlertScreenException(parsedScreen.content)
+                else
+                    true
+            }
     } else {
         displayFrameFlow
             // First, parse the frames
             .map { displayFrame -> parseDisplayFrame(displayFrame) }
-            // Check for alert screens and throw an exception if some are seen
-            .alertScreenFilterFlow(ignoreAlertScreens, dismissAlertScreenAction)
+            // Check for alert screen and throw an exception if one is seen
+            .filter { parsedScreen ->
+                if (parsedScreen is ParsedScreen.AlertScreen)
+                    throw AlertScreenException(parsedScreen.content)
+                else
+                    true
+            }
     }
