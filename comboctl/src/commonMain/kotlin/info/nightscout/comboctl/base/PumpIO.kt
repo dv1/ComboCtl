@@ -147,6 +147,16 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
     val currentModeFlow = mutableCurrentModeFlow.asStateFlow()
 
     /**
+     * Callback for when an exception is thrown in the background IO worker.
+     *
+     * This is mainly meant for internal use in code that performs automated
+     * pump operation in RT mode, for example for getting the quick info.
+     */
+    var onBackgroundIOException: (e: Exception) -> Unit
+        get() = applicationLayerIO.onBackgroundIOException
+        set(value) { applicationLayerIO.onBackgroundIOException = value }
+
+    /**
      * The mode the IO can operate in.
      */
     enum class Mode(val str: String) {

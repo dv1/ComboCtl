@@ -1727,6 +1727,16 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
     }
 
     /**
+     * Callback for when an exception is thrown in the background IO worker.
+     *
+     * This is mainly meant for internal use in code that performs automated
+     * pump operation in RT mode, for example for getting the quick info.
+     */
+    var onBackgroundIOException: (e: Exception) -> Unit
+        get() = transportLayerIO.onBackgroundIOException
+        set(value) { transportLayerIO.onBackgroundIOException = value }
+
+    /**
      * Starts IO activities.
      *
      * This must be called before any send and receive operations can

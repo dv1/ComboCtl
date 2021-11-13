@@ -529,6 +529,14 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val pumpAddr
     }
 
     /**
+     * Callback for when an exception is thrown in the background IO worker.
+     *
+     * This is mainly meant for internal use in code that performs automated
+     * pump operation in RT mode, for example for getting the quick info.
+     */
+    var onBackgroundIOException: (e: Exception) -> Unit = { }
+
+    /**
      * Starts IO activities.
      *
      * This must be called before [sendPacket] and [receivePacket] can be used.
@@ -600,6 +608,9 @@ open class TransportLayerIO(pumpStateStore: PumpStateStore, private val pumpAddr
                     }
                 } else {
                     logger(LogLevel.DEBUG) { "Caught exception in background IO worker: $e" }
+
+                    // Notify about the exception.
+                    onBackgroundIOException(e)
                 }
 
                 // Close the channel, citing the exception as the reason why.
