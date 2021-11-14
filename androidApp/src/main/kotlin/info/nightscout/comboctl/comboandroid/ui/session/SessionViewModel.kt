@@ -12,12 +12,16 @@ import info.nightscout.comboctl.base.NUM_DISPLAY_FRAME_PIXELS
 import info.nightscout.comboctl.base.PumpIO
 import info.nightscout.comboctl.comboandroid.App
 import info.nightscout.comboctl.comboandroid.utils.SingleLiveData
+import info.nightscout.comboctl.main.NUM_BASAL_PROFILE_FACTORS
 import info.nightscout.comboctl.main.Pump
+import info.nightscout.comboctl.main.PumpCommandDispatcher
 import info.nightscout.comboctl.parser.parsedScreenFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import java.lang.Math.random
 import kotlin.math.roundToInt
+import kotlin.random.Random
 
 class SessionViewModel : ViewModel() {
     private val _screenLiveData = MutableLiveData<Bitmap>()
@@ -82,30 +86,69 @@ class SessionViewModel : ViewModel() {
     fun onCMBolusClicked(amount: String) {
         amount.toIntOrNull()?.let { amount ->
             viewModelScope.launch {
-                pump?.deliverCMDStandardBolus(amount)
+                pump?.let(::PumpCommandDispatcher)?.deliverBolus(amount)
+                exitCommandMode()
             }
         }
     }
 
-    fun onToggleMode() {
-        viewModelScope.launch {
-            if (modeLiveData.value == Mode.TERMINAL) {
-                pump?.switchMode(newMode = PumpIO.Mode.COMMAND)
-            } else {
-                pump?.switchMode(newMode = PumpIO.Mode.REMOTE_TERMINAL)
-            }
-        }
+    private suspend fun exitCommandMode() {
+        pump?.switchMode(newMode = PumpIO.Mode.REMOTE_TERMINAL)
     }
 
     fun onHistoryDeltaReadClicked() {
         viewModelScope.launch {
-            pump?.getCMDHistoryDelta()?.joinToString("\n")?.let { _historyDeltaLiveData.postValue(it) }
+            pump
+                ?.let(::PumpCommandDispatcher)
+                ?.fetchHistory(setOf(PumpCommandDispatcher.HistoryPart.HISTORY_DELTA))?.historyDeltaEvents?.joinToString("\n")
+                ?.let { _historyDeltaLiveData.postValue(it) }
+            exitCommandMode()
+        }
+    }
+
+    fun onReadBasalProfileClicked() {
+        viewModelScope.launch {
+            pump
+                ?.let(::PumpCommandDispatcher)
+                ?.getBasalProfile()?.mapIndexed{index, basal -> "$index: $basal"}?.joinToString(", ")
+                ?.let { _historyDeltaLiveData.postValue(it) }
+            exitCommandMode()
+        }
+    }
+
+    fun onSetRandomBasalProfileClicked() {
+        viewModelScope.launch {
+
+            var current = Random.nextInt(2500, 3000)
+            val randomBasalProfile = List(NUM_BASAL_PROFILE_FACTORS) {
+                current += Random.nextInt(-100, 200)
+                when (current) {
+                    in 50..1000 -> ((current + 5) / 10) * 10 // round to the next integer 0.01 IU multiple
+                    else -> ((current + 25) / 50) * 50 // round to the next integer 0.05 IU multiple
+                }
+            }
+            pump
+                ?.let(::PumpCommandDispatcher)
+                ?.setBasalProfile(randomBasalProfile)
+            exitCommandMode()
         }
     }
 
     fun onReadTimeClicked() {
         viewModelScope.launch {
-            pump?.readCMDDateTime()?.let { _timeLiveData.postValue(it.toString()) }
+            pump?.let(::PumpCommandDispatcher)
+                ?.getDateTime()
+                ?.let { _timeLiveData.postValue(it.toString()) }
+            exitCommandMode()
+        }
+    }
+
+    fun onReadQuickInfoClicked() {
+        viewModelScope.launch {
+            pump?.let(::PumpCommandDispatcher)
+                ?.readQuickinfo()
+                ?.let { _historyDeltaLiveData.postValue(it.toString()) }
+            exitCommandMode()
         }
     }
 
@@ -154,6 +197,13 @@ class SessionViewModel : ViewModel() {
             parsedScreenFlow(pumpLocal.displayFrameFlow)
                 .onEach { _parsedScreenLiveData.value = it.toString() }
                 .launchIn(viewModelScope)
+        }
+    }
+
+    fun setTbrClicked() {
+        viewModelScope.launch {
+            pump?.let(::PumpCommandDispatcher)?.setTemporaryBasalRate(180, 15)
+            exitCommandMode()
         }
     }
 
