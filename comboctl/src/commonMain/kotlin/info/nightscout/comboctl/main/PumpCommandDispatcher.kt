@@ -2,7 +2,6 @@ package info.nightscout.comboctl.main
 
 import info.nightscout.comboctl.base.ApplicationLayerIO
 import info.nightscout.comboctl.base.BasicProgressStage
-import info.nightscout.comboctl.base.BluetoothAddress
 import info.nightscout.comboctl.base.ComboException
 import info.nightscout.comboctl.base.DateTime
 import info.nightscout.comboctl.base.LogLevel
@@ -359,7 +358,19 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
      *   0.05 IU to 1.00 IU  : increment in 0.01 IU steps
      *   1.00 IU to 10.00 IU : increment in 0.05 IU steps
      *
+     * If [carryOverLastFactor] is set to true (the default value), this function
+     * moves between basal profile factors by pressing the UP and DOWN buttons
+     * simultaneously instead of the MENU button. This copies over the last
+     * factor that was being programmed in to the next factor. If this is false,
+     * the MENU key is pressed. The pump then does not carry over anything to the
+     * next screen; instead, the currently programmed in factor shows up.
+     * Typically, carrying over the last factor is faster, which is why this is
+     * set to true by default. There might be corner cases where setting this to
+     * false results in faster execution, but at the moment, none are known.
+     *
      * @param basalProfile Basal profile to set.
+     * @param carryOverLastFactor If set to true, previously programmed in factors
+     *        are carried to the next factor while navigating through the profile.
      * @throws IllegalArgumentException if the basal profile does not contain
      *         exactly 24 values (the factors), or if at least one of the factors
      *         is <0, or if the factors aren't correctly rounded (for example,
@@ -368,7 +379,7 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
      * @throws IllegalStateException if the [Pump] instance's background worker
      *         has failed or the pump is not connected.
      */
-    suspend fun setBasalProfile(basalProfile: List<Int>) =
+    suspend fun setBasalProfile(basalProfile: List<Int>, carryOverLastFactor: Boolean = true) =
         dispatchCommand(PumpIO.Mode.REMOTE_TERMINAL, isIdempotent = true) {
         require(basalProfile.size == NUM_BASAL_PROFILE_FACTORS)
 
@@ -401,9 +412,21 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
 
                 basalProfileAccessReporter.setCurrentProgressStage(RTCommandProgressStage.BasalProfileAccess(index + 1))
 
-                // By pushing MENU we move to the next basal rate factor.
-                rtNavigationContext.shortPressButton(RTNavigationButton.MENU)
+                // By pushing MENU or UPDOWN we move to the next basal rate factor.
+                // If we are at the last factor, and are about to transition back to
+                // the first one again, we always press MENU to make sure the first
+                // factor isn't overwritten by the last factor that got carried over.
+                rtNavigationContext.shortPressButton(
+                    if (carryOverLastFactor && (index != (basalProfile.size - 1)))
+                        RTNavigationButton.UPDOWN
+                    else
+                        RTNavigationButton.MENU
+                )
 
+                // Wait until we actually get a different BasalRateFactorSettingScreen.
+                // The pump might send us the same screen multiple times, because it
+                // might be blinking, so it is important to wait until the button press
+                // above actually resulted in a change to the screen with the next factor.
                 parsedScreenFlow
                     .first { parsedScreen ->
                         parsedScreen as ParsedScreen.BasalRateFactorSettingScreen

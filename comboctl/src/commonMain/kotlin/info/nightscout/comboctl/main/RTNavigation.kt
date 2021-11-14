@@ -28,7 +28,8 @@ enum class RTNavigationButton(val rtButtonCodes: List<PumpIO.Button>) {
     MENU(listOf(PumpIO.Button.MENU)),
     CHECK(listOf(PumpIO.Button.CHECK)),
 
-    BACK(listOf(PumpIO.Button.MENU, PumpIO.Button.UP))
+    BACK(listOf(PumpIO.Button.MENU, PumpIO.Button.UP)),
+    UPDOWN(listOf(PumpIO.Button.UP, PumpIO.Button.DOWN))
 }
 
 internal data class RTNavigationScreenInfo(
