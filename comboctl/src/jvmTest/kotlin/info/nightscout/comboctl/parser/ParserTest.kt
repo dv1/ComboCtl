@@ -311,6 +311,29 @@ class ParserTest {
     }
 
     @Test
+    fun checkTbr90MainScreenParsing() {
+        // Variant of checkTbrMainScreenParsing with a 90% TBR.
+        // This is relevant, since at a TBR < 100%, the screen
+        // includes a DOWN symbol instead of an UP one next
+        // to the basal rate icon.
+        val testContext = TestContext(testFrameMainScreenWith90TbrInfo, 1, parseTopLeftTime = true)
+        val result = TbrMainScreenParser().parse(testContext.parseContext)
+
+        assertEquals(ParseResult.Value::class, result::class)
+        val screen = (result as ParseResult.Value<*>).value as ParsedScreen.MainScreen
+        assertEquals(
+            MainScreenContent.Tbr(
+                currentTime = testContext.parseContext.topLeftTime!!,
+                remainingTbrDurationInMinutes = 5,
+                tbrPercentage = 90,
+                activeBasalRateNumber = 1,
+                currentBasalRateFactor = 45
+            ),
+            screen.content
+        )
+    }
+
+    @Test
     fun checkStoppedMainScreenWithTimeSeparatorParsing() {
         val testContext = TestContext(testFrameMainScreenStoppedWithTimeSeparator, 1, parseTopLeftTime = true)
         val result = StoppedMainScreenParser().parse(testContext.parseContext)

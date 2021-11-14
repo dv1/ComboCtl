@@ -1140,7 +1140,12 @@ class TbrMainScreenParser : Parser() {
                 SingleGlyphParser(Glyph.SmallSymbol(SmallSymbol.ARROW)),
                 TimeParser(), // Remaining TBR duration
                 SingleGlyphParser(Glyph.LargeSymbol(LargeSymbol.BASAL)),
-                SingleGlyphParser(Glyph.SmallSymbol(SmallSymbol.UP)),
+                FirstSuccessParser(
+                    listOf(
+                        SingleGlyphParser(Glyph.SmallSymbol(SmallSymbol.UP)),
+                        SingleGlyphParser(Glyph.SmallSymbol(SmallSymbol.DOWN))
+                    )
+                ),
                 IntegerParser(IntegerParser.Mode.LARGE_DIGITS_ONLY), // TBR percentage
                 SingleGlyphParser(Glyph.LargeSymbol(LargeSymbol.PERCENT)),
                 SingleGlyphTypeParser(Glyph.SmallDigit::class), // Basal rate number
