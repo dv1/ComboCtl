@@ -1,5 +1,6 @@
 package info.nightscout.comboctl.android
 
+import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice as SystemBluetoothDevice
 import android.bluetooth.BluetoothServerSocket as SystemBluetoothServerSocket
@@ -515,6 +516,7 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
         // somehow in the future, but this most likely throws a
         // SecurityException on most Android devices.
         try {
+            @SuppressLint("MissingPermission")
             if (!androidBtDevice.setPairingConfirmation(true)) {
                 logger(LogLevel.WARN) { "Could not set pairing confirmation" }
             }
