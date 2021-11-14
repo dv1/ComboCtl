@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import info.nightscout.comboctl.base.DISPLAY_FRAME_HEIGHT
 import info.nightscout.comboctl.base.DISPLAY_FRAME_WIDTH
+import info.nightscout.comboctl.base.DisplayFrame
 import info.nightscout.comboctl.base.NUM_DISPLAY_FRAME_PIXELS
 import info.nightscout.comboctl.base.PumpIO
 import info.nightscout.comboctl.comboandroid.App
@@ -24,8 +25,6 @@ import kotlin.math.roundToInt
 import kotlin.random.Random
 
 class SessionViewModel : ViewModel() {
-    private val _screenLiveData = MutableLiveData<Bitmap>()
-    val screenLiveData: LiveData<Bitmap> = _screenLiveData
 
     private val _state = MutableLiveData(State.UNINITIALIZED)
     val state: LiveData<State> = _state
@@ -44,6 +43,9 @@ class SessionViewModel : ViewModel() {
 
     private val _progressLiveData = MutableLiveData(0)
     val progressLiveData: LiveData<Int> = _progressLiveData
+
+    private val _frameLiveData = MutableLiveData<DisplayFrame>()
+    val frameLiveData: LiveData<DisplayFrame> = _frameLiveData
 
     private var pump: Pump? = null
 
@@ -177,13 +179,7 @@ class SessionViewModel : ViewModel() {
             _state.value = State.CONNECTED
 
             pumpLocal.displayFrameFlow.onEach {
-                val bitmap = Bitmap.createBitmap(DISPLAY_FRAME_WIDTH, DISPLAY_FRAME_HEIGHT, Bitmap.Config.ARGB_8888)
-                val pixels = IntArray(NUM_DISPLAY_FRAME_PIXELS)
-                for (i in 0 until NUM_DISPLAY_FRAME_PIXELS) {
-                    pixels[i] = if (it[i]) Color.GREEN else Color.DKGRAY
-                }
-                bitmap.setPixels(pixels, 0, DISPLAY_FRAME_WIDTH, 0, 0, DISPLAY_FRAME_WIDTH, DISPLAY_FRAME_HEIGHT)
-                _screenLiveData.postValue(bitmap)
+                _frameLiveData.postValue(it)
             }.launchIn(viewModelScope)
 
             pumpLocal.currentModeFlow.onEach {

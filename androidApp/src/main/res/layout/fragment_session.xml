@@ -47,24 +47,11 @@
             app:layout_constraintTop_toBottomOf="@id/connecting_legend"
             app:visibility="@{vm.state == State.CONNECTING}" />
 
-        <androidx.appcompat.widget.AppCompatImageView
-            android:id="@+id/combo_screen"
-            android:layout_width="0dp"
-            android:layout_height="0dp"
-            android:layout_margin="32dp"
-            android:scaleType="fitXY"
-            app:comboDrawable="@{vm.screenLiveData}"
-            app:layout_constraintDimensionRatio="H,96:32"
-            app:layout_constraintLeft_toLeftOf="parent"
-            app:layout_constraintRight_toRightOf="parent"
-            app:layout_constraintTop_toTopOf="parent"
-            app:visibility="@{vm.state == State.CONNECTED}" />
-
         <androidx.core.widget.NestedScrollView
             android:layout_width="match_parent"
             android:layout_height="0dp"
             app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/combo_screen"
+            app:layout_constraintTop_toTopOf="parent"
             app:visibility="@{vm.state == State.CONNECTED}">
 
             <LinearLayout
@@ -72,56 +59,6 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_horizontal"
-                    app:visibility_hide="@{vm.modeLiveData == Mode.TERMINAL}">
-
-                    <androidx.appcompat.widget.AppCompatButton
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:onClick="@{() -> vm.onMenuClicked()}"
-                        android:text="menu" />
-
-                    <androidx.appcompat.widget.AppCompatButton
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:onClick="@{() -> vm.onUpClicked()}"
-                        android:text="Up" />
-
-                    <androidx.appcompat.widget.AppCompatButton
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:onClick="@{() -> vm.onBackClicked()}"
-                        android:text="Back" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_horizontal"
-                    app:visibility_hide="@{vm.modeLiveData == Mode.TERMINAL}">
-
-                    <androidx.appcompat.widget.AppCompatButton
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:onClick="@{() -> vm.onCheckClicked()}"
-                        android:text="Check" />
-
-                    <androidx.appcompat.widget.AppCompatButton
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:onClick="@{() -> vm.onDownClicked()}"
-                        android:text="Down" />
-
-                    <androidx.appcompat.widget.AppCompatButton
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:onClick="@{() -> vm.onUpDownClicked()}"
-                        android:text="Up-down" />
-                </LinearLayout>
 
                 <androidx.compose.ui.platform.ComposeView
                     android:id="@+id/buttonPanelCompose"
