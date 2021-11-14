@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 class PairingViewModel : ViewModel() {
     private val _state = MutableLiveData<State>(State.UNINITIALIZED)
@@ -46,7 +47,7 @@ class PairingViewModel : ViewModel() {
 
         pairingJob = viewModelScope.launch {
             App.pumpManager.pairingProgressFlow.onEach {
-                _progressLiveData.value = if (it.numSteps > 0) (it.stepNumber * 100 / it.numSteps).coerceIn(0..100) else 0
+                _progressLiveData.value = (it.overallProgress * 100).roundToInt()
             }.launchIn(viewModelScope)
             val result = App.pumpManager.pairWithNewPump(
                 discoveryDuration = 300,

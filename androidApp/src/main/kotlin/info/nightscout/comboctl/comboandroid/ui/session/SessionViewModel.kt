@@ -17,6 +17,7 @@ import info.nightscout.comboctl.parser.parsedScreenFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 class SessionViewModel : ViewModel() {
     private val _screenLiveData = MutableLiveData<Bitmap>()
@@ -123,7 +124,7 @@ class SessionViewModel : ViewModel() {
             }
             try {
                 pumpLocal.connectProgressFlow.onEach {
-                    _progressLiveData.value = if (it.numSteps > 0) (it.stepNumber * 100 / it.numSteps).coerceIn(0..100) else 0
+                    _progressLiveData.value = (it.overallProgress * 100).roundToInt()
                 }.launchIn(viewModelScope)
                 pumpLocal.connect(viewModelScope).join()
             } catch (e: Exception) {
@@ -150,7 +151,7 @@ class SessionViewModel : ViewModel() {
                 }.let { _modeLiveData.value = it }
             }.launchIn(viewModelScope)
 
-            parsedScreenFlow(pumpLocal.displayFrameFlow, ignoreAlertScreens = true)
+            parsedScreenFlow(pumpLocal.displayFrameFlow)
                 .onEach { _parsedScreenLiveData.value = it.toString() }
                 .launchIn(viewModelScope)
         }
