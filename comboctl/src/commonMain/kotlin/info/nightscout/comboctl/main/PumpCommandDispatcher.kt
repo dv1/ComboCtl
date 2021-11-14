@@ -2,7 +2,6 @@ package info.nightscout.comboctl.main
 
 import info.nightscout.comboctl.base.ApplicationLayerIO
 import info.nightscout.comboctl.base.BasicProgressStage
-import info.nightscout.comboctl.base.BluetoothAddress
 import info.nightscout.comboctl.base.ComboException
 import info.nightscout.comboctl.base.DateTime
 import info.nightscout.comboctl.base.LogLevel
