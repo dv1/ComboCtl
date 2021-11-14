@@ -38,9 +38,9 @@
             style="?android:attr/progressBarStyleHorizontal"
             android:layout_width="200dp"
             android:layout_height="60dp"
-            android:progress="@{vm.progressLiveData}"
             android:indeterminateTint="@color/black"
             android:indeterminateTintMode="src_atop"
+            android:progress="@{vm.progressLiveData}"
             app:layout_constraintHorizontal_bias="0.5"
             app:layout_constraintLeft_toLeftOf="parent"
             app:layout_constraintRight_toRightOf="parent"
@@ -60,124 +60,98 @@
             app:layout_constraintTop_toTopOf="parent"
             app:visibility="@{vm.state == State.CONNECTED}" />
 
-        <LinearLayout
-            android:id="@+id/buttonPanel"
+        <androidx.core.widget.NestedScrollView
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
+            android:layout_height="0dp"
+            app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintTop_toBottomOf="@id/combo_screen"
             app:visibility="@{vm.state == State.CONNECTED}">
 
             <LinearLayout
+                android:id="@+id/buttonPanel"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center_horizontal"
-                app:visibility="@{vm.modeLiveData == Mode.TERMINAL}">
+                android:orientation="vertical">
 
-                <androidx.appcompat.widget.AppCompatButton
-                    android:layout_width="wrap_content"
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:onClick="@{() -> vm.onMenuClicked()}"
-                    android:text="menu" />
+                    android:gravity="center_horizontal"
+                    app:visibility_hide="@{vm.modeLiveData == Mode.TERMINAL}">
 
-                <androidx.appcompat.widget.AppCompatButton
-                    android:layout_width="wrap_content"
+                    <androidx.appcompat.widget.AppCompatButton
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:onClick="@{() -> vm.onMenuClicked()}"
+                        android:text="menu" />
+
+                    <androidx.appcompat.widget.AppCompatButton
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:onClick="@{() -> vm.onUpClicked()}"
+                        android:text="Up" />
+
+                    <androidx.appcompat.widget.AppCompatButton
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:onClick="@{() -> vm.onBackClicked()}"
+                        android:text="Back" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:onClick="@{() -> vm.onUpClicked()}"
-                    android:text="Up" />
+                    android:gravity="center_horizontal"
+                    app:visibility_hide="@{vm.modeLiveData == Mode.TERMINAL}">
 
-                <androidx.appcompat.widget.AppCompatButton
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:onClick="@{() -> vm.onBackClicked()}"
-                    android:text="Back" />
-            </LinearLayout>
+                    <androidx.appcompat.widget.AppCompatButton
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:onClick="@{() -> vm.onCheckClicked()}"
+                        android:text="Check" />
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center_horizontal"
-                app:visibility="@{vm.modeLiveData == Mode.TERMINAL}">
+                    <androidx.appcompat.widget.AppCompatButton
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:onClick="@{() -> vm.onDownClicked()}"
+                        android:text="Down" />
 
-                <androidx.appcompat.widget.AppCompatButton
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:onClick="@{() -> vm.onCheckClicked()}"
-                    android:text="Check" />
+                    <androidx.appcompat.widget.AppCompatButton
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:onClick="@{() -> vm.onUpDownClicked()}"
+                        android:text="Up-down" />
+                </LinearLayout>
 
-                <androidx.appcompat.widget.AppCompatButton
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:onClick="@{() -> vm.onDownClicked()}"
-                    android:text="Down" />
+                <androidx.compose.ui.platform.ComposeView
+                    android:id="@+id/buttonPanelCompose"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content" />
 
-                <androidx.appcompat.widget.AppCompatButton
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:onClick="@{() -> vm.onUpDownClicked()}"
-                    android:text="Up-down" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center_horizontal"
-                app:visibility="@{vm.modeLiveData == Mode.COMMAND}">
-
-                <androidx.appcompat.widget.AppCompatButton
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:onClick='@{() -> vm.onCMBolusClicked("10")}'
-                    android:text="CMDBolus" />
-
-                <androidx.appcompat.widget.AppCompatButton
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:onClick="@{() -> vm.onHistoryDeltaReadClicked()}"
-                    android:text="History Delta" />
-
-                <androidx.appcompat.widget.AppCompatButton
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:onClick="@{() -> vm.onReadTimeClicked()}"
-                    android:text="Read Time" />
-            </LinearLayout>
-
-            <androidx.appcompat.widget.AppCompatButton
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center_horizontal"
-                android:onClick="@{() -> vm.onToggleMode()}"
-                android:text="Toggle Command/Terminal Mode" />
-
-        </LinearLayout>
-
-        <ScrollView
-            android:layout_width="0dp"
-            android:layout_height="0dp"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintLeft_toLeftOf="parent"
-            app:layout_constraintRight_toRightOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/buttonPanel"
-            app:visibility="@{vm.state == State.CONNECTED}">
-
-            <FrameLayout
-                android:layout_width="match_parent"
-                android:layout_height="match_parent">
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginTop="16dp"
+                    android:background="@color/white" />
 
                 <androidx.appcompat.widget.AppCompatTextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@{vm.historyDeltaLiveData}"
-                    app:visibility="@{vm.modeLiveData == Mode.COMMAND}" />
+                    android:text="@{vm.historyDeltaLiveData}" />
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginTop="16dp"
+                    android:background="@color/white" />
 
                 <androidx.appcompat.widget.AppCompatTextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@{vm.parsedScreenLiveData}"
-                    app:visibility="@{vm.modeLiveData == Mode.TERMINAL}" />
-            </FrameLayout>
-        </ScrollView>
+                    android:text="@{vm.parsedScreenLiveData}" />
+
+            </LinearLayout>
+        </androidx.core.widget.NestedScrollView>
 
 
     </androidx.constraintlayout.widget.ConstraintLayout>

@@ -4,29 +4,42 @@ plugins {
     id("kotlin-kapt")
 }
 
+val composeVersion = "1.0.5"
+
 dependencies {
     implementation(platform("org.jetbrains.kotlin:kotlin-bom"))
     implementation(project(":comboctl"))
-    implementation("androidx.core:core-ktx:1.3.2")
-    implementation("androidx.appcompat:appcompat:1.2.0")
-    implementation("androidx.constraintlayout:constraintlayout:2.0.4")
-    implementation("androidx.navigation:navigation-fragment-ktx:2.3.4")
-    implementation("androidx.navigation:navigation-ui-ktx:2.3.4")
-    implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.3.0")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.3.0")
-    implementation("androidx.navigation:navigation-fragment-ktx:2.3.4")
-    implementation("androidx.navigation:navigation-ui-ktx:2.3.4")
-    implementation("com.google.android.material:material:1.3.0")
+    implementation("androidx.core:core-ktx:1.7.0")
+    implementation("androidx.appcompat:appcompat:1.3.1")
+    implementation("androidx.constraintlayout:constraintlayout:2.1.1")
+    implementation("androidx.navigation:navigation-fragment-ktx:2.3.5")
+    implementation("androidx.navigation:navigation-ui-ktx:2.3.5")
+    implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.4.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.4.0")
+    implementation("androidx.navigation:navigation-fragment-ktx:2.3.5")
+    implementation("androidx.navigation:navigation-ui-ktx:2.3.5")
+    implementation("com.google.android.material:material:1.4.0")
+
+    implementation ("androidx.compose.ui:ui:$composeVersion")
+    implementation ("androidx.compose.material:material:$composeVersion")
+    implementation ("androidx.compose.ui:ui-tooling-preview:$composeVersion")
+    implementation ("androidx.compose.runtime:runtime-livedata:$composeVersion")
+    implementation ("com.google.accompanist:accompanist-flowlayout:0.21.0-beta")
+    implementation ("androidx.navigation:navigation-compose:2.4.0-beta02")
+    implementation ("androidx.lifecycle:lifecycle-runtime-ktx:2.4.0")
+    implementation ("androidx.activity:activity-compose:1.4.0")
+    implementation ("com.google.accompanist:accompanist-flowlayout:0.21.2-beta")
+    debugImplementation("androidx.compose.ui:ui-tooling:$composeVersion")
 }
 
 android {
-    compileSdkVersion(29)
+    compileSdk = 31
     buildToolsVersion = "30.0.2"
 
     defaultConfig {
         applicationId = "info.nightscout.comboctl.androidApp"
-        minSdkVersion(26)
-        targetSdkVersion(29)
+        minSdk = 26
+        targetSdk = 29
         versionCode = 1
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -50,6 +63,11 @@ android {
 
     buildFeatures {
         dataBinding = true
+        compose = true
+    }
+
+    composeOptions {
+        kotlinCompilerExtensionVersion  = "1.0.5"
     }
 
     sourceSets {

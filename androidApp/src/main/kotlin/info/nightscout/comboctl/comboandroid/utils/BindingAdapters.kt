@@ -17,6 +17,15 @@ object BindingAdapters {
         }
     }
 
+    @BindingAdapter("visibility_hide")
+    @JvmStatic
+    fun View.bindVisibilityHide(visible: Boolean) {
+        this.visibility = when (visible) {
+            true -> View.VISIBLE
+            false -> View.INVISIBLE
+        }
+    }
+
     @BindingAdapter("comboDrawable")
     @JvmStatic
     fun AppCompatImageView.bindComboDrawable(bitmap: Bitmap?) {
