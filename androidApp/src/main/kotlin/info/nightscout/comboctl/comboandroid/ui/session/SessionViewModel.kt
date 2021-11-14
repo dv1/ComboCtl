@@ -1,15 +1,10 @@
 package info.nightscout.comboctl.comboandroid.ui.session
 
-import android.graphics.Bitmap
-import android.graphics.Color
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import info.nightscout.comboctl.base.DISPLAY_FRAME_HEIGHT
-import info.nightscout.comboctl.base.DISPLAY_FRAME_WIDTH
 import info.nightscout.comboctl.base.DisplayFrame
-import info.nightscout.comboctl.base.NUM_DISPLAY_FRAME_PIXELS
 import info.nightscout.comboctl.base.PumpIO
 import info.nightscout.comboctl.comboandroid.App
 import info.nightscout.comboctl.comboandroid.utils.SingleLiveData
@@ -20,8 +15,6 @@ import info.nightscout.comboctl.parser.parsedScreenFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
-import java.lang.Math.random
-import kotlin.math.roundToInt
 import kotlin.random.Random
 
 class SessionViewModel : ViewModel() {
@@ -41,8 +34,8 @@ class SessionViewModel : ViewModel() {
     private val _timeLiveData = SingleLiveData<String>()
     val timeLiveData: LiveData<String> = _timeLiveData
 
-    private val _progressLiveData = MutableLiveData(0)
-    val progressLiveData: LiveData<Int> = _progressLiveData
+    private val _progressLiveData = MutableLiveData(0f)
+    val progressLiveData: LiveData<Float> = _progressLiveData
 
     private val _frameLiveData = MutableLiveData<DisplayFrame>()
     val frameLiveData: LiveData<DisplayFrame> = _frameLiveData
@@ -169,7 +162,7 @@ class SessionViewModel : ViewModel() {
             }
             try {
                 pumpLocal.connectProgressFlow.onEach {
-                    _progressLiveData.value = (it.overallProgress * 100).roundToInt()
+                    _progressLiveData.value = it.overallProgress.toFloat()
                 }.launchIn(viewModelScope)
                 pumpLocal.connect(viewModelScope).join()
             } catch (e: Exception) {
