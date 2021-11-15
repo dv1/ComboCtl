@@ -12,9 +12,11 @@ import info.nightscout.comboctl.main.NUM_BASAL_PROFILE_FACTORS
 import info.nightscout.comboctl.main.Pump
 import info.nightscout.comboctl.main.PumpCommandDispatcher
 import info.nightscout.comboctl.parser.parsedScreenFlow
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.plus
 import kotlin.random.Random
 
 class SessionViewModel : ViewModel() {
@@ -164,7 +166,7 @@ class SessionViewModel : ViewModel() {
                 pumpLocal.connectProgressFlow.onEach {
                     _progressLiveData.value = it.overallProgress.toFloat()
                 }.launchIn(viewModelScope)
-                pumpLocal.connect(viewModelScope).join()
+                pumpLocal.connect(viewModelScope + Dispatchers.Default).join()
             } catch (e: Exception) {
                 _state.value = State.NO_PUMP_FOUND
             }
