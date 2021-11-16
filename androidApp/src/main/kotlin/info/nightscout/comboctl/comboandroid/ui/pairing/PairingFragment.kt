@@ -7,9 +7,9 @@ import androidx.fragment.app.viewModels
 import androidx.navigation.fragment.findNavController
 import info.nightscout.comboctl.comboandroid.R
 import info.nightscout.comboctl.comboandroid.databinding.FragmentPairingBinding
-import info.nightscout.comboctl.comboandroid.ui.base.BaseFragment
+import info.nightscout.comboctl.comboandroid.ui.base.BaseDatabindingFragment
 
-class PairingFragment : BaseFragment<FragmentPairingBinding, PairingViewModel>() {
+class PairingFragment : BaseDatabindingFragment<FragmentPairingBinding, PairingViewModel>() {
 
     override val viewModel: PairingViewModel by viewModels()
     override val layoutResId = R.layout.fragment_pairing

@@ -1,14 +1,10 @@
 package info.nightscout.comboctl.comboandroid.ui.session
 
-import android.graphics.Bitmap
-import android.graphics.Color
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import info.nightscout.comboctl.base.DISPLAY_FRAME_HEIGHT
-import info.nightscout.comboctl.base.DISPLAY_FRAME_WIDTH
-import info.nightscout.comboctl.base.NUM_DISPLAY_FRAME_PIXELS
+import info.nightscout.comboctl.base.DisplayFrame
 import info.nightscout.comboctl.base.PumpIO
 import info.nightscout.comboctl.comboandroid.App
 import info.nightscout.comboctl.comboandroid.utils.SingleLiveData
@@ -16,16 +12,14 @@ import info.nightscout.comboctl.main.NUM_BASAL_PROFILE_FACTORS
 import info.nightscout.comboctl.main.Pump
 import info.nightscout.comboctl.main.PumpCommandDispatcher
 import info.nightscout.comboctl.parser.parsedScreenFlow
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
-import java.lang.Math.random
-import kotlin.math.roundToInt
+import kotlinx.coroutines.plus
 import kotlin.random.Random
 
 class SessionViewModel : ViewModel() {
-    private val _screenLiveData = MutableLiveData<Bitmap>()
-    val screenLiveData: LiveData<Bitmap> = _screenLiveData
 
     private val _state = MutableLiveData(State.UNINITIALIZED)
     val state: LiveData<State> = _state
@@ -42,8 +36,11 @@ class SessionViewModel : ViewModel() {
     private val _timeLiveData = SingleLiveData<String>()
     val timeLiveData: LiveData<String> = _timeLiveData
 
-    private val _progressLiveData = MutableLiveData(0)
-    val progressLiveData: LiveData<Int> = _progressLiveData
+    private val _progressLiveData = MutableLiveData(0f)
+    val progressLiveData: LiveData<Float> = _progressLiveData
+
+    private val _frameLiveData = MutableLiveData<DisplayFrame>()
+    val frameLiveData: LiveData<DisplayFrame> = _frameLiveData
 
     private var pump: Pump? = null
 
@@ -167,9 +164,9 @@ class SessionViewModel : ViewModel() {
             }
             try {
                 pumpLocal.connectProgressFlow.onEach {
-                    _progressLiveData.value = (it.overallProgress * 100).roundToInt()
+                    _progressLiveData.value = it.overallProgress.toFloat()
                 }.launchIn(viewModelScope)
-                pumpLocal.connect(viewModelScope).join()
+                pumpLocal.connect(viewModelScope + Dispatchers.Default).join()
             } catch (e: Exception) {
                 _state.value = State.NO_PUMP_FOUND
             }
@@ -177,13 +174,7 @@ class SessionViewModel : ViewModel() {
             _state.value = State.CONNECTED
 
             pumpLocal.displayFrameFlow.onEach {
-                val bitmap = Bitmap.createBitmap(DISPLAY_FRAME_WIDTH, DISPLAY_FRAME_HEIGHT, Bitmap.Config.ARGB_8888)
-                val pixels = IntArray(NUM_DISPLAY_FRAME_PIXELS)
-                for (i in 0 until NUM_DISPLAY_FRAME_PIXELS) {
-                    pixels[i] = if (it[i]) Color.GREEN else Color.DKGRAY
-                }
-                bitmap.setPixels(pixels, 0, DISPLAY_FRAME_WIDTH, 0, 0, DISPLAY_FRAME_WIDTH, DISPLAY_FRAME_HEIGHT)
-                _screenLiveData.postValue(bitmap)
+                _frameLiveData.postValue(it)
             }.launchIn(viewModelScope)
 
             pumpLocal.currentModeFlow.onEach {
