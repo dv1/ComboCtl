@@ -49,12 +49,12 @@ private val logger = Logger.get("Pump")
  * other pump states must not be affected.
  *
  * The constructor does not immediately connect to the pump.
- * This is done by calling [connect]. Also note that before being
+ * This is done by calling [connectAsync]. Also note that before being
  * able to establish a connection, the pump must have been paired.
  * The [performPairing] function can be used for this purpose.
  *
  * Internally, this class runs a "background worker", which is the
- * sum of coroutines started by [connect] and [performPairing]. These
+ * sum of coroutines started by [connectAsync] and [performPairing]. These
  * coroutines are run by a special internal dispatcher that is single
  * threaded. Internal states are updated in these coroutines. Since they
  * run on the same thread, race conditions are prevented, and thread
@@ -157,7 +157,7 @@ class Pump(
      *
      * Once this is done, the [pumpStateStore will be filled
      * with all of the necessary information (ciphers etc.) for
-     * establishing regular connections with [connect].
+     * establishing regular connections with [connectAsync].
      *
      * That scope's context needs to be associated with the same thread
      * this function is called in. Otherwise, the receive loop
@@ -294,7 +294,7 @@ class Pump(
     )
 
     /**
-     * [StateFlow] for reporting progress during the [connect] call.
+     * [StateFlow] for reporting progress during the [connectAsync] call.
      *
      * See the [ProgressReporter] documentation for details.
      */
@@ -364,13 +364,13 @@ class Pump(
      *         that was passed to the class constructor isn't initialized
      *         (= [PumpStateStore.isValid] returns false).
      */
-    fun connect(
+    fun connectAsync(
         backgroundIOScope: CoroutineScope,
         initialMode: PumpIO.Mode = PumpIO.Mode.REMOTE_TERMINAL
     ): Deferred<Unit> =
-        connectInternal(backgroundIOScope + Dispatchers.Default, initialMode)
+        connectInternalAsync(backgroundIOScope + Dispatchers.Default, initialMode)
 
-    private fun connectInternal(
+    private fun connectInternalAsync(
         backgroundIOScope: CoroutineScope,
         initialMode: PumpIO.Mode
     ): Deferred<Unit> {
@@ -430,7 +430,7 @@ class Pump(
      * Disconnects from a pump.
      *
      * This terminates the connection and stops the background worker that
-     * was started by [connect].
+     * was started by [connectAsync].
      *
      * If no connection is running, this does nothing.
      *
@@ -466,9 +466,9 @@ class Pump(
      *
      * This is useful if the background worker failed. It reconnects the
      * pump with the coroutine scope and initial mode specified in the
-     * last [connect] call.
+     * last [connectAsync] call.
      *
-     * Look up [connect] for the list of exceptions that can be thrown
+     * Look up [connectAsync] for the list of exceptions that can be thrown
      * in addition to what is listed below.
      *
      * @throws IllegalStateException if this was called even though no
@@ -481,7 +481,7 @@ class Pump(
         logger(LogLevel.DEBUG) { "Reconnecting Combo with address ${bluetoothDevice.address}" }
 
         disconnect()
-        connect(prevBackgroundIOScope!!, prevInitialMode!!).await()
+        connectAsync(prevBackgroundIOScope!!, prevInitialMode!!).await()
     }
 
     /** Returns true if the pump is connected, false otherwise. */
@@ -822,7 +822,7 @@ class Pump(
      * The pump can run in one of two modes: The COMMAND mode and the
      * REMOTE_TERMINAL (RT) mode. After connecting, the pump is running in
      * one of these two modes (which one is initially used can be specified
-     * as an argument to [connect]). Switching to a different mode afterwards
+     * as an argument to [connectAsync]). Switching to a different mode afterwards
      * is accomplished by calling this function.
      *
      * If an attempt is made to switch to the mode that is already active,

@@ -166,7 +166,7 @@ class SessionViewModel : ViewModel() {
                 pumpLocal.connectProgressFlow.onEach {
                     _progressLiveData.value = it.overallProgress.toFloat()
                 }.launchIn(viewModelScope)
-                pumpLocal.connect(viewModelScope + Dispatchers.Default).join()
+                pumpLocal.connectAsync(viewModelScope + Dispatchers.Default).join()
             } catch (e: Exception) {
                 _state.value = State.NO_PUMP_FOUND
             }
