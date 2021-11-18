@@ -79,6 +79,10 @@ class Pump(
     private val pumpIO: PumpIO
     private val framedComboIO = FramedComboIO(bluetoothDevice)
 
+    // Arguments from the last connect() call. Used by reconnect().
+    private var prevBackgroundIOScope: CoroutineScope? = null
+    private var prevInitialMode: PumpIO.Mode? = null
+
     init {
         // Pass IO through the FramedComboIO class since the Combo
         // sends packets in a framed form (See [ComboFrameParser]
@@ -345,6 +349,9 @@ class Pump(
             throw IllegalStateException(
                 "Attempting to connect to Combo with address ${bluetoothDevice.address} even though it is not paired")
 
+        this.prevBackgroundIOScope = backgroundIOScope
+        this.prevInitialMode = initialMode
+
         // Make sure the frame parser has no leftover data from
         // a previous connection.
         framedComboIO.reset()
@@ -420,6 +427,29 @@ class Pump(
         }
 
         logger(LogLevel.INFO) { "Disconnected from Combo with address ${bluetoothDevice.address}" }
+    }
+
+    /**
+     * Reconnects a pump.
+     *
+     * This is useful if the background worker failed. It reconnects the
+     * pump with the coroutine scope and initial mode specified in the
+     * last [connect] call.
+     *
+     * Look up [connect] for the list of exceptions that can be thrown
+     * in addition to what is listed below.
+     *
+     * @throws IllegalStateException if this was called even though no
+     *         previous successful [connect] call was made.
+     */
+    suspend fun reconnect() {
+        check(prevBackgroundIOScope != null)
+        check(prevInitialMode != null)
+
+        logger(LogLevel.DEBUG) { "Reconnecting Combo with address ${bluetoothDevice.address}" }
+
+        disconnect()
+        connect(prevBackgroundIOScope!!, prevInitialMode!!).await()
     }
 
     /** Returns true if the pump is connected, false otherwise. */
