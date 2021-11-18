@@ -178,7 +178,7 @@ class PumpViewController {
                 .launchIn(mainScope!!)
 
             // Connect to the pump and let it initially run in the COMMAND mode.
-            pump!!.connect(mainScope!!, initialMode = PumpIO.Mode.COMMAND).await()
+            pump!!.connectAsync(mainScope!!, initialMode = PumpIO.Mode.COMMAND).await()
 
             // We are done with the COMMAND mode, now switch to REMOTE_TERMINAL.
             pump!!.switchMode(PumpIO.Mode.REMOTE_TERMINAL)
