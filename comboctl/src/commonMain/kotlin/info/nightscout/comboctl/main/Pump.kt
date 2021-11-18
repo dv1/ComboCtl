@@ -17,9 +17,11 @@ import info.nightscout.comboctl.base.ioDispatcher
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.plus
 import kotlinx.coroutines.withContext
 
 private val logger = Logger.get("Pump")
@@ -329,6 +331,20 @@ class Pump(
      * The user has to call [disconnect] to change the worker from a failed
      * to a disconnected state. Then, the user can attempt to connect again.
      *
+     * Note that even though [backgroundIOScope] refers to IO in its name,
+     * this function ignores its dispatcher and uses the default dispatcher
+     * instead. This is because the coroutines that run in that scope are
+     * about _coordinating_ IO operations. When actual, blocking, low level
+     * IO is performed, the IO dispatcher is used to make sure that such a
+     * blocking wait does not fill up the threads of the Default dispatcher.
+     * [backgroundIOScope] is an argument only because it is intended to
+     * give the caller control over structured concurrency. The dispatcher
+     * override also means that it can be okay to pass a UI scope as the
+     * background IO scope, since background worker operations won't run
+     * in the UI thread. (Still, if the UI is torn down and the scope is
+     * cancelled as a result, the worker would go away as well, so it is
+     * still important to evaluate whether or not a UI scope should be used).
+     *
      * [isConnected] will return true if the connection was established.
      *
      * [disconnect] is the counterpart to this function. It terminates
@@ -351,6 +367,12 @@ class Pump(
     fun connect(
         backgroundIOScope: CoroutineScope,
         initialMode: PumpIO.Mode = PumpIO.Mode.REMOTE_TERMINAL
+    ): Deferred<Unit> =
+        connectInternal(backgroundIOScope + Dispatchers.Default, initialMode)
+
+    private fun connectInternal(
+        backgroundIOScope: CoroutineScope,
+        initialMode: PumpIO.Mode
     ): Deferred<Unit> {
         if (pumpIO.isConnected())
             throw IllegalStateException("Already connected to Combo")
