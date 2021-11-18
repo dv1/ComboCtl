@@ -484,6 +484,9 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
         // partial frames from an earlier connection.
         displayFrameAssembler.reset()
 
+        // Get rid of any existing frame in the replay cache.
+        mutableDisplayFrameFlow.resetReplayCache()
+
         // Start the actual IO activity.
         applicationLayerIO.startIO(backgroundIOScope)
 
