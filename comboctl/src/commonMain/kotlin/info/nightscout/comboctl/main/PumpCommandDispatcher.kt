@@ -3,19 +3,24 @@ package info.nightscout.comboctl.main
 import info.nightscout.comboctl.base.ApplicationLayerIO
 import info.nightscout.comboctl.base.BasicProgressStage
 import info.nightscout.comboctl.base.ComboException
+import info.nightscout.comboctl.base.ComboIOException
 import info.nightscout.comboctl.base.DateTime
 import info.nightscout.comboctl.base.LogLevel
 import info.nightscout.comboctl.base.Logger
 import info.nightscout.comboctl.base.ProgressReporter
 import info.nightscout.comboctl.base.ProgressStage
 import info.nightscout.comboctl.base.PumpIO
+import info.nightscout.comboctl.base.TransportLayerIO
 import info.nightscout.comboctl.base.toStringWithDecimal
 import info.nightscout.comboctl.parser.AlertScreenContent
 import info.nightscout.comboctl.parser.AlertScreenException
 import info.nightscout.comboctl.parser.ParsedScreen
 import kotlin.reflect.KClassifier
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -23,6 +28,10 @@ private val logger = Logger.get("PumpCommandDispatcher")
 
 /** The number of integers in a basal profile. */
 const val NUM_BASAL_PROFILE_FACTORS = 24
+
+private const val NUM_IDEMPOTENT_COMMAND_DISPATCH_ATTEMPTS = 10
+
+private const val DELAY_IN_MS_BETWEEN_COMMAND_DISPATCH_ATTEMPTS = 2000L
 
 /**
  * Exception thrown when something goes wrong with a bolus delivery.
@@ -175,7 +184,10 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
     private var parsedScreenFlow = rtNavigationContext.getParsedScreenFlow()
     private val commandMutex = Mutex()
 
+    // Used for counting how many times a RT alert screen was dismissed by a button press.
     private var dismissalCount = 0
+    // Used in handleAlertScreenException() to check if the current alert
+    // screen contains the same alert as the previous one.
     private var lastObservedAlertScreenContent: AlertScreenContent? = null
 
     private val basalProfileAccessReporter = ProgressReporter(
@@ -1114,6 +1126,11 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
         pump.readCMDDateTime()
     }
 
+    // An idempotent command is one that can be retried safely. It is very
+    // important that the isIdempotent is set to true only if it is 100%
+    // certain that the command truly _is_ idempotent. In particular, this
+    // command _must not_ be set to true if it is about delivering a bolus,
+    // since retrying to deliver a bolus can result in duplicate bolusing.
     private suspend fun <T> dispatchCommand(
         pumpMode: PumpIO.Mode?,
         isIdempotent: Boolean,
@@ -1121,12 +1138,46 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
     ): T = commandMutex.withLock {
         check(pump.isConnected()) { "Pump is not connected" }
 
+        // Verify that there have been no errors/warnings since the last time
+        // a command was dispatched. ComboCtl has no way of getting notified
+        // about warnings/errors until the pump sets RT screens and/or the
+        // pump's warning/error status is queried through the command mode.
+        // We do the latter with this function call.
         checkForAlerts()
 
         var retval: T? = null
-        var attemptNr = 0
-        val maxNumAttempts = if (isIdempotent) 10 else 1
 
+        // A command dispatch is attempted a number of times. That number
+        // depends on whether or not it is an idempotent command. If it is,
+        // then it is possible to retry multiple times if command dispatch
+        // failed due to certain specific exceptions. (Any other exceptions
+        // are just rethrown; no more attempts are made then.)
+        var attemptNr = 0
+        val maxNumAttempts = if (isIdempotent) NUM_IDEMPOTENT_COMMAND_DISPATCH_ATTEMPTS else 1
+
+        // The command is run in a child coroutine that lives inside
+        // a SupervisorScope. If the background worker fails, that
+        // coroutine is cancelled by calling job.cancel(). The exception
+        // is recorded in the backgroundIOException variable to be able
+        // to process it further after the command was cancelled.
+        // (We use a SupervisorScope to contain the job cancellation.)
+        var job: Job? = null
+        var backgroundIOException: Exception? = null
+
+        // Set to true if the code inside the while loop below determined
+        // that it is OK to retry the command and that in order to do so
+        // the pump must be reconnected.
+        var needsToReconnect = false
+
+        pump.onBackgroundIOException = { exception ->
+            // If an exception occurs, record it and cancel the
+            // coroutine that is currently executing the command.
+            backgroundIOException = exception
+            job?.cancel()
+        }
+
+        // Reset these to guarantee that the handleAlertScreenException()
+        // calls don't use stale states.
         dismissalCount = 0
         lastObservedAlertScreenContent = null
 
@@ -1134,12 +1185,54 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
             var incrementAttemptNr = true
 
             try {
-                if (pumpMode != null)
-                    pump.switchMode(pumpMode)
+                if (needsToReconnect) {
+                    // Wait a while before attempting to reconnect. IO failure
+                    // typically happens due to Bluetooth problems (including
+                    // non-technical ones like when the pump is out of reach)
+                    // and pump specific cases like when the user presses a
+                    // button on the pump and enables its local UI (this
+                    // terminates the Bluetooth connection). In these cases,
+                    // it is useful to wait a bit to give the pump and/or the
+                    // Android Bluedevil stack some time to recover.
+                    delay(DELAY_IN_MS_BETWEEN_COMMAND_DISPATCH_ATTEMPTS)
+                    pump.reconnect()
+                    needsToReconnect = false
+                    logger(LogLevel.DEBUG) { "Pump successfully reconnected" }
+                }
 
-                retval = block.invoke()
+                supervisorScope {
+                    job = launch {
+                        if (pumpMode != null)
+                            pump.switchMode(pumpMode)
 
-                checkForAlerts()
+                        retval = block.invoke()
+
+                        // Post-command check in case something went wrong
+                        // and an alert screen appeared after the command ran.
+                        // Most commonly, these are benign warning screens,
+                        // especially W6, W7, W8.
+                        checkForAlerts()
+                    }
+                }
+
+                // If the coroutine above was cancelled due to a background
+                // worker exception, this value will be non-null, and we
+                // rethrow the exception here to be further handled by the
+                // catch blocks below.
+                if (backgroundIOException != null) {
+                    logger(LogLevel.DEBUG) {
+                        "Cancelled command due to background IO exception $backgroundIOException"
+                    }
+
+                    // Get the exception out of backgroundIOException,
+                    // then reset backgroundIOException to null, to ensure
+                    // that in the next while-loop iteration we do not
+                    // incorrectly end up inside this if-block again.
+                    val exc = backgroundIOException!!
+                    backgroundIOException = null
+
+                    throw TransportLayerIO.BackgroundIOException(exc)
+                }
 
                 break
             } catch (e: AlertScreenException) {
@@ -1149,6 +1242,42 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
                 // (if isIdempotent is set to true).
                 if (!handleAlertScreenException(e))
                     incrementAttemptNr = false
+            } catch (e: TransportLayerIO.BackgroundIOException) {
+                val pumpTerminatedConnection = (e.cause is ApplicationLayerIO.ErrorCodeException) &&
+                    (e.cause.appLayerPacket.command == ApplicationLayerIO.Command.CTRL_DISCONNECT)
+
+                // Background IO exceptions can happen for a number of reasons.
+                // To be on the safe side, we only try to reconnect if the exception
+                // happened due to the Combo terminating the connection on its end.
+
+                if (pumpTerminatedConnection) {
+                    if (isIdempotent) {
+                        logger(LogLevel.DEBUG) { "Pump terminated connection; will try to reconnect since this is an idempotent command" }
+                        needsToReconnect = true
+                    } else {
+                        logger(LogLevel.DEBUG) {
+                            "Pump terminated connection, but will not try to reconnect since this is a non-idempotent command"
+                        }
+                        throw e
+                    }
+                } else
+                    throw e
+            } catch (e: ComboIOException) {
+                // IO exceptions typically happen because of connection failure.
+                // This includes cases like when the pump and phone are out of
+                // reach. Try to reconnect if this is an idempotent command.
+
+                if (isIdempotent) {
+                    logger(LogLevel.DEBUG) { "Combo IO exception $e occurred; will try to reconnect since this is an idempotent command" }
+                    needsToReconnect = true
+                } else {
+                    // Don't bother if this command is not idempotent, since in that
+                    // case, we can only perform one single attempt anyway.
+                    logger(LogLevel.DEBUG) {
+                        "Combo IO exception $e occurred, but will not try to reconnect since this is a non-idempotent command"
+                    }
+                    throw e
+                }
             }
 
             if (incrementAttemptNr)

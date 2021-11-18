@@ -95,6 +95,16 @@ class Pump(
     }
 
     /**
+     * Callback for when an exception is thrown in the background IO worker.
+     *
+     * This is mainly meant for internal use in code that performs automated
+     * pump operation in RT mode, for example for getting the quick info.
+     */
+    var onBackgroundIOException: (e: Exception) -> Unit
+        get() = pumpIO.onBackgroundIOException
+        set(value) { pumpIO.onBackgroundIOException = value }
+
+    /**
      * The pump's Bluetooth address.
      */
     val address: BluetoothAddress = bluetoothDevice.address
