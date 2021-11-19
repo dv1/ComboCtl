@@ -16,13 +16,14 @@ import info.nightscout.comboctl.parser.AlertScreenContent
 import info.nightscout.comboctl.parser.AlertScreenException
 import info.nightscout.comboctl.parser.ParsedScreen
 import kotlin.reflect.KClassifier
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -1176,11 +1177,11 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
 
             // The command is run in a child coroutine that lives inside
             // a SupervisorScope. If the background worker fails, that
-            // coroutine is cancelled by calling job.cancel(). The exception
-            // is recorded in the backgroundIOException variable to be able
-            // to process it further after the command was cancelled.
-            // (We use a SupervisorScope to contain the job cancellation.)
-            var job: Job? = null
+            // coroutine is cancelled by calling cmdDeferred.cancel(). The
+            // exception is recorded in the backgroundIOException variable
+            // to be able to process it further after the command was cancelled.
+            // (We use a SupervisorScope to contain the coroutine cancellation.)
+            var cmdDeferred: Deferred<Unit>? = null
             var backgroundIOException: Exception? = null
 
             // Set to true if the code inside the while loop below determined
@@ -1192,7 +1193,7 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
                 // If an exception occurs, record it and cancel the
                 // coroutine that is currently executing the command.
                 backgroundIOException = exception
-                job?.cancel()
+                cmdDeferred?.cancel()
             }
 
             // Reset these to guarantee that the handleAlertScreenException()
@@ -1215,12 +1216,17 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
                         // Android Bluedevil stack some time to recover.
                         delay(DELAY_IN_MS_BETWEEN_COMMAND_DISPATCH_ATTEMPTS)
                         pump.reconnect()
+                        // Check for alerts right after reconnect since the earlier
+                        // disconnect may have produced an alert. For example, if
+                        // a TBR was being set, and the pump got disconnected, a
+                        // W6 alert will have been triggered.
+                        checkForAlerts()
                         needsToReconnect = false
                         logger(LogLevel.DEBUG) { "Pump successfully reconnected" }
                     }
 
                     supervisorScope {
-                        job = launch {
+                        cmdDeferred = async {
                             if (pumpMode != null)
                                 pump.switchMode(pumpMode)
 
@@ -1232,6 +1238,26 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
                             // especially W6, W7, W8.
                             checkForAlerts()
                         }
+                    }
+
+                    // At this point, the Deferred is guaranteed to have completed,
+                    // since the supervisor scope above does not end until all of
+                    // its child coroutines are completed. This implies that await()
+                    // will never suspend. The reason we call await() is that if
+                    // the async block inside the supervisor scope was completed
+                    // by an exception instead of by an orderly finish, async will
+                    // have captured that exception, and await() will release and
+                    // rethrow it here. If the block was just aborted by a regular
+                    // coroutine cancellation, then await() will throw the internal
+                    // JobCancellationException, which is a CancellationException
+                    // subclass. This is why we ignore CancellationException here;
+                    // we aren't interested in regular cancellations. We are
+                    // interested in other exceptions, however, and those aren't
+                    // ignored. This is particularly important for AlertScreenException,
+                    // which is handled in the AlertScreenException catch block below.
+                    try {
+                        cmdDeferred?.await()
+                    } catch (ignore: CancellationException) {
                     }
 
                     // If the coroutine above was cancelled due to a background
@@ -1321,6 +1347,9 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
                     parsedScreenFlow.first()
                     break
                 } catch (e: AlertScreenException) {
+                    logger(LogLevel.DEBUG) {
+                        "Caught AlertScreenException while checking for alerts; content: ${e.alertScreenContent}"
+                    }
                     handleAlertScreenException(e)
                 }
             }
