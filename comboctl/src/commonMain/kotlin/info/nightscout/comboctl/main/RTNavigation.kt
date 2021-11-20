@@ -213,8 +213,12 @@ class RTNavigationContext(
      *        enabled by default.
      * @return The [ParsedScreen] flow.
      */
-    fun getParsedScreenFlow(filterDuplicates: Boolean = true) =
-        parsedScreenFlow(pump.displayFrameFlow, filterDuplicates)
+    fun getParsedScreenFlow(filterDuplicates: Boolean = true, processAlertScreens: Boolean = true) =
+        parsedScreenFlow(
+            pump.displayFrameFlow,
+            filterDuplicates = filterDuplicates,
+            processAlertScreens = processAlertScreens
+        )
 
     suspend fun startLongButtonPress(button: RTNavigationButton, keepGoing: (suspend () -> Boolean)? = null) =
         pump.startLongRTButtonPress(button.rtButtonCodes, keepGoing)

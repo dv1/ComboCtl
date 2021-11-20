@@ -55,11 +55,14 @@ internal fun areParsedScreensEqual(
  * @param displayFrameFlow Flow of [DisplayFrame] instances that will be parsed.
  * @param filterDuplicates Whether or not to filter out duplicates. Filtering is
  *        enabled by default.
+ * @param processAlertScreens If true, and the parsed screen is a [ParsedScreen.AlertScreen],
+ *        it is processed into [AlertScreenException], which is then thrown.
  * @return The [ParsedScreen] flow.
  */
 fun parsedScreenFlow(
     displayFrameFlow: Flow<DisplayFrame>,
-    filterDuplicates: Boolean = true
+    filterDuplicates: Boolean = true,
+    processAlertScreens: Boolean = true
 ): Flow<ParsedScreen> =
     if (filterDuplicates) {
         displayFrameFlow
@@ -74,7 +77,7 @@ fun parsedScreenFlow(
             .map { pair -> pair.first }
             // Check for alert screen and throw an exception if one is seen
             .filter { parsedScreen ->
-                if (parsedScreen is ParsedScreen.AlertScreen)
+                if (processAlertScreens && (parsedScreen is ParsedScreen.AlertScreen))
                     throw AlertScreenException(parsedScreen.content)
                 else
                     true
@@ -85,7 +88,7 @@ fun parsedScreenFlow(
             .map { displayFrame -> parseDisplayFrame(displayFrame) }
             // Check for alert screen and throw an exception if one is seen
             .filter { parsedScreen ->
-                if (parsedScreen is ParsedScreen.AlertScreen)
+                if (processAlertScreens && (parsedScreen is ParsedScreen.AlertScreen))
                     throw AlertScreenException(parsedScreen.content)
                 else
                     true
