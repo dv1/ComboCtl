@@ -86,7 +86,7 @@ too are referred to as "<cmd> packet". For example, an `AL_RT_KEEPALIVE` is a
 == Bluetooth
 
 The Combo was released in May 2009. This implies that this pump uses a Bluetooth
-version older than the still (at time of writing, the 03.09.2020) ubiquituous
+version older than the still (at time of writing, 03.09.2020) ubiquituous
 version 4.0. In particular, the subset called _Bluetooth Low Energy_ (BTLE),
 specifically created for devices that need to conserve as much power as possible
 and don't need high bandwidth, did not exist yet when the Combo was released.
@@ -212,8 +212,9 @@ channel 1 for both listening server sockets and for client sockets
 is the best option. On Android, the channel cannot be specified.
 Nevertheless, pairing and connections worked well there.
 
-Afterwards, insecure RFCOMM connections need to be established in
-order to communicate with the Combo.
+Afterwards, plain RFCOMM connections with no special added security
+(= insecure RFCOMM sockets) need to be established in order to
+communicate with the Combo.
 
 
 == Pairing process
@@ -630,7 +631,13 @@ MAC that were computed by the Combo. If the two MACs match, then the
 packet passes the verification, otherwise it doesn't, and the packet
 must not be used.
 
-#TODO: Define what to do if verification fails.#
+If packets coming from the pump fail verification, an error message
+should be generated and/or logged, and the connection must be terminated.
+It is valid to try to reconnect as an attempt to reestablish a connection
+with correctly authenticated packets.
+
+If packets arriving at the pump fail verification, the pump will produce
+an error, and disconnect. #TODO: Add details about that error.#
 
 
 === Weak key ===
@@ -803,6 +810,15 @@ inside the Combo. It is therefore strongly recommended to make sure that
 at least about 150-200ms pass between sent packets. In real-world tests,
 this yielded a stable communication and apparently guarantees that the
 Combo's ringbuffer does not overflow.
+
+
+=== Error codes in application layer packets
+
+The payload of application layer packets with the reliability bit set
+to 1 contains in its first 2 bytes an error code. If these bytes are nonzero,
+then an error occurred, and the connection must be terminated. Details
+about the error codes are listed in the section below called
+"Error codes in reliable application layer command payloads".
 
 
 
@@ -1003,6 +1019,166 @@ Command mode specific error codes:
 
 
 
+=== Command mode history blocks
+
+The command mode features a set of commands to retrieve _history blocks_.
+These are sets of data containing information about events that happened
+*since the last time these blocks were retrieved*. It is important to
+keep that last part in mind - events that were retrieved previously are
+automatically removed by the Combo from the history block ringbuffer after
+retrieval.
+
+The history blocks are accessed with these four command:
+
+* `AL_CMD_READ_HISTORY_BLOCK`
+* `AL_CMD_READ_HISTORY_BLOCK_RESPONSE`
+* `AL_CMD_CONFIRM_HISTORY_BLOCK`
+* `AL_CMD_CONFIRM_HISTORY_BLOCK_RESPONSE`
+
+Since Combo packets cannot hold large amounts of data, the history is
+broken up into _history blocks_. Each block contains a number of _events_.
+(A block can be empty.) The client requests a history block by sending
+the `AL_CMD_READ_HISTORY_BLOCK` command, which is sent by the Combo as
+`AL_CMD_READ_HISTORY_BLOCK_RESPONSE`. The client then has to _confirm_
+that block, otherwise the Combo will not send other blocks. Once a
+block is confirmed, it is deleted from the Combo's internal history
+ringbuffer. Confirmation is done by sending `AL_CMD_CONFIRM_HISTORY_BLOCK`
+to the Combo. It responds with `AL_CMD_CONFIRM_HISTORY_BLOCK_RESPONSE`.
+It is then valid to request the next block just like how it is described
+above. This can go on until an empty block arrives, which signalizes
+that the history ringbuffer is now empty. The history block also contains
+a counter of the remaining events to look at as well as a flag that
+indicates whether or not more events are available. These can also
+be used to decide whether or not to stop the loop.
+
+
+The overall parsing loop in pseudo code:
+
+```
+historyEvents = []
+while (true)
+{
+  send(AL_CMD_READ_HISTORY_BLOCK)
+  packet = waitFor(AL_CMD_READ_HISTORY_BLOCK_RESPONSE)
+
+  historyBlock = parsePacket(packet)
+  historyEvents += historyBlock.events
+
+  send(AL_CMD_CONFIRM_HISTORY_BLOCK)
+  waitFor(AL_CMD_CONFIRM_HISTORY_BLOCK_RESPONSE) // the packet does not contain any useful data
+
+  if (!historyBlock.moreEventsAvailable ||
+      (historyBlock.numRemainingEvents <= historyBlock.events.size)
+    break
+}
+```
+
+
+The structure of a history block goes as follows:
+
+(All 16-bit and 32-bit values are stored as little endian integers)
+
+1. 16 bits   : Number of events in this block
+2. 8 bits    : Whether or not more events are available after this
+               block ; if set to 0x48, then additional block
+               requests will return non-empty blocks; if set to
+               0xB7, then this is the last block
+3. 8 bits    : Whether or not there is a "gap" between the
+               previously requested block and this one; this
+               happens if the ringbuffer is full, and events
+               occurred; 0x48 = there is a gap; 0xB7 = no gap
+4. n bits    : The events; see below
+
+
+The structure of an event goes as follows:
+
+1. 4*8 bits  : Timestamp, explained below
+2. 4*8 bits  : Detail bytes, explained below
+3. 16 bits   : Event type ID, explained below
+4. 16 bits   : CRC-16-MCRF4XX checksum of the detail bytes
+5. 32 bits   : Event counter
+6. 16 bits   : CRC-16-MCRF4XX checksum of the 4 event counter bytes
+
+
+The 4-byte timestamp is structured as follows:
+
+* byte 0:
+  - bits 0..5 : seconds
+  - bits 6..7 : lower 2 bits of the minutes
+* byte 1:
+  - bits 0..3 : upper 4 bits of the minutes
+  - bits 4..7 : lower 4 bits of the hours
+* byte 2:
+  - bit 0 : highest bit of the hours
+  - bits 1..5 : days
+  - bits 6..7 : lower 2 bits of the months
+* byte 3:
+  - bits 0..1 : upper 2 bits of the months
+  - bits 2..7 : years
+
+Years are an offset of the year 2000, so a year value 15 means
+2000+15 = 2015, for example.
+
+
+Known valid event type IDs:
+
+When an event says "requested", it means that the associated event
+_started_. "Infused" means that it _ended_.
+
+When a bolus was started "manually", it means the user started
+it by pressing buttons on the UI. This includes "pressing" buttons
+on the client through the remote terminal mode. A non-manual bolus
+is one that was delivered through the command mode bolus commands.
+
+The following event type IDs are currently known. More exist,
+but these are currently not understood.
+
+* 4: Quick bolus requested
+* 5: Quick bolus infused
+* 6: Standard bolus requested (manually = yes)
+* 7: Standard bolus infused (manually = yes)
+* 8: Extended bolus started
+* 9: Extended bolus ended
+* 10: Multiwave bolus started
+* 11: Multiwave bolus ended
+* 14: Standard bolus requested (manually = no)
+* 15: Standard bolus infused (manually = no)
+* 24: New datetime set
+
+
+The detail bytes contain information that depends on the event type:
+
+
+* Quick bolus events (event type IDs 4, 5):
+
+1. 16 bits   : Bolus amount, in 0.1 IU units
+
+
+* Standard bolus events (event type IDs 6, 7, 14, 15):
+
+1. 16 bits   : Bolus amount, in 0.1 IU units
+
+
+* Extended bolus events (event type IDs 8, 9):
+
+1. 16 bits   : Total bolus amount, in 0.1 IU units
+2. 16 bits   : Total bolus duration, in minutes
+
+
+* Extended bolus events (event type IDs 10, 11):
+
+1. 10 bits   : Total bolus amount, in 0.1 IU units
+2. 10 bits   : Amount of bolus that was administered
+               immediately, in 0.1 IU units
+3. 12 bits   : Total bolus duration, in minutes
+
+
+* New datetime set (event type ID 24):
+
+Same structure as that of the event timestamp (see above)
+
+
+
 == List of available transport layer commands
 
 This contains all known transport layer commands that are sent
@@ -1051,7 +1227,7 @@ are specified, but that specification only applies when the client
 is the sender.
 
 By default, packets are CCM-authenticated and get a MAC appended.
-If they don't, this is explicitely mentioned in the command's
+If they don't, this is explicitly mentioned in the command's
 documentation. If no MAC is used, the 8 bytes that normally make
 up the MAC are set to zero.
 
@@ -1068,8 +1244,6 @@ Bluetooth menu):
 * `TL_KEY_RESPONSE`
 
 (See the Pairing section above for details.)
-
-TODO: Check the seq bit usage in Transport.java
 
 
 === `TL_REQUEST_PAIRING_CONNECTION` :
@@ -1481,7 +1655,7 @@ They seem to be related to the payload byte from `AL_CTRL_BIND`.#
 
 === `AL_CTRL_DISCONNECT` :
 
-* Sent by: Client
+* Sent by: Client, Combo
 * Service ID: 0x00 (control)
 * Command ID: 0x005A
 * Reliable: yes
@@ -1507,6 +1681,13 @@ NOTE: If a service was previously activated with `AL_CTRL_ACTIVATE_SERVICE`,
 then `AL_CTRL_DEACTIVATE_ALL_SERVICES` must be sent before this
 `AL_CTRL_DISCONNECT` is sent. Or, in other words, the service must be
 deactivated before disconnecting.
+
+This can also be sent by the Combo if itself decides to terminate the
+connection. This most notably happens when the user presses a button
+on the Combo to turn on its local UI. The Combo will then send this
+command and then terminate the Bluetooth connection. This is not an
+error case; however, the client needs to be prepared for the
+possibility of this happening.
 
 
 === `AL_CTRL_ACTIVATE_SERVICE` :
@@ -1851,6 +2032,41 @@ section above for details.
 
 The last byte specifies whether or not the bolus actually started.
 If the byte is 0x48, bolus started. If it is 0xB7, it did not start.
+
+
+=== `AL_CMD_READ_HISTORY_BLOCK` :
+
+* Sent by: Client
+* Service ID: 0xB7
+* Command ID: 0x9996
+* Reliable: yes
+* Payload length: 0
+
+This instructs the Combo to respond with an `AL_CMD_READ_HISTORY_BLOCK_RESPONSE`
+command that contains the next history block. The client must wait
+wait for that response command to arrive before doing anything.
+
+
+=== `AL_CMD_READ_HISTORY_BLOCK_RESPONSE` :
+
+* Sent by: Combo
+* Service ID: 0xB7
+* Command ID: 0xA996
+* Reliable: yes
+* Payload length:
+
+This is the Combo's response to the client's `AL_CMD_READ_HISTORY_BLOCK` command.
+
+Like all the other reliable packets coming from the Combo, its
+first (and in this case, only) 2 bytes contain an error code.
+See the "Error codes in reliable application layer command payloads"
+section above for details.
+
+The remaining payload bytes contain the requested history block,
+encoded in this manner:
+
+
+
 
 
 === `AL_RT_BUTTON_STATUS` :

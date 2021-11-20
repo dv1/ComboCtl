@@ -1153,7 +1153,7 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
         /**
          * Parses a CMD_READ_PUMP_STATUS_RESPONSE packet and extracts its payload.
          *
-         * @param packet Application layer CMD_READ_HISTORY_BLOCK_RESPONSE packet to parse.
+         * @param packet Application layer CMD_READ_PUMP_STATUS_RESPONSE packet to parse.
          * @return The packet's parsed payload (the pump status).
          * @throws InvalidPayloadException if the payload size is not the expected size.
          */
@@ -1386,7 +1386,7 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
                     10, 11 -> {
                         // All 8 bits of first byte + 2 LSB of second byte: bolus amount.
                         // 6 MSB of second byte + 4 LSB of third byte: immediate bolus amount.
-                        // 4 MSB of third byte + all 8 bits of fourth byte: duration in minutes.v
+                        // 4 MSB of third byte + all 8 bits of fourth byte: duration in minutes.
                         val totalBolusAmount = ((detailBytes[1].toPosInt() and 0b00000011) shl 8) or detailBytes[0].toPosInt()
                         val immediateBolusAmount = ((detailBytes[2].toPosInt() and 0b00001111) shl 6) or
                                                    ((detailBytes[1].toPosInt() and 0b11111100) ushr 2)

@@ -52,6 +52,15 @@ internal fun areParsedScreensEqual(
  *
  * The remaining [ParsedScreen] instances are the output of this flow.
  *
+ * Typically, [first] is the main collector that this flow is used with. It is important
+ * to keep in mind though that this collector is likely to finish immediately because the
+ * flow then parses the display frame that is stored inside the displayFrameFlow's replay
+ * cache. If the goal is to wait for more screens, it is instead recommended to do that
+ * inside a block that is passed to the [first] collector. Also, if the pump reconnects,
+ * the displayFrameFlow's replay cache must be reset to get rid of any stale content
+ * before using this flow, otherwise the parsed screens may not reflect the actual current
+ * content of the remote terminal screen.
+ *
  * @param displayFrameFlow Flow of [DisplayFrame] instances that will be parsed.
  * @param filterDuplicates Whether or not to filter out duplicates. Filtering is
  *        enabled by default.
