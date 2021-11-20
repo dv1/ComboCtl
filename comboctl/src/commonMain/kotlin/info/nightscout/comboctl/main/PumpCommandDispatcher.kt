@@ -190,7 +190,7 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
 
     // Used for counting how many times a RT alert screen was dismissed by a button press.
     private var dismissalCount = 0
-    // Used in handleAlertScreenException() to check if the current alert
+    // Used in handleAlertScreenContent() to check if the current alert
     // screen contains the same alert as the previous one.
     private var lastObservedAlertScreenContent: AlertScreenContent? = null
 
@@ -1196,7 +1196,7 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
                 cmdDeferred?.cancel()
             }
 
-            // Reset these to guarantee that the handleAlertScreenException()
+            // Reset these to guarantee that the handleAlertScreenContent()
             // calls don't use stale states.
             dismissalCount = 0
             lastObservedAlertScreenContent = null
@@ -1285,8 +1285,7 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
                     // _during_ the command execution. In such a case, the
                     // command is considered aborted, and we have to try again
                     // (if isIdempotent is set to true).
-                    if (!handleAlertScreenException(e))
-                        incrementAttemptNr = false
+                    handleAlertScreens()
                 } catch (e: TransportLayerIO.BackgroundIOException) {
                     val pumpTerminatedConnection = (e.cause is ApplicationLayerIO.ErrorCodeException) &&
                             (e.cause.appLayerPacket.command == ApplicationLayerIO.Command.CTRL_DISCONNECT)
@@ -1342,44 +1341,55 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
         if (pumpStatus.warningOccurred || pumpStatus.errorOccurred) {
             pump.switchMode(PumpIO.Mode.REMOTE_TERMINAL)
 
-            while (true) {
-                try {
-                    parsedScreenFlow.first()
-                    break
-                } catch (e: AlertScreenException) {
-                    logger(LogLevel.DEBUG) {
-                        "Caught AlertScreenException while checking for alerts; content: ${e.alertScreenContent}"
-                    }
-                    handleAlertScreenException(e)
-                }
-            }
+            handleAlertScreens()
         }
     }
 
-    private suspend fun handleAlertScreenException(e: AlertScreenException): Boolean {
-        when (e.alertScreenContent) {
+    private suspend fun handleAlertScreens() {
+        parsedScreenFlow = rtNavigationContext.getParsedScreenFlow(processAlertScreens = false)
+
+        try {
+            parsedScreenFlow.first { parsedScreen ->
+                when (parsedScreen) {
+                    is ParsedScreen.AlertScreen -> {
+                        logger(LogLevel.DEBUG) {
+                            "Got alert screen with content ${parsedScreen.content}"
+                        }
+                        handleAlertScreenContent(parsedScreen.content)
+                        false
+                    }
+                    else -> true
+                }
+            }
+        } finally {
+            parsedScreenFlow = rtNavigationContext.getParsedScreenFlow()
+        }
+    }
+
+    private suspend fun handleAlertScreenContent(alertScreenContent: AlertScreenContent) {
+        when (alertScreenContent) {
             // Alert screens blink. When the content is "blinked out",
             // it cannot be recognized, and is set as this type.
             // Ignore contents of this type. The next time
-            // handleAlertScreenException() is called, we hopefully
+            // handleAlertScreenContent() is called, we hopefully
             // get recognizable content.
-            is AlertScreenContent.None -> return false
+            is AlertScreenContent.None -> Unit
             // Error screen contents always cause a rethrow since all error
             // screens are considered non-recoverable errors that must not
             // be ignored / dismissed. Instead, let the code fail by rethrowing
             // the exception. The user needs to check out the error manually.
-            is AlertScreenContent.Error -> throw e
+            is AlertScreenContent.Error -> throw AlertScreenException(alertScreenContent)
             is AlertScreenContent.Warning -> {
                 // Check if the alert screen content changed in case
                 // several warnings appear one after the other. In
                 // such a case, we need to reset the dismissal count
                 // to be able to properly dismiss followup warnings.
-                if (lastObservedAlertScreenContent != e.alertScreenContent) {
-                    lastObservedAlertScreenContent = e.alertScreenContent
+                if (lastObservedAlertScreenContent != alertScreenContent) {
+                    lastObservedAlertScreenContent = alertScreenContent
                     dismissalCount = 0
                 }
 
-                val warningCode = e.alertScreenContent.code
+                val warningCode = alertScreenContent.code
 
                 // W1 is the "reservoir almost empty" warning. Notify the caller
                 // about this, then dismiss it.
@@ -1394,7 +1404,7 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
                     1 -> onEvent(Event.RESERVOIR_LOW)
                     2 -> onEvent(Event.BATTERY_LOW)
                     6, 7, 8 -> Unit
-                    else -> throw e
+                    else -> throw AlertScreenException(alertScreenContent)
                 }
 
                 // Warning screens are dismissed by pressing CHECK twice.
@@ -1409,8 +1419,6 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
                     rtNavigationContext.shortPressButton(RTNavigationButton.CHECK)
                     dismissalCount++
                 }
-
-                return true
             }
         }
     }
