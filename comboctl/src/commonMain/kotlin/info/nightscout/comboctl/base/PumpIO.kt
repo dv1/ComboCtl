@@ -485,6 +485,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
         displayFrameAssembler.reset()
 
         // Get rid of any existing frame in the replay cache.
+        @Suppress("EXPERIMENTAL_API_USAGE")
         mutableDisplayFrameFlow.resetReplayCache()
 
         // Start the actual IO activity.
