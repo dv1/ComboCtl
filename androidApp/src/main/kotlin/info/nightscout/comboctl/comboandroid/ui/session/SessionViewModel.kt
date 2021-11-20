@@ -11,10 +11,8 @@ import info.nightscout.comboctl.comboandroid.utils.SingleLiveData
 import info.nightscout.comboctl.main.NUM_BASAL_PROFILE_FACTORS
 import info.nightscout.comboctl.main.Pump
 import info.nightscout.comboctl.main.PumpCommandDispatcher
-import info.nightscout.comboctl.parser.AlertScreenException
 import info.nightscout.comboctl.parser.parsedScreenFlow
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -187,19 +185,8 @@ class SessionViewModel : ViewModel() {
                 }.let { _modeLiveData.value = it }
             }.launchIn(viewModelScope)
 
-            parsedScreenFlow(pumpLocal.displayFrameFlow)
+            parsedScreenFlow(pumpLocal.displayFrameFlow, processAlertScreens = false)
                 .onEach { _parsedScreenLiveData.value = it.toString() }
-                .catch { e ->
-                    // Don't forward AlertScreenException. Instead, just
-                    // pass their content to _parsedScreenLiveData. That
-                    // way, we get to see the parsed content of the alert
-                    // screen that is currently visible, and the app does
-                    // not crash just because a warning showed up for example.
-                    if (e is AlertScreenException)
-                        _parsedScreenLiveData.value = "Alert screen exception caught; content: <${e.alertScreenContent}>"
-                    else
-                        throw e
-                }
                 .launchIn(viewModelScope)
         }
     }
