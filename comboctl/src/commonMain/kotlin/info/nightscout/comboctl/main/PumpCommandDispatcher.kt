@@ -1155,8 +1155,7 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
         mutableCommandDispatchState.value = DispatchState.DISPATCHING
 
         try {
-
-            check(pump.isConnected()) { "Pump is not connected" }
+            check(pump.connectionState.value == Pump.ConnectionState.CONNECTED) { "Pump is not connected" }
 
             // Verify that there have been no errors/warnings since the last time
             // a command was dispatched. ComboCtl has no way of getting notified

@@ -19,8 +19,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.plus
 import kotlinx.coroutines.withContext
 
@@ -127,6 +129,32 @@ class Pump(
     val currentModeFlow: StateFlow<PumpIO.Mode?> = pumpIO.currentModeFlow
 
     /**
+     * Current connection state.
+     *
+     * This differs from the [connectProgressFlow] in that the progress flow is generally
+     * not useful to check the current state, while the connection state is not generally
+     * useful for keeping track of the connection progress (since it does not contain
+     * extra info like the overall progress value etc.)
+     *
+     * Note that if the worker fails, the connection state is still [CONNECTED]. This
+     * is because a failed worker is not the same as a disconnected state; the user
+     * still has to manually call [disconnect] after the worker fails (typically because
+     * a call like [sendShortRTButtonPress] failed with a [TransportLayerIO.BackgroundIOException]).
+     */
+    enum class ConnectionState {
+        DISCONNECTED,
+        CONNECTING,
+        CONNECTED
+    }
+
+    private var mutableConnectionState = MutableStateFlow<ConnectionState>(ConnectionState.DISCONNECTED)
+
+    /**
+     * Read-only [StateFlow] property that notifies about connection state changes.
+     */
+    val connectionState = mutableConnectionState.asStateFlow()
+
+    /**
      * Returns whether or not this pump has already been paired.
      *
      * "Pairing" refers to the custom Combo pairing here, not the
@@ -225,6 +253,8 @@ class Pump(
         // back to the unpaired state, since pairing failed, and
         // the state is undefined when that happens.
         try {
+            mutableConnectionState.value = ConnectionState.CONNECTING
+
             progressReporter?.setCurrentProgressStage(BasicProgressStage.StartingConnectionSetup)
 
             // Connecting to Bluetooth may block, so run it in
@@ -233,10 +263,13 @@ class Pump(
                 bluetoothDevice.connect(progressReporter)
             }
 
+            mutableConnectionState.value = ConnectionState.CONNECTED
+
             pumpIO.performPairing(bluetoothFriendlyName, progressReporter, pairingPINCallback)
             doUnpair = false
             logger(LogLevel.INFO) { "Paired with Combo with address ${bluetoothDevice.address}" }
         } finally {
+            mutableConnectionState.value = ConnectionState.DISCONNECTED
             disconnectBTDeviceAndCatchExceptions()
             if (doUnpair) {
                 // Unpair in a separate context, since this
@@ -393,35 +426,44 @@ class Pump(
 
         // Run the actual connection attempt in the background IO scope.
         return backgroundIOScope.async {
-            // Suspend the coroutine until Bluetooth is connected.
-            // Do this in a separate coroutine with an IO dispatcher
-            // since the connection setup may block.
-            withContext(ioDispatcher()) {
-                try {
-                    bluetoothDevice.connect(connectProgressReporter)
-                } catch (e: Exception) {
-                    connectProgressReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
-                    throw e
-                }
-            }
+            try {
+                mutableConnectionState.value = ConnectionState.CONNECTING
 
-            // Establish the regular connection. Also call join() here
-            // to make sure the coroutine here waits until the sub-coroutine
-            // that is started by pumpIO.connect() finishes.
-            runChecked {
-                try {
-                    pumpIO.connect(
-                        backgroundIOScope = backgroundIOScope,
-                        progressReporter = connectProgressReporter,
-                        initialMode = initialMode,
-                        runKeepAliveLoop = true
-                    ).await()
-
-                    connectProgressReporter.setCurrentProgressStage(BasicProgressStage.Finished)
-                } catch (e: Exception) {
-                    connectProgressReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
-                    throw e
+                // Suspend the coroutine until Bluetooth is connected.
+                // Do this in a separate coroutine with an IO dispatcher
+                // since the connection setup may block.
+                withContext(ioDispatcher()) {
+                    try {
+                        bluetoothDevice.connect(connectProgressReporter)
+                    } catch (e: Exception) {
+                        connectProgressReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
+                        throw e
+                    }
                 }
+
+                // Establish the regular connection. Also call join() here
+                // to make sure the coroutine here waits until the sub-coroutine
+                // that is started by pumpIO.connect() finishes.
+                runChecked {
+                    try {
+                        pumpIO.connect(
+                            backgroundIOScope = backgroundIOScope,
+                            progressReporter = connectProgressReporter,
+                            initialMode = initialMode,
+                            runKeepAliveLoop = true
+                        ).await()
+
+                        mutableConnectionState.value = ConnectionState.CONNECTED
+
+                        connectProgressReporter.setCurrentProgressStage(BasicProgressStage.Finished)
+                    } catch (e: Exception) {
+                        connectProgressReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
+                        throw e
+                    }
+                }
+            } catch (e: Throwable) {
+                mutableConnectionState.value = ConnectionState.DISCONNECTED
+                throw e
             }
         }
     }
@@ -458,6 +500,8 @@ class Pump(
             disconnectBTDeviceAndCatchExceptions()
         }
 
+        mutableConnectionState.value = ConnectionState.DISCONNECTED
+
         logger(LogLevel.INFO) { "Disconnected from Combo with address ${bluetoothDevice.address}" }
     }
 
@@ -483,9 +527,6 @@ class Pump(
         disconnect()
         connectAsync(prevBackgroundIOScope!!, prevInitialMode!!).await()
     }
-
-    /** Returns true if the pump is connected, false otherwise. */
-    fun isConnected() = pumpIO.isConnected()
 
     /**
      * Reads the current datetime of the pump in COMMAND (CMD) mode.
