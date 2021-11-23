@@ -93,7 +93,7 @@ class PumpManager(
         logger(LogLevel.INFO) { "Main control started" }
 
         // Install a filter to make sure we only ever get notified about Combo pumps.
-        bluetoothInterface.deviceFilter = { deviceAddress -> isCombo(deviceAddress) }
+        bluetoothInterface.deviceFilterCallback = { deviceAddress -> isCombo(deviceAddress) }
     }
 
     /**
@@ -215,7 +215,7 @@ class PumpManager(
                     sdpServiceDescription = "ComboCtl",
                     btPairingPin = Constants.BT_PAIRING_PIN,
                     discoveryDuration = discoveryDuration,
-                    discoveryStopped = { reason ->
+                    onDiscoveryStopped = { reason ->
                         when (reason) {
                             BluetoothInterface.DiscoveryStoppedReason.MANUALLY_STOPPED ->
                                 deferred.complete(PairingResult.DiscoveryManuallyStopped)
@@ -225,7 +225,7 @@ class PumpManager(
                                 deferred.complete(PairingResult.DiscoveryTimeout)
                         }
                     },
-                    foundNewPairedDevice = { deviceAddress ->
+                    onFoundNewPairedDevice = { deviceAddress ->
                         thisScope.launch {
                             pumpStateAccessMutex.withLock {
                                 try {

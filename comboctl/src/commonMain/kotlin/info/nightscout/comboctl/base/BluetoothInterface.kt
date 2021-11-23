@@ -69,7 +69,7 @@ interface BluetoothInterface {
      *
      * The default callback always returns true.
      */
-    var deviceFilter: (deviceAddress: BluetoothAddress) -> Boolean
+    var deviceFilterCallback: (deviceAddress: BluetoothAddress) -> Boolean
 
     /**
      * Starts discovery of Bluetooth devices that haven't been paired yet.
@@ -82,7 +82,7 @@ interface BluetoothInterface {
      * 2. Pairing is set up so that when a device tries to pair with the
      *    interface, it is authenticated using the given PIN.
      * 3. Each detected device is filtered via its address by calling
-     *    the [deviceFilter] callback. Only those devices whose addresses
+     *    the [deviceFilterCallback]. Only those devices whose addresses
      *    pass this filter are forwarded to the pairing authorization
      *    (see step 2 above). As a result, only the filtered devices
      *    can eventually have their address passed to the
@@ -127,11 +127,11 @@ interface BluetoothInterface {
      *        stack for its pairing/authorization.
      * @param discoveryDuration How long the discovery shall go on,
      *        in seconds. Must be a value between 1 and 300.
-     * @param discoveryStopped: Callback that gets invoked when discovery
+     * @param onDiscoveryStopped: Callback that gets invoked when discovery
      *        is stopped for any reason _other_ than that a device
      *        was discovered.
-     * @param foundNewPairedDevice Callback that gets invoked when
-     *        a device was found that passed the filter (see [deviceFilter])
+     * @param onFoundNewPairedDevice Callback that gets invoked when a device
+     *        was found that passed the filter (see [deviceFilterCallback])
      *        and is paired. Exceptions thrown by this callback are logged,
      *        but not propagated. Discovery is stopped before this is called.
      * @throws IllegalStateException if this is called again after
@@ -147,8 +147,8 @@ interface BluetoothInterface {
         sdpServiceDescription: String,
         btPairingPin: String,
         discoveryDuration: Int,
-        discoveryStopped: (reason: DiscoveryStoppedReason) -> Unit,
-        foundNewPairedDevice: (deviceAddress: BluetoothAddress) -> Unit
+        onDiscoveryStopped: (reason: DiscoveryStoppedReason) -> Unit,
+        onFoundNewPairedDevice: (deviceAddress: BluetoothAddress) -> Unit
     )
 
     /**
@@ -193,7 +193,7 @@ interface BluetoothInterface {
     /**
      * Returns a set of addresses of paired Bluetooth devices.
      *
-     * The [deviceFilter] is applied here. That is, the returned set
+     * The [deviceFilterCallback] is applied here. That is, the returned set
      * only contains addresses of devices which passed that filter.
      *
      * The return value is a new set, not a reference to an internal

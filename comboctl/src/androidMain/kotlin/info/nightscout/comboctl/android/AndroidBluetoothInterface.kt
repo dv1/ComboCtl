@@ -39,12 +39,11 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
     private var discoveryStarted = false
     private var discoveryBroadcastReceiver: BroadcastReceiver? = null
 
-    // Note that this contains ALL paired/bonded devices,
-    // not just the ones that pass the deviceFilter. This
-    // is important in case the filter is changed sometime
-    // later, otherwise getPairedDeviceAddresses() would
-    // return an incomplete list.getPairedDeviceAddresses()
-    // has to apply the filter manually.
+    // Note that this contains ALL paired/bonded devices, not just
+    // the ones that pass the deviceFilterCallback.This is important
+    // in case the filter is changed sometime later, otherwise
+    // getPairedDeviceAddresses() would return an incomplete
+    // list.getPairedDeviceAddresses() has to apply the filter manually.
     private val pairedDeviceAddresses = mutableSetOf<BluetoothAddress>()
 
     // This is necessary, since the BroadcastReceivers always
@@ -86,7 +85,7 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
 
     override var onDeviceUnpaired: (deviceAddress: BluetoothAddress) -> Unit = { }
 
-    override var deviceFilter: (deviceAddress: BluetoothAddress) -> Boolean = { true }
+    override var deviceFilterCallback: (deviceAddress: BluetoothAddress) -> Boolean = { true }
 
     fun setup() {
         val bondedDevices = bluetoothAdapter.bondedDevices
@@ -140,8 +139,8 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
         sdpServiceDescription: String,
         btPairingPin: String,
         discoveryDuration: Int,
-        discoveryStopped: (reason: BluetoothInterface.DiscoveryStoppedReason) -> Unit,
-        foundNewPairedDevice: (deviceAddress: BluetoothAddress) -> Unit
+        onDiscoveryStopped: (reason: BluetoothInterface.DiscoveryStoppedReason) -> Unit,
+        onFoundNewPairedDevice: (deviceAddress: BluetoothAddress) -> Unit
     ) {
         if (discoveryStarted)
             throw IllegalStateException("Discovery already started")
@@ -192,7 +191,7 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
             logger(LogLevel.DEBUG) { "RFCOMM listener thread stopped" }
         }
 
-        this.discoveryStopped = discoveryStopped
+        this.discoveryStopped = onDiscoveryStopped
 
         logger(LogLevel.DEBUG) {
             "Registering receiver for getting notifications about pairing requests and connected devices"
@@ -208,7 +207,7 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
                 logger(LogLevel.DEBUG) { "discoveryBroadcastReceiver received new action: ${intent.action}" }
 
                 when (intent.action) {
-                    SystemBluetoothDevice.ACTION_ACL_CONNECTED -> onAclConnected(intent, foundNewPairedDevice)
+                    SystemBluetoothDevice.ACTION_ACL_CONNECTED -> onAclConnected(intent, onFoundNewPairedDevice)
                     SystemBluetoothDevice.ACTION_PAIRING_REQUEST -> onPairingRequest(intent, btPairingPin)
                     BluetoothAdapter.ACTION_DISCOVERY_FINISHED -> onDiscoveryFinished()
                     else -> Unit
@@ -255,7 +254,7 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
     override fun getPairedDeviceAddresses(): Set<BluetoothAddress> =
         try {
             deviceAddressLock.lock()
-            pairedDeviceAddresses.filter { pairedDeviceAddress -> deviceFilter(pairedDeviceAddress) }.toSet()
+            pairedDeviceAddresses.filter { pairedDeviceAddress -> deviceFilterCallback(pairedDeviceAddress) }.toSet()
         } finally {
             deviceAddressLock.unlock()
         }
@@ -372,8 +371,8 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
         }
 
         // Always adding the device to the paired addresses even
-        // if the deviceFilter() below returns false. See the
-        // pairedDeviceAddresses comments above for more.
+        // if the deviceFilterCallback() below returns false. See
+        // the pairedDeviceAddresses comments above for more.
         try {
             deviceAddressLock.lock()
             pairedDeviceAddresses.add(comboctlBtAddress)
@@ -388,7 +387,7 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
             // discovered device, just as the ComboCtl
             // BluetoothInterface.startDiscovery()
             // documentation requires.
-            if (deviceFilter(comboctlBtAddress)) {
+            if (deviceFilterCallback(comboctlBtAddress)) {
                 foundDevice = true
                 stopDiscoveryInternal()
                 foundNewPairedDevice(comboctlBtAddress)
@@ -437,8 +436,8 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
         previouslyDiscoveredDevices.remove(comboctlBtAddress)
 
         // Always removing the device from the paired addresses
-        // event if the deviceFilter() below returns false. See
-        // the pairedDeviceAddresses comments above for more.
+        // event if the deviceFilterCallback() below returns false.
+        // See the pairedDeviceAddresses comments above for more.
         try {
             deviceAddressLock.lock()
             pairedDeviceAddresses.remove(comboctlBtAddress)
@@ -452,7 +451,7 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
         // BluetoothInterface.startDiscovery()
         // documentation requires.
         try {
-            if (deviceFilter(comboctlBtAddress)) {
+            if (deviceFilterCallback(comboctlBtAddress)) {
                 onDeviceUnpaired(comboctlBtAddress)
             }
         } catch (e: Exception) {
@@ -481,7 +480,7 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
             return
         }
 
-        if (!deviceFilter(comboctlBtAddress)) {
+        if (!deviceFilterCallback(comboctlBtAddress)) {
             logger(LogLevel.DEBUG) { "This is not a Combo pump; ignoring device" }
             return
         }

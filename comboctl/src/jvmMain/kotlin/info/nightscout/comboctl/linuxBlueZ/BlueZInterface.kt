@@ -73,7 +73,7 @@ class BlueZInterface : BluetoothInterface {
     override var onDeviceUnpaired: (deviceAddress: BluetoothAddress) -> Unit = { }
         set(value) { onDeviceUnpairedImpl(BluetoothDeviceNoReturnCallback(value)) }
 
-    override var deviceFilter: (deviceAddress: BluetoothAddress) -> Boolean = { true }
+    override var deviceFilterCallback: (deviceAddress: BluetoothAddress) -> Boolean = { true }
         set(value) { setDeviceFilterImpl(BluetoothDeviceBooleanReturnCallback(value)) }
 
     override fun startDiscovery(
@@ -82,8 +82,8 @@ class BlueZInterface : BluetoothInterface {
         sdpServiceDescription: String,
         btPairingPin: String,
         discoveryDuration: Int,
-        discoveryStopped: (reason: BluetoothInterface.DiscoveryStoppedReason) -> Unit,
-        foundNewPairedDevice: (deviceAddress: BluetoothAddress) -> Unit
+        onDiscoveryStopped: (reason: BluetoothInterface.DiscoveryStoppedReason) -> Unit,
+        onFoundNewPairedDevice: (deviceAddress: BluetoothAddress) -> Unit
     ) {
         startDiscoveryImpl(
             sdpServiceName,
@@ -92,7 +92,7 @@ class BlueZInterface : BluetoothInterface {
             btPairingPin,
             discoveryDuration,
             IntArgumentNoReturnCallback {
-                discoveryStopped(
+                onDiscoveryStopped(
                     when (it) {
                         0 -> BluetoothInterface.DiscoveryStoppedReason.MANUALLY_STOPPED
                         1 -> BluetoothInterface.DiscoveryStoppedReason.DISCOVERY_ERROR
@@ -101,7 +101,7 @@ class BlueZInterface : BluetoothInterface {
                     }
                 )
             },
-            BluetoothDeviceNoReturnCallback(foundNewPairedDevice)
+            BluetoothDeviceNoReturnCallback(onFoundNewPairedDevice)
         )
     }
 
