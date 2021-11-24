@@ -115,7 +115,8 @@ class PumpManager(
      * This must be called before using [pairWithNewPump] or [acquirePump].
      *
      * @param onPumpUnpaired Callback for when a previously paired pump is unpaired.
-     *        This is called from within the [miscEventHandlingScope].
+     *        This is typically called from some background thread. Switching to
+     *        a different context with [withContext] may be necessary.
      */
     fun setup(onPumpUnpaired: (pumpAddress: BluetoothAddress) -> Unit = { }) {
         bluetoothInterface.onDeviceUnpaired = { deviceAddress ->

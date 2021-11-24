@@ -208,7 +208,12 @@ class MainViewController {
     }
 
     fun onPumpUnpaired(pumpAddress: BluetoothAddress) =
-        pumpAddressList.remove(pumpAddress)
+        // Remove the pump from the address list in the mainScope,
+        // since changes in the JavaFX UI must not be performed
+        // outside of the JavaFX main thread.
+        runBlocking(mainScope!!.coroutineContext) {
+            pumpAddressList.remove(pumpAddress)
+        }
 
     private fun resetPumpList() {
         require(pumpManager != null)
