@@ -1089,6 +1089,17 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
         stopCMDPingBackgroundLoop()
         stopRTKeepAliveBackgroundLoop()
 
+        // Get rid of any existing frame in the replay cache. The displayFrameFlow
+        // contains the last frame that was received in the remote terminal mode
+        // if the pump had been running in the remote terminal mode earlier and
+        // was then switched to command mode. If we are now switching back to
+        // remote terminal mode, then that last frame is still lingering around,
+        // and we must flush it out of the flow to prevent mismatches between
+        // what the flow thinks the current screen is and what the current screen
+        // actually is.
+        @Suppress("EXPERIMENTAL_API_USAGE")
+        mutableDisplayFrameFlow.resetReplayCache()
+
         // Send the command to switch the mode.
 
         if (mutableCurrentModeFlow.value != null) {
