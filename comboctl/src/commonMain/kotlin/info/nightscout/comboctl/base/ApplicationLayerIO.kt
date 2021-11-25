@@ -167,8 +167,8 @@ open class ApplicationLayerIO(pumpStateStore: PumpStateStore, pumpAddress: Bluet
         CMD_GET_BOLUS_STATUS_RESPONSE(ServiceID.COMMAND_MODE, 0xA66A, true),
         CMD_DELIVER_BOLUS(ServiceID.COMMAND_MODE, 0x9669, true),
         CMD_DELIVER_BOLUS_RESPONSE(ServiceID.COMMAND_MODE, 0xA669, true),
-        CMD_CANCEL_BOLUS(ServiceID.COMMAND_MODE, 0x9669, true),
-        CMD_CANCEL_BOLUS_RESPONSE(ServiceID.COMMAND_MODE, 0xA669, true),
+        CMD_CANCEL_BOLUS(ServiceID.COMMAND_MODE, 0x9695, true),
+        CMD_CANCEL_BOLUS_RESPONSE(ServiceID.COMMAND_MODE, 0xA695, true),
 
         RT_BUTTON_STATUS(ServiceID.RT_MODE, 0x0565, false),
         RT_KEEP_ALIVE(ServiceID.RT_MODE, 0x0566, false),
