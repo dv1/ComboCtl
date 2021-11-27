@@ -18,6 +18,7 @@ import info.nightscout.comboctl.parser.ParsedScreen
 import kotlin.reflect.KClassifier
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,6 +28,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 private val logger = Logger.get("PumpCommandDispatcher")
 
@@ -1226,16 +1228,35 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
 
                     supervisorScope {
                         cmdDeferred = async {
-                            if (pumpMode != null)
-                                pump.switchMode(pumpMode)
+                            var doAlertCheck = true
 
-                            retval = block.invoke()
+                            try {
+                                if (pumpMode != null)
+                                    pump.switchMode(pumpMode)
 
-                            // Post-command check in case something went wrong
-                            // and an alert screen appeared after the command ran.
-                            // Most commonly, these are benign warning screens,
-                            // especially W6, W7, W8.
-                            checkForAlerts()
+                                retval = block.invoke()
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                // Don't do alert checks if an exception other
+                                // than CancellationException occurs.
+                                doAlertCheck = false
+                                throw e
+                            } finally {
+                                if (doAlertCheck) {
+                                    // Post-command check in case something went wrong
+                                    // and an alert screen appeared after the command ran.
+                                    // Most commonly, these are benign warning screens,
+                                    // especially W6, W7, W8.
+                                    // Using a NonCancellable context in case the command
+                                    // was aborted by cancellation (like a cancelled bolus).
+                                    // Without this context, the checkForAlerts() call would
+                                    // not actually do anything.
+                                    withContext(NonCancellable) {
+                                        checkForAlerts()
+                                    }
+                                }
+                            }
                         }
                     }
 
