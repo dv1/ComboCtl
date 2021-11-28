@@ -797,6 +797,7 @@ class SequenceParser(private val subParsers: List<Parser>) : Parser() {
 
             when (parseResult) {
                 is ParseResult.Value<*> -> parseResults.add(parseResult)
+                is ParseResult.Sequence -> parseResults.add(parseResult)
                 ParseResult.NoValue -> Unit
                 ParseResult.Null -> parseResults.add(ParseResult.Null)
                 ParseResult.EndOfTokens -> return ParseResult.EndOfTokens
