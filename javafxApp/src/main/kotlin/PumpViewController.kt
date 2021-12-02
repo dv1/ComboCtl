@@ -275,10 +275,10 @@ class PumpViewController {
         }
     }
 
-    fun readQuickinfo() = launchJob {
+    fun readPumpStatus() = launchJob {
         val pumpCommandDispatcher = PumpCommandDispatcher(pump!!)
-        val quickinfo = pumpCommandDispatcher.readQuickinfo()
-        Alert(Alert.AlertType.INFORMATION, "Quickinfo: $quickinfo").showAndWait()
+        val pumpStatus = pumpCommandDispatcher.readPumpStatus()
+        Alert(Alert.AlertType.INFORMATION, "Pump status: $pumpStatus").showAndWait()
     }
 
     fun deliverBolus() = launchJob {

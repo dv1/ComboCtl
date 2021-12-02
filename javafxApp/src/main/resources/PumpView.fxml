@@ -64,7 +64,7 @@
                                   <RowConstraints minHeight="10.0" prefHeight="30.0" vgrow="SOMETIMES" />
                                 </rowConstraints>
                                  <children>
-                                    <Button mnemonicParsing="false" onAction="#readQuickinfo" text="Read quickinfo" GridPane.halignment="CENTER" GridPane.valignment="CENTER" />
+                                    <Button mnemonicParsing="false" onAction="#readPumpStatus" text="Read pump status" GridPane.halignment="CENTER" GridPane.valignment="CENTER" />
                                     <Button mnemonicParsing="false" onAction="#deliverBolus" text="Deliver bolus" GridPane.halignment="CENTER" GridPane.rowIndex="1" GridPane.valignment="CENTER" />
                                     <Button mnemonicParsing="false" onAction="#fetchHistory" text="Fetch history" GridPane.columnIndex="1" GridPane.halignment="CENTER" GridPane.rowIndex="1" GridPane.valignment="CENTER" />
                                     <Button mnemonicParsing="false" onAction="#setTbr" text="Set TBR" GridPane.columnIndex="1" GridPane.halignment="CENTER" GridPane.valignment="CENTER" />
