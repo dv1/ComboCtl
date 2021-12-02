@@ -339,10 +339,25 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
     class CommandExecutionAttemptsFailedException :
         ComboException("All attempts to execute the command failed")
 
-    /* Current pump status. */
+    /**
+     * Current pump status.
+     *
+     * The [currentBasalRateFactor] is an integer-encoded-decimal. Its last 3 digits
+     * make up the 3 most significant fractional digits of the decimal basal rate
+     * factor. See [setBasalProfile] for more.
+     *
+     * @property running true if the Combo is currently running, false it is stopped.
+     * @property availableUnitsInReservoir How many IU are currently available in the reservoir.
+     * @property currentBasalRateFactor The basal rate factor the Combo is currently using.
+     *           This changes per-hour depending on the programmed basal rate profile.
+     *           If the pump is stopped, this is set to 0.
+     * @property reservoirState Whether the reservoir is full, low, or empty.
+     * @property batteryState Whether the battery is full, low, or empty.
+     * */
     data class PumpStatus(
         val running: Boolean,
-        val availableUnits: Int,
+        val availableUnitsInReservoir: Int,
+        val currentBasalRateFactor: Int,
         val reservoirState: ReservoirState,
         val batteryState: BatteryState
     )
@@ -822,7 +837,12 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
 
         return@dispatchCommand PumpStatus(
             running = (mainScreenContent !is MainScreenContent.Stopped),
-            availableUnits = quickinfo.availableUnits,
+            availableUnitsInReservoir = quickinfo.availableUnits,
+            currentBasalRateFactor = when (mainScreenContent) {
+                is MainScreenContent.Normal -> mainScreenContent.currentBasalRateFactor
+                is MainScreenContent.Stopped -> 0
+                is MainScreenContent.Tbr -> mainScreenContent.currentBasalRateFactor
+            },
             reservoirState = quickinfo.reservoirState,
             batteryState = when (mainScreenContent) {
                 is MainScreenContent.Normal -> mainScreenContent.batteryState
