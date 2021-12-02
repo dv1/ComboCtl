@@ -183,7 +183,9 @@ object RTCommandProgressStage {
  *
  * The methods assume that the pump is already connected.
  *
- * @property pump [Pump] instance to use for dispatching commands.
+ * @param pump [Pump] instance to use for dispatching commands.
+ * @param onEvent Callback for notifying about events like low battery.
+ *        See [Event] for the list of possible events.
  */
 class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event: Event) -> Unit = { }) {
     private val rtNavigationContext = RTNavigationContext(pump)
@@ -1413,7 +1415,7 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
 
                 // W1 is the "reservoir almost empty" warning. Notify the caller
                 // about this, then dismiss it.
-                // W1 is the "battery almost empty" warning. Notify the caller
+                // W2 is the "battery almost empty" warning. Notify the caller
                 // about this, then dismiss it.
                 // W6 informs about an aborted TBR.
                 // W7 informs about a finished TBR.
