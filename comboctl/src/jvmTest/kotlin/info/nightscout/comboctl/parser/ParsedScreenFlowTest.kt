@@ -79,7 +79,8 @@ class ParsedScreenFlowTest {
                 MainScreenContent.Normal(
                     currentTime = DateTime.fromTime(hour = 10, minute = 20),
                     activeBasalRateNumber = 1,
-                    currentBasalRateFactor = 200
+                    currentBasalRateFactor = 200,
+                    batteryState = BatteryState.FULL_BATTERY
                 )
             ),
             flowResultIter.next()

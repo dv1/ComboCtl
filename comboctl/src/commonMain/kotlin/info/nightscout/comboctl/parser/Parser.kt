@@ -22,17 +22,35 @@ enum class MyDataBolusType {
 }
 
 /**
+ * Possible battery states in the main screens.
+ */
+enum class BatteryState {
+    NO_BATTERY,
+    LOW_BATTERY,
+    FULL_BATTERY
+}
+
+private fun batteryStateFromSymbol(symbol: SmallSymbol?): BatteryState =
+    when (symbol) {
+        SmallSymbol.NO_BATTERY -> BatteryState.NO_BATTERY
+        SmallSymbol.LOW_BATTERY -> BatteryState.LOW_BATTERY
+        else -> BatteryState.FULL_BATTERY
+    }
+
+/**
  * Possible contents of [ParsedScreen.MainScreen].
  */
 sealed class MainScreenContent {
     data class Normal(
         val currentTime: DateTime,
         val activeBasalRateNumber: Int,
-        val currentBasalRateFactor: Int
+        val currentBasalRateFactor: Int,
+        val batteryState: BatteryState
     ) : MainScreenContent()
 
     data class Stopped(
-        val currentDateTime: DateTime
+        val currentDateTime: DateTime,
+        val batteryState: BatteryState
     ) : MainScreenContent()
 
     data class Tbr(
@@ -40,7 +58,8 @@ sealed class MainScreenContent {
         val remainingTbrDurationInMinutes: Int,
         val tbrPercentage: Int,
         val activeBasalRateNumber: Int,
-        val currentBasalRateFactor: Int
+        val currentBasalRateFactor: Int,
+        val batteryState: BatteryState
     ) : MainScreenContent()
 }
 
@@ -209,6 +228,10 @@ sealed class ParseResult(val isSuccess: Boolean) {
      *
      * @valueAtOrNull works similarly, except that it returns null
      * if the parse result at that index is not of type Value<*>.
+     *
+     * Note that trying to access an index beyond the valid range
+     * still produces an [IndexOutOfBoundsException] even when
+     * using @valueAtOrNull.
      */
     class Sequence(val values: List<ParseResult>) : ParseResult(true) {
         inline fun <reified T> valueAt(index: Int) = (values[index] as Value<*>).value as T
@@ -219,6 +242,9 @@ sealed class ParseResult(val isSuccess: Boolean) {
                 else -> null
             }
         }
+
+        val size: Int
+            get() = values.size
     }
 }
 
@@ -788,8 +814,13 @@ class FirstSuccessParser(private val subParsers: List<Parser>) : Parser() {
  * returns [ParseResult.Null], while the latter raises an exception (cast error).
  *
  * @property subParsers List of parsers to parse tokens with.
+ * @property allowIncompleteSequences If true, then partial results are
+ *           OK; that is, as soon as one of the subparsers returns
+ *           [ParseResult.EndOfTokens], this function call returns the
+ *           sequence of values parsed so far. If instead set to true,
+ *           [ParseResult.EndOfTokens] is returned in that case.
  */
-class SequenceParser(private val subParsers: List<Parser>) : Parser() {
+class SequenceParser(private val subParsers: List<Parser>, private val allowIncompleteSequences: Boolean = false) : Parser() {
     override fun parseImpl(parseContext: ParseContext): ParseResult {
         val parseResults = mutableListOf<ParseResult>()
         for (subParser in subParsers) {
@@ -800,7 +831,7 @@ class SequenceParser(private val subParsers: List<Parser>) : Parser() {
                 is ParseResult.Sequence -> parseResults.add(parseResult)
                 ParseResult.NoValue -> Unit
                 ParseResult.Null -> parseResults.add(ParseResult.Null)
-                ParseResult.EndOfTokens -> return ParseResult.EndOfTokens
+                ParseResult.EndOfTokens -> if (allowIncompleteSequences) break else return ParseResult.EndOfTokens
                 ParseResult.Failed -> return ParseResult.Failed
             }
         }
@@ -1111,21 +1142,30 @@ class NormalMainScreenParser : Parser() {
                 SingleGlyphParser(Glyph.LargeSymbol(LargeSymbol.BASAL)),
                 DecimalParser(), // Current basal rate factor
                 SingleGlyphParser(Glyph.LargeSymbol(LargeSymbol.UNITS_PER_HOUR)),
-                SingleGlyphTypeParser(Glyph.SmallDigit::class) // Basal rate number
-            )
+                SingleGlyphTypeParser(Glyph.SmallDigit::class), // Basal rate number,
+                SingleGlyphTypeParser(Glyph.SmallSymbol::class) // Battery state
+            ),
+            allowIncompleteSequences = true
         ).parse(parseContext)
 
         if (!parseResult.isSuccess)
             return ParseResult.Failed
 
         parseResult as ParseResult.Sequence
+        if (parseResult.size < 2)
+            return ParseResult.Failed
+
+        val batteryState = batteryStateFromSymbol(
+            if (parseResult.size >= 3) parseResult.valueAt<Glyph.SmallSymbol>(2).symbol else null
+        )
 
         return ParseResult.Value(
             ParsedScreen.MainScreen(
                 MainScreenContent.Normal(
                     currentTime = parseContext.topLeftTime!!,
                     activeBasalRateNumber = parseResult.valueAt<Glyph.SmallDigit>(1).digit,
-                    currentBasalRateFactor = parseResult.valueAt<Int>(0)
+                    currentBasalRateFactor = parseResult.valueAt<Int>(0),
+                    batteryState = batteryState
                 )
             )
         )
@@ -1151,14 +1191,22 @@ class TbrMainScreenParser : Parser() {
                 SingleGlyphParser(Glyph.LargeSymbol(LargeSymbol.PERCENT)),
                 SingleGlyphTypeParser(Glyph.SmallDigit::class), // Basal rate number
                 DecimalParser(), // Current basal rate factor
-                SingleGlyphParser(Glyph.SmallSymbol(SmallSymbol.UNITS_PER_HOUR))
-            )
+                SingleGlyphParser(Glyph.SmallSymbol(SmallSymbol.UNITS_PER_HOUR)),
+                SingleGlyphTypeParser(Glyph.SmallSymbol::class) // Battery state
+            ),
+            allowIncompleteSequences = true
         ).parse(parseContext)
 
         if (!parseResult.isSuccess)
             return ParseResult.Failed
 
         parseResult as ParseResult.Sequence
+        if (parseResult.size < 4)
+            return ParseResult.Failed
+
+        val batteryState = batteryStateFromSymbol(
+            if (parseResult.size >= 5) parseResult.valueAt<Glyph.SmallSymbol>(4).symbol else null
+        )
 
         val remainingTbrDuration = parseResult.valueAt<DateTime>(0)
 
@@ -1169,7 +1217,8 @@ class TbrMainScreenParser : Parser() {
                     remainingTbrDurationInMinutes = remainingTbrDuration.hour * 60 + remainingTbrDuration.minute,
                     tbrPercentage = parseResult.valueAt<Int>(1),
                     activeBasalRateNumber = parseResult.valueAt<Glyph.SmallDigit>(2).digit,
-                    currentBasalRateFactor = parseResult.valueAt<Int>(3)
+                    currentBasalRateFactor = parseResult.valueAt<Int>(3),
+                    batteryState = batteryState
                 )
             )
         )
@@ -1184,27 +1233,37 @@ class StoppedMainScreenParser : Parser() {
             listOf(
                 SingleGlyphParser(Glyph.SmallSymbol(SmallSymbol.CALENDAR)),
                 DateParser(), // Current date
-                SingleGlyphParser(Glyph.LargeSymbol(LargeSymbol.STOP))
-            )
+                SingleGlyphParser(Glyph.LargeSymbol(LargeSymbol.STOP)),
+                SingleGlyphTypeParser(Glyph.SmallSymbol::class) // Battery state
+            ),
+            allowIncompleteSequences = true
         ).parse(parseContext)
 
         if (!parseResult.isSuccess)
             return ParseResult.Failed
 
         parseResult as ParseResult.Sequence
+        if (parseResult.size < 1)
+            return ParseResult.Failed
+
         val currentDate = parseResult.valueAt<DateTime>(0)
+
+        val batteryState = batteryStateFromSymbol(
+            if (parseResult.size >= 2) parseResult.valueAt<Glyph.SmallSymbol>(1).symbol else null
+        )
 
         return ParseResult.Value(
             ParsedScreen.MainScreen(
                 MainScreenContent.Stopped(
-                    DateTime(
+                    currentDateTime = DateTime(
                         year = currentDate.year,
                         month = currentDate.month,
                         day = currentDate.day,
                         hour = parseContext.topLeftTime!!.hour,
                         minute = parseContext.topLeftTime!!.minute,
                         second = 0
-                    )
+                    ),
+                    batteryState = batteryState
                 )
             )
         )

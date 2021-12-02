@@ -268,7 +268,8 @@ class ParserTest {
             MainScreenContent.Normal(
                 currentTime = testContext.parseContext.topLeftTime!!,
                 activeBasalRateNumber = 1,
-                currentBasalRateFactor = 200
+                currentBasalRateFactor = 200,
+                batteryState = BatteryState.FULL_BATTERY
             ),
             screen.content
         )
@@ -285,7 +286,8 @@ class ParserTest {
             MainScreenContent.Normal(
                 currentTime = testContext.parseContext.topLeftTime!!,
                 activeBasalRateNumber = 1,
-                currentBasalRateFactor = 200
+                currentBasalRateFactor = 200,
+                batteryState = BatteryState.FULL_BATTERY
             ),
             screen.content
         )
@@ -304,7 +306,8 @@ class ParserTest {
                 remainingTbrDurationInMinutes = 30,
                 tbrPercentage = 110,
                 activeBasalRateNumber = 1,
-                currentBasalRateFactor = 220
+                currentBasalRateFactor = 220,
+                batteryState = BatteryState.FULL_BATTERY
             ),
             screen.content
         )
@@ -327,7 +330,8 @@ class ParserTest {
                 remainingTbrDurationInMinutes = 5,
                 tbrPercentage = 90,
                 activeBasalRateNumber = 1,
-                currentBasalRateFactor = 45
+                currentBasalRateFactor = 45,
+                batteryState = BatteryState.FULL_BATTERY
             ),
             screen.content
         )
@@ -349,7 +353,8 @@ class ParserTest {
                     hour = testContext.parseContext.topLeftTime!!.hour,
                     minute = testContext.parseContext.topLeftTime!!.minute,
                     second = 0
-                )
+                ),
+                batteryState = BatteryState.FULL_BATTERY
             ),
             screen.content
         )
@@ -371,7 +376,69 @@ class ParserTest {
                     hour = testContext.parseContext.topLeftTime!!.hour,
                     minute = testContext.parseContext.topLeftTime!!.minute,
                     second = 0
-                )
+                ),
+                batteryState = BatteryState.FULL_BATTERY
+            ),
+            screen.content
+        )
+    }
+
+    @Test
+    fun checkNormalMainScreenWithLowBatteryParsing() {
+        val testContext = TestContext(testFrameMainScreenWithLowBattery, 1, parseTopLeftTime = true)
+        val result = NormalMainScreenParser().parse(testContext.parseContext)
+
+        assertEquals(ParseResult.Value::class, result::class)
+        val screen = (result as ParseResult.Value<*>).value as ParsedScreen.MainScreen
+        assertEquals(
+            MainScreenContent.Normal(
+                currentTime = testContext.parseContext.topLeftTime!!,
+                activeBasalRateNumber = 1,
+                currentBasalRateFactor = 80,
+                batteryState = BatteryState.LOW_BATTERY
+            ),
+            screen.content
+        )
+    }
+
+    @Test
+    fun checkStoppedMainScreenWithLowBatteryParsing() {
+        val testContext = TestContext(testFrameMainScreenStoppedWithLowBattery, 1, parseTopLeftTime = true)
+        val result = StoppedMainScreenParser().parse(testContext.parseContext)
+
+        assertEquals(ParseResult.Value::class, result::class)
+        val screen = (result as ParseResult.Value<*>).value as ParsedScreen.MainScreen
+        assertEquals(
+            MainScreenContent.Stopped(
+                currentDateTime = DateTime(
+                    year = 0,
+                    month = 1,
+                    day = 1,
+                    hour = testContext.parseContext.topLeftTime!!.hour,
+                    minute = testContext.parseContext.topLeftTime!!.minute,
+                    second = 0
+                ),
+                batteryState = BatteryState.LOW_BATTERY
+            ),
+            screen.content
+        )
+    }
+
+    @Test
+    fun checkTbr90MainScreenWithLowBatteryParsing() {
+        val testContext = TestContext(testFrameMainScreenWith90TbrInfoAndLowBattery, 1, parseTopLeftTime = true)
+        val result = TbrMainScreenParser().parse(testContext.parseContext)
+
+        assertEquals(ParseResult.Value::class, result::class)
+        val screen = (result as ParseResult.Value<*>).value as ParsedScreen.MainScreen
+        assertEquals(
+            MainScreenContent.Tbr(
+                currentTime = testContext.parseContext.topLeftTime!!,
+                remainingTbrDurationInMinutes = 15,
+                tbrPercentage = 90,
+                activeBasalRateNumber = 1,
+                currentBasalRateFactor = 72,
+                batteryState = BatteryState.LOW_BATTERY
             ),
             screen.content
         )
