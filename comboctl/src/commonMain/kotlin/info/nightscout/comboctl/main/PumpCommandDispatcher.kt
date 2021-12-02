@@ -10,10 +10,14 @@ import info.nightscout.comboctl.base.Logger
 import info.nightscout.comboctl.base.ProgressReporter
 import info.nightscout.comboctl.base.ProgressStage
 import info.nightscout.comboctl.base.PumpIO
+import info.nightscout.comboctl.base.Quickinfo
+import info.nightscout.comboctl.base.ReservoirState
 import info.nightscout.comboctl.base.TransportLayerIO
 import info.nightscout.comboctl.base.toStringWithDecimal
 import info.nightscout.comboctl.parser.AlertScreenContent
 import info.nightscout.comboctl.parser.AlertScreenException
+import info.nightscout.comboctl.parser.BatteryState
+import info.nightscout.comboctl.parser.MainScreenContent
 import info.nightscout.comboctl.parser.ParsedScreen
 import kotlin.reflect.KClassifier
 import kotlinx.coroutines.CancellationException
@@ -334,6 +338,14 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
      */
     class CommandExecutionAttemptsFailedException :
         ComboException("All attempts to execute the command failed")
+
+    /* Current pump status. */
+    data class PumpStatus(
+        val running: Boolean,
+        val availableUnits: Int,
+        val reservoirState: ReservoirState,
+        val batteryState: BatteryState
+    )
 
     /**
      * Events that can occur during operation and are shown through RT warning screens.
@@ -783,18 +795,41 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
      * @return The [Quickinfo].
      */
     suspend fun readQuickinfo() = dispatchCommand(PumpIO.Mode.REMOTE_TERMINAL, isIdempotent = true) {
-        navigateToRTScreen(rtNavigationContext, ParsedScreen.QuickinfoMainScreen::class)
+        readQuickinfoInternal()
+    }
+
+    /**
+     * Retrieves a summary of the pump's current status.
+     *
+     * This is a combination of the Combo's quickinfo and the main menu information.
+     *
+     * @throws AlertScreenException if alerts occur during this call.
+     * @throws NoUsableRTScreenException if the quickinfo screen could not be found.
+     * @throws IllegalStateException if the [Pump] instance's background worker
+     *         has failed or the pump is not connected.
+     * @return The [PumpStatus].
+     */
+    suspend fun readPumpStatus() = dispatchCommand<PumpStatus>(pumpMode = PumpIO.Mode.REMOTE_TERMINAL, isIdempotent = true) {
+        navigateToRTScreen(rtNavigationContext, ParsedScreen.MainScreen::class)
         val parsedScreen = parsedScreenFlow.first()
 
-        when (parsedScreen) {
-            is ParsedScreen.QuickinfoMainScreen -> {
-                // After parsing the quickinfo screen, exit back to the main screen by pressing BACK.
-                rtNavigationContext.shortPressButton(RTNavigationButton.BACK)
-                // Return the quickinfo from the quickinfo screen
-                parsedScreen.quickinfo
-            }
+        val mainScreenContent = when (parsedScreen) {
+            is ParsedScreen.MainScreen -> parsedScreen.content
             else -> throw NoUsableRTScreenException()
         }
+
+        val quickinfo = readQuickinfoInternal()
+
+        return@dispatchCommand PumpStatus(
+            running = (mainScreenContent !is MainScreenContent.Stopped),
+            availableUnits = quickinfo.availableUnits,
+            reservoirState = quickinfo.reservoirState,
+            batteryState = when (mainScreenContent) {
+                is MainScreenContent.Normal -> mainScreenContent.batteryState
+                is MainScreenContent.Stopped -> mainScreenContent.batteryState
+                is MainScreenContent.Tbr -> mainScreenContent.batteryState
+            }
+        )
     }
 
     /**
@@ -1442,6 +1477,21 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
                     dismissalCount++
                 }
             }
+        }
+    }
+
+    private suspend fun readQuickinfoInternal(): Quickinfo {
+        navigateToRTScreen(rtNavigationContext, ParsedScreen.QuickinfoMainScreen::class)
+        val parsedScreen = parsedScreenFlow.first()
+
+        when (parsedScreen) {
+            is ParsedScreen.QuickinfoMainScreen -> {
+                // After parsing the quickinfo screen, exit back to the main screen by pressing BACK.
+                rtNavigationContext.shortPressButton(RTNavigationButton.BACK)
+                // Return the quickinfo from the quickinfo screen
+                return parsedScreen.quickinfo
+            }
+            else -> throw NoUsableRTScreenException()
         }
     }
 }
