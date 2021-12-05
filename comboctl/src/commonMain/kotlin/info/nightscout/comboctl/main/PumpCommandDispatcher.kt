@@ -1475,12 +1475,13 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
                 // W6 informs about an aborted TBR.
                 // W7 informs about a finished TBR.
                 // W8 informs about an aborted bolus.
+                // W3 alerts that date and time need to be reviewed.
                 // All three are pure informational, and should be dismissed.
                 // Any other warnings are intentionally rethrown for safety.
                 when (warningCode) {
                     1 -> onEvent(Event.RESERVOIR_LOW)
                     2 -> onEvent(Event.BATTERY_LOW)
-                    6, 7, 8 -> Unit
+                    3, 6, 7, 8 -> Unit
                     else -> throw AlertScreenException(alertScreenContent)
                 }
 
