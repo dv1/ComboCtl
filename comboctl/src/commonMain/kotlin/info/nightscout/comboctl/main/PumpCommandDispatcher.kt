@@ -363,6 +363,20 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
     )
 
     /**
+     * Set to true if the dispatcher had to reconnect to the Combo during the last command dispatch.
+     *
+     * While a command is dispatched, the connection to the Combo may get lost, for example because
+     * the user walked out of the range of the phone's Bluetooth adapter. If reconnection succeeded,
+     * and the command was idempotent, then the dispatcher re-ran the command. In such cases, this
+     * property is useful to check if this reconnection happened at all. It is set to true if such
+     * a reconnect happened, and false otherwise.
+     *
+     * IMPORTANT: Do _not_ call this while a command is being dispatched! This is not thread safe.
+     */
+    var reconnectedDuringLastDispatch = false
+        private set
+
+    /**
      * Events that can occur during operation and are shown through RT warning screens.
      *
      * These are announced as remote terminal warning screens and are automatically
@@ -1213,6 +1227,8 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
     ): T = commandMutex.withLock {
         mutableCommandDispatchState.value = DispatchState.DISPATCHING
 
+        reconnectedDuringLastDispatch = false
+
         try {
             check(pump.connectionState.value == Pump.ConnectionState.CONNECTED) { "Pump is not connected" }
 
@@ -1281,6 +1297,8 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
                         checkForAlerts()
                         needsToReconnect = false
                         logger(LogLevel.DEBUG) { "Pump successfully reconnected" }
+
+                        reconnectedDuringLastDispatch = true
                     }
 
                     supervisorScope {
