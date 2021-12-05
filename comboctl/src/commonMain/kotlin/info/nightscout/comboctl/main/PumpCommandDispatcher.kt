@@ -348,16 +348,25 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
      *
      * @property running true if the Combo is currently running, false it is stopped.
      * @property availableUnitsInReservoir How many IU are currently available in the reservoir.
+     * @property activeBasalRateNumber Which basal rate is currently active. A number in the 1-5
+     *           range. If the pump is currently stopped, this is set to 0.
      * @property currentBasalRateFactor The basal rate factor the Combo is currently using.
      *           This changes per-hour depending on the programmed basal rate profile.
      *           If the pump is stopped, this is set to 0.
+     * @property remainingTbrDurationInMinutes How many minutes remain until the current TBR
+     *           is finished. If no TBR is running, or if the pump is stopped, this is set to 0.
+     * @property tbrPercentage Percentage of current TBR. If no TBR is running, and the pump is
+     *           running, this is set to 100. If the pump is stopped, this is set to 0.
      * @property reservoirState Whether the reservoir is full, low, or empty.
      * @property batteryState Whether the battery is full, low, or empty.
      * */
     data class PumpStatus(
         val running: Boolean,
         val availableUnitsInReservoir: Int,
+        val activeBasalRateNumber: Int,
         val currentBasalRateFactor: Int,
+        val remainingTbrDurationInMinutes: Int,
+        val tbrPercentage: Int,
         val reservoirState: ReservoirState,
         val batteryState: BatteryState
     )
@@ -849,21 +858,40 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
 
         val quickinfo = readQuickinfoInternal()
 
-        return@dispatchCommand PumpStatus(
-            running = (mainScreenContent !is MainScreenContent.Stopped),
-            availableUnitsInReservoir = quickinfo.availableUnits,
-            currentBasalRateFactor = when (mainScreenContent) {
-                is MainScreenContent.Normal -> mainScreenContent.currentBasalRateFactor
-                is MainScreenContent.Stopped -> 0
-                is MainScreenContent.Tbr -> mainScreenContent.currentBasalRateFactor
-            },
-            reservoirState = quickinfo.reservoirState,
-            batteryState = when (mainScreenContent) {
-                is MainScreenContent.Normal -> mainScreenContent.batteryState
-                is MainScreenContent.Stopped -> mainScreenContent.batteryState
-                is MainScreenContent.Tbr -> mainScreenContent.batteryState
-            }
-        )
+        return@dispatchCommand when (mainScreenContent) {
+            is MainScreenContent.Normal -> PumpStatus(
+                running = true,
+                availableUnitsInReservoir = quickinfo.availableUnits,
+                activeBasalRateNumber = mainScreenContent.activeBasalRateNumber,
+                currentBasalRateFactor = mainScreenContent.currentBasalRateFactor,
+                remainingTbrDurationInMinutes = 0,
+                tbrPercentage = 100,
+                reservoirState = quickinfo.reservoirState,
+                batteryState = mainScreenContent.batteryState
+            )
+
+            is MainScreenContent.Stopped -> PumpStatus(
+                running = false,
+                availableUnitsInReservoir = quickinfo.availableUnits,
+                activeBasalRateNumber = 0,
+                currentBasalRateFactor = 0,
+                remainingTbrDurationInMinutes = 0,
+                tbrPercentage = 0,
+                reservoirState = quickinfo.reservoirState,
+                batteryState = mainScreenContent.batteryState
+            )
+
+            is MainScreenContent.Tbr -> PumpStatus(
+                running = true,
+                availableUnitsInReservoir = quickinfo.availableUnits,
+                activeBasalRateNumber = mainScreenContent.activeBasalRateNumber,
+                currentBasalRateFactor = mainScreenContent.currentBasalRateFactor,
+                remainingTbrDurationInMinutes = mainScreenContent.remainingTbrDurationInMinutes,
+                tbrPercentage = mainScreenContent.tbrPercentage,
+                reservoirState = quickinfo.reservoirState,
+                batteryState = mainScreenContent.batteryState
+            )
+        }
     }
 
     /**
