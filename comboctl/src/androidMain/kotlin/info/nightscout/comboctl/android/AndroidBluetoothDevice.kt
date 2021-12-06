@@ -36,6 +36,11 @@ class AndroidBluetoothDevice(
     private var inputStream: InputStream? = null
     private var outputStream: OutputStream? = null
 
+    // Use toUpperCase() since Android expects the A-F hex digits in the
+    // Bluetooth address string to be uppercase (lowercase ones are considered
+    // invalid and cause an exception to be thrown).
+    private val androidBtAddressString = address.toString().uppercase(Locale.ROOT)
+
     // Base class overrides.
 
     override fun connect(progressReporter: ProgressReporter<Unit>?) {
@@ -45,11 +50,6 @@ class AndroidBluetoothDevice(
         logger(LogLevel.DEBUG) { "Attempting to get object representing device with address $address" }
 
         lateinit var device: SystemBluetoothDevice
-
-        // Use toUpperCase() since Android expects the A-F hex digits in the
-        // Bluetooth address string to be uppercase (lowercase ones are considered
-        // invalid and cause an exception to be thrown).
-        val androidBtAddressString = address.toString().uppercase(Locale.ROOT)
 
         try {
             // Establishing the RFCOMM connection does not always work right away.
@@ -85,7 +85,7 @@ class AndroidBluetoothDevice(
                 // TODO: Clarify this and wait for whatever is going on there properly.
                 try {
                     Thread.sleep(500)
-                } catch (e: InterruptedException) {
+                } catch (ignored: InterruptedException) {
                 }
 
                 systemBluetoothSocket = device.createInsecureRfcommSocketToServiceRecord(Constants.sdpSerialPortUUID)
@@ -133,6 +133,20 @@ class AndroidBluetoothDevice(
         disconnectImpl()
 
         logger(LogLevel.INFO) { "RFCOMM connection with device with address $address terminated" }
+    }
+
+    override fun unpair() {
+        try {
+            val device = systemBluetoothAdapter.getRemoteDevice(androidBtAddressString)
+
+            // At time of writing (2021-12-06), the removeBond method
+            // is inexplicably still marked with @hide, so we must use
+            // reflection to get to it and unpair this device.
+            val removeBondMethod = device::class.java.getMethod("removeBond")
+            removeBondMethod.invoke(device)
+        } catch (e: Exception) {
+            logger(LogLevel.ERROR) { "Unpairing device with address $address failed with exception $e" }
+        }
     }
 
     override fun blockingSend(dataToSend: List<Byte>) {

@@ -41,19 +41,13 @@ abstract class BluetoothDevice(private val bluetoothInterface: BluetoothInterfac
     /**
      * Unpairs this device.
      *
-     * This is functionally equivalent to calling [BluetoothInterface.unpairDevice]
-     * and passing this device's address to that function. [unpair] is provided
-     * to be able to unpair this very device without having to carry around a
-     * reference to a [BluetoothInterface].
-     *
      * Once this was called, this [BluetoothDevice] instance must not be used anymore.
      * [disconnect] may be called, but will be a no-op. [connect], [send] and [receive]
      * will throw an [IllegalStateException].
      *
-     * If the device is connected when this is called, [disconnect] is implicitely
-     * called before unpairing.
+     * Calling this while a connection is running leads to undefined behavior.
+     * Make sure to call [disconnect] before this function if a connection
+     * is currently present.
      */
-    fun unpair() {
-        bluetoothInterface.unpairDevice(address)
-    }
+    abstract fun unpair()
 }

@@ -240,11 +240,6 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
         stopDiscoveryInternal()
     }
 
-    override fun unpairDevice(deviceAddress: BluetoothAddress) {
-        // NOTE: Unfortunately, Android has no public removeBond() functionality,
-        // so we cannot do anything here.
-    }
-
     override fun getDevice(deviceAddress: BluetoothAddress): BluetoothDevice =
         AndroidBluetoothDevice(this, bluetoothAdapter, deviceAddress)
 

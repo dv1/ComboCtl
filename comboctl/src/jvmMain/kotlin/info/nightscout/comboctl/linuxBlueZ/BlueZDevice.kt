@@ -20,10 +20,10 @@ import java.lang.AutoCloseable
  * device and its RFCOMM socket.
  */
 class BlueZDevice(
-    bluetoothInterface: BluetoothInterface,
+    private val bluezInterface: BlueZInterface,
     nativeDevicePtr: Long,
     override val address: BluetoothAddress
-) : BluetoothDevice(bluetoothInterface), AutoCloseable {
+) : BluetoothDevice(bluezInterface), AutoCloseable {
     init {
         // This calls the constructor of the native C++ class.
         initialize()
@@ -44,6 +44,10 @@ class BlueZDevice(
         connectImpl()
     }
     external override fun disconnect()
+
+    override fun unpair() {
+        bluezInterface.unpairDevice(address)
+    }
 
     // AutoCloseable overrides
 

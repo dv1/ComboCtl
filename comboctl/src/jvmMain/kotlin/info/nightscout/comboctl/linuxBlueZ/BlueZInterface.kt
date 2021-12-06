@@ -107,7 +107,7 @@ class BlueZInterface : BluetoothInterface {
 
     external override fun stopDiscovery()
 
-    override fun unpairDevice(deviceAddress: BluetoothAddress) = unpairDeviceImpl(deviceAddress.toByteArray())
+    fun unpairDevice(deviceAddress: BluetoothAddress) = unpairDeviceImpl(deviceAddress.toByteArray())
 
     override fun getDevice(deviceAddress: BluetoothAddress): BluetoothDevice {
         val nativeDevicePtr = getDeviceImpl(deviceAddress.toByteArray())

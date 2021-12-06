@@ -29,8 +29,8 @@ interface BluetoothInterface {
      * This is independent of the device discovery. That is, this callback
      * can be invoked by the implementation even when discovery is inactive.
      *
-     * The unpairing may have been done via [unpairDevice] or via some
-     * sort of system settings.
+     * The unpairing may have been done via [BluetoothDevice.unpair] or
+     * via some sort of system settings.
      *
      * Note that this callback may be called from another thread. Using
      * synchronization primitives to avoid race conditions is recommended.
@@ -157,15 +157,6 @@ interface BluetoothInterface {
      * If no discovery is going on, this does nothing.
      */
     fun stopDiscovery()
-
-    /**
-     * Unpairs a previously paired device.
-     *
-     * If the given device wasn't already paired, this does nothing.
-     *
-     * @param deviceAddress Address of Bluetooth device to unpair.
-     */
-    fun unpairDevice(deviceAddress: BluetoothAddress)
 
     /**
      * Creates and returns a BluetoothDevice for the given address.
