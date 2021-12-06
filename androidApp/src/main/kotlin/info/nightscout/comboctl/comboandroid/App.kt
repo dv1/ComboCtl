@@ -17,7 +17,7 @@ class App : Application() {
             appContext.getSharedPreferences("combo_sp", MODE_PRIVATE)
         )
         pumpManager = PumpManager(bluetoothInterface, pumpStateStore)
-        pumpManager.setup()
+        pumpManager.setup { onPumpUnpairedCallback() }
     }
 
     companion object {
@@ -30,5 +30,7 @@ class App : Application() {
 
         lateinit var pumpManager: PumpManager
             private set
+
+        var onPumpUnpairedCallback: () -> Unit = { }
     }
 }

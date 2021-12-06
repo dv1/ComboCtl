@@ -43,7 +43,7 @@
             app:layout_constraintLeft_toLeftOf="parent"
             app:layout_constraintRight_toRightOf="parent"
             app:layout_constraintTop_toBottomOf="@id/pairing_header"
-            app:visibility="@{vm.state == State.PAIRING || vm.state == State.COMPLETE_PAIRING}" />
+            app:visibility="@{vm.state == State.PAIRING || vm.state == State.FINISHING_PAIRING}" />
 
         <EditText
             android:id="@+id/pinEntryEditText"

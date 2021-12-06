@@ -8,13 +8,13 @@ import info.nightscout.comboctl.base.PairingPIN
 import info.nightscout.comboctl.base.TransportLayerIO
 import info.nightscout.comboctl.comboandroid.App
 import info.nightscout.comboctl.main.PumpManager
+import kotlin.math.roundToInt
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.math.roundToInt
 
 class PairingViewModel : ViewModel() {
     private val _state = MutableLiveData<State>(State.UNINITIALIZED)
@@ -36,7 +36,7 @@ class PairingViewModel : ViewModel() {
         }
 
     fun startLifeCycle() {
-        if (_state.value == State.CANCELLED) {
+        if (_state.value == State.PAIRING_CANCELLED) {
             _state.value = State.UNINITIALIZED
         } else if (_state.value != State.UNINITIALIZED)
             return
@@ -60,17 +60,19 @@ class PairingViewModel : ViewModel() {
             )
             if (result !is PumpManager.PairingResult.Success)
                 _state.postValue(State.DISCOVERY_STOPPED)
+            else
+                _state.postValue(State.PAIRING_FINISHED)
         }
     }
 
     fun onOkClicked() {
         pairingPINDeferred!!.complete(PairingPIN(password.map { it - '0' }.toIntArray()))
-        _state.value = State.COMPLETE_PAIRING
+        _state.value = State.FINISHING_PAIRING
     }
 
     fun onCancelClicked() {
         pairingPINDeferred!!.completeExceptionally(TransportLayerIO.PairingAbortedException())
-        _state.postValue(State.CANCELLED)
+        _state.postValue(State.PAIRING_CANCELLED)
     }
 
     fun stopLifeCycle() {
@@ -84,6 +86,6 @@ class PairingViewModel : ViewModel() {
     }
 
     enum class State {
-        UNINITIALIZED, PAIRING, PIN_ENTRY, COMPLETE_PAIRING, CANCELLED, DISCOVERY_STOPPED
+        UNINITIALIZED, PAIRING, PIN_ENTRY, FINISHING_PAIRING, PAIRING_FINISHED, PAIRING_CANCELLED, DISCOVERY_STOPPED
     }
 }

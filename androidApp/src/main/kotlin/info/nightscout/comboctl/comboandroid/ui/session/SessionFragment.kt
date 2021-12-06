@@ -173,8 +173,6 @@ class SessionFragment : BaseFragment<SessionViewModel>() {
             Spacer(modifier = Modifier.height(8.dp))
             InfoPanel(parsedScreen)
             Spacer(modifier = Modifier.height(8.dp))
-
-
         }
     }
 

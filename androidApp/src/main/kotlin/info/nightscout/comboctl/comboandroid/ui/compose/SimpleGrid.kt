@@ -19,9 +19,8 @@ fun SimpleGrid(
     modifier: Modifier = Modifier,
     columns: Int = 2,
     spacing: Dp = 0.dp,
-    content: @Composable () -> Unit,
-
-    ) {
+    content: @Composable () -> Unit
+) {
     Layout(
         modifier = modifier,
         content = content

@@ -22,14 +22,19 @@ class PairingFragment : BaseDatabindingFragment<FragmentPairingBinding, PairingV
                 PairingViewModel.State.UNINITIALIZED -> ""
                 PairingViewModel.State.PAIRING -> "Scanning for device ..."
                 PairingViewModel.State.PIN_ENTRY -> "Please enter 10 digit pin"
-                PairingViewModel.State.COMPLETE_PAIRING -> "Wrapping up..."
-                PairingViewModel.State.CANCELLED -> {
+                PairingViewModel.State.FINISHING_PAIRING -> "Wrapping up..."
+                PairingViewModel.State.PAIRING_FINISHED -> {
+                    findNavController().navigate(R.id.nav_startup)
+                    ""
+                }
+                PairingViewModel.State.PAIRING_CANCELLED -> {
                     Toast.makeText(requireContext(), "Pairing cancelled!", Toast.LENGTH_LONG).show()
                     navigateBack(); ""
                 }
                 PairingViewModel.State.DISCOVERY_STOPPED -> {
                     Toast.makeText(requireContext(), "Discovery stopped!", Toast.LENGTH_LONG).show()
                     navigateBack(); "" }
+                else -> ""
             }.let { binding.pairingHeader.text = it }
         }
     }

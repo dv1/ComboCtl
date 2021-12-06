@@ -20,15 +20,15 @@ dependencies {
     implementation("androidx.navigation:navigation-ui-ktx:2.3.5")
     implementation("com.google.android.material:material:1.4.0")
 
-    implementation ("androidx.compose.ui:ui:$composeVersion")
-    implementation ("androidx.compose.material:material:$composeVersion")
-    implementation ("androidx.compose.ui:ui-tooling-preview:$composeVersion")
-    implementation ("androidx.compose.runtime:runtime-livedata:$composeVersion")
-    implementation ("com.google.accompanist:accompanist-flowlayout:0.21.0-beta")
-    implementation ("androidx.navigation:navigation-compose:2.4.0-beta02")
-    implementation ("androidx.lifecycle:lifecycle-runtime-ktx:2.4.0")
-    implementation ("androidx.activity:activity-compose:1.4.0")
-    implementation ("com.google.accompanist:accompanist-flowlayout:0.21.2-beta")
+    implementation("androidx.compose.ui:ui:$composeVersion")
+    implementation("androidx.compose.material:material:$composeVersion")
+    implementation("androidx.compose.ui:ui-tooling-preview:$composeVersion")
+    implementation("androidx.compose.runtime:runtime-livedata:$composeVersion")
+    implementation("com.google.accompanist:accompanist-flowlayout:0.21.0-beta")
+    implementation("androidx.navigation:navigation-compose:2.4.0-beta02")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.4.0")
+    implementation("androidx.activity:activity-compose:1.4.0")
+    implementation("com.google.accompanist:accompanist-flowlayout:0.21.2-beta")
     debugImplementation("androidx.compose.ui:ui-tooling:$composeVersion")
 }
 
@@ -67,7 +67,7 @@ android {
     }
 
     composeOptions {
-        kotlinCompilerExtensionVersion  = "1.0.5"
+        kotlinCompilerExtensionVersion = "1.0.5"
     }
 
     sourceSets {

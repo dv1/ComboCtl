@@ -4,6 +4,7 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import info.nightscout.comboctl.comboandroid.App
+import kotlinx.coroutines.runBlocking
 
 class StartupViewModel : ViewModel() {
 
@@ -16,6 +17,10 @@ class StartupViewModel : ViewModel() {
 
     init {
         determineStatus()
+
+        App.onPumpUnpairedCallback = {
+            determineStatus()
+        }
     }
 
     private fun determineStatus() {
@@ -28,8 +33,14 @@ class StartupViewModel : ViewModel() {
     }
 
     fun onUnpairClicked() {
-        // TODO: unpair
-        _statusLiveData.postValue(Status.UNPAIRED)
-        // determineStatus()
+        runBlocking {
+            val bluetoothAddress = App.pumpManager.getPairedPumpAddresses().firstOrNull()
+
+            bluetoothAddress?.let {
+                val pump = App.pumpManager.acquirePump(it)
+                pump.unpair()
+                App.pumpManager.releasePump(it)
+            }
+        }
     }
 }
