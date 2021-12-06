@@ -90,7 +90,7 @@ class PumpManager(
     }
 
     init {
-        logger(LogLevel.INFO) { "Main control started" }
+        logger(LogLevel.INFO) { "Pump manager started" }
 
         // Install a filter to make sure we only ever get notified about Combo pumps.
         bluetoothInterface.deviceFilterCallback = { deviceAddress -> isCombo(deviceAddress) }
