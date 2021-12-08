@@ -303,7 +303,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
             try {
                 applicationLayerIO.startIO(backgroundIOScope = this, pairingPINCallback = pairingPINCallback)
 
-                progressReporter?.setCurrentProgressStage(BasicProgressStage.ComboPairingStarting)
+                progressReporter?.setCurrentProgressStage(BasicProgressStage.PerformingConnectionHandshake)
 
                 // Initiate pairing and wait for the response.
                 // (The response contains no meaningful payload.)

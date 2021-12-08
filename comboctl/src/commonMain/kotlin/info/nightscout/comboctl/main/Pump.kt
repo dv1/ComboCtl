@@ -255,8 +255,6 @@ class Pump(
         try {
             mutableConnectionState.value = ConnectionState.CONNECTING
 
-            progressReporter?.setCurrentProgressStage(BasicProgressStage.StartingConnectionSetup)
-
             // Connecting to Bluetooth may block, so run it in
             // a coroutine with an IO dispatcher.
             withContext(ioDispatcher()) {
@@ -319,7 +317,6 @@ class Pump(
 
     private val connectProgressReporter = ProgressReporter<Unit>(
         listOf(
-            BasicProgressStage.StartingConnectionSetup::class,
             BasicProgressStage.EstablishingBtConnection::class,
             BasicProgressStage.PerformingConnectionHandshake::class
         ),
@@ -422,7 +419,6 @@ class Pump(
         framedComboIO.reset()
 
         connectProgressReporter.reset(Unit)
-        connectProgressReporter.setCurrentProgressStage(BasicProgressStage.StartingConnectionSetup)
 
         // Run the actual connection attempt in the background IO scope.
         return backgroundIOScope.async {

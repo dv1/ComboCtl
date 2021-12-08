@@ -23,7 +23,7 @@ object BasicProgressStage {
     object Finished : ProgressStage("finished")
 
     // Connection related stages.
-    object StartingConnectionSetup : ProgressStage("startingConnectionSetup")
+    object ScanningForPumpStage : ProgressStage("scanningForPump")
     /**
      * Bluetooth connection establishing stage.
      *
@@ -39,7 +39,6 @@ object BasicProgressStage {
     object PerformingConnectionHandshake : ProgressStage("performingConnectionHandshake")
 
     // Pairing related stages.
-    object ComboPairingStarting : ProgressStage("comboPairingStarting")
     object ComboPairingKeyAndPinRequested : ProgressStage("comboPairingKeyAndPinRequested")
     object ComboPairingFinishing : ProgressStage("comboPairingFinishing")
 }

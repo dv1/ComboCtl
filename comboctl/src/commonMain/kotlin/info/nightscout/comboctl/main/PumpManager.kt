@@ -147,9 +147,9 @@ class PumpManager(
 
     private val pairingProgressReporter = ProgressReporter<Unit>(
         listOf(
-            BasicProgressStage.StartingConnectionSetup::class,
+            BasicProgressStage.ScanningForPumpStage::class,
             BasicProgressStage.EstablishingBtConnection::class,
-            BasicProgressStage.ComboPairingStarting::class,
+            BasicProgressStage.PerformingConnectionHandshake::class,
             BasicProgressStage.ComboPairingKeyAndPinRequested::class,
             BasicProgressStage.ComboPairingFinishing::class
         ),
@@ -210,6 +210,8 @@ class PumpManager(
         coroutineScope {
             val thisScope = this
             try {
+                pairingProgressReporter.setCurrentProgressStage(BasicProgressStage.ScanningForPumpStage)
+
                 bluetoothInterface.startDiscovery(
                     sdpServiceName = Constants.BT_SDP_SERVICE_NAME,
                     sdpServiceProvider = "ComboCtl SDP service",
