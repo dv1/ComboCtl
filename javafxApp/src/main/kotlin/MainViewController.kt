@@ -15,6 +15,7 @@ import javafx.fxml.FXMLLoader
 import javafx.scene.Parent
 import javafx.scene.Scene
 import javafx.scene.control.ButtonType
+import javafx.scene.control.CheckBox
 import javafx.scene.control.DatePicker
 import javafx.scene.control.ProgressBar
 import javafx.scene.control.SelectionModel
@@ -184,6 +185,13 @@ class MainViewController {
         val progressBar = scene.lookup("#progressBar") as? ProgressBar
             ?: TODO("Could not access progress bar")
         progressBar.progressProperty().bind(pumpViewController.progressProperty)
+
+        val dumpRTFramesCheckbox = scene.lookup("#dumpRTFramesCheckbox") as? CheckBox
+            ?: TODO("Could not access dump RT frames checkbox")
+        dumpRTFramesCheckbox.selectedProperty().addListener { _, _, newValue ->
+            println("${if (newValue) "Enabling" else "Disabling"} RT frame dumping")
+            pumpViewController.dumpRTFrames = newValue
+        }
 
         // Bind the parent pane's width and height property to the imageview
         // to make sure the imageview always is resized to fill the parent pane.

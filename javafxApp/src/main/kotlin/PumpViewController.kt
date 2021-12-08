@@ -8,6 +8,7 @@ import info.nightscout.comboctl.base.PumpIO
 import info.nightscout.comboctl.main.NUM_BASAL_PROFILE_FACTORS
 import info.nightscout.comboctl.main.Pump
 import info.nightscout.comboctl.main.PumpCommandDispatcher
+import java.io.File
 import java.time.LocalDate
 import java.time.LocalDateTime
 import javafx.beans.property.ObjectProperty
@@ -137,6 +138,8 @@ class PumpViewController {
 
     private val mutableProgressProperty = SimpleObjectProperty<Double>()
     val progressProperty: ObjectProperty<Double> = mutableProgressProperty
+
+    var dumpRTFrames: Boolean = false
 
     private var currentJob: Job? = null
 
@@ -421,6 +424,25 @@ class PumpViewController {
         pump!!.sendShortRTButtonPress(buttons)
     }
 
+    private var frameIdx = 0
+
+    // This dumps a DisplayFrame as a Netpbm .PBM image file, which is
+    // perfectly suitable for black-and-white frames such as the ones
+    // that come from the Combo in the remote terminal mode.
+    private fun dumpFrame(displayFrame: DisplayFrame) {
+        File("frame${frameIdx.toString().padStart(5, '0')}.pbm").bufferedWriter().use { out ->
+            out.write("P1\n")
+            out.write("$DISPLAY_FRAME_WIDTH $DISPLAY_FRAME_HEIGHT\n")
+            for (y in 0 until DISPLAY_FRAME_HEIGHT) {
+                for (x in 0 until DISPLAY_FRAME_WIDTH) {
+                    out.write(if (displayFrame.getPixelAt(x, y)) "1" else "0")
+                }
+                out.write("\n")
+            }
+        }
+        frameIdx += 1
+    }
+
     private fun setDisplayFrame(displayFrame: DisplayFrame) {
         println("New display frame")
 
@@ -432,6 +454,9 @@ class PumpViewController {
                 displayFramePixels[(x + y * DISPLAY_FRAME_WIDTH) * 3 + 2] = pixel
             }
         }
+
+        if (dumpRTFrames)
+            dumpFrame(displayFrame)
 
         updateDisplayFrameImage()
     }
