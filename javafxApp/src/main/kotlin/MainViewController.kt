@@ -24,6 +24,7 @@ import javafx.scene.image.ImageView
 import javafx.scene.layout.Pane
 import javafx.stage.Stage
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
@@ -62,7 +63,7 @@ class MainViewController {
         this.mainScope = mainScope
         this.pumpUISelectionModel = pumpUISelectionModel
 
-        mutableIsPairingProperty.setValue(false)
+        mutableIsPairingProperty.value = false
 
         resetPumpList()
     }
@@ -74,7 +75,7 @@ class MainViewController {
         if (pairingJob != null)
             return
 
-        mutableIsPairingProperty.setValue(true)
+        mutableIsPairingProperty.value = true
 
         pairingJob = mainScope!!.launch {
             try {
@@ -89,7 +90,7 @@ class MainViewController {
                     // Otherwise, crashes happen, since JavaFX UI controls
                     // must not be operated in any thread other than the
                     // JavaFX thread.
-                    withContext(mainScope!!.coroutineContext) {
+                    withContext(Dispatchers.Main) {
                         askUserForPIN(newPumpAddress)
                     }
                 }
@@ -104,7 +105,7 @@ class MainViewController {
                 println("Bluetooth interface exception: $e")
             } finally {
                 pairingJob = null
-                mutableIsPairingProperty.setValue(false)
+                mutableIsPairingProperty.value = false
             }
         }
     }
@@ -225,7 +226,7 @@ class MainViewController {
         }
     }
 
-    private suspend fun askUserForPIN(pumpAddress: BluetoothAddress): PairingPIN {
+    private fun askUserForPIN(pumpAddress: BluetoothAddress): PairingPIN {
         val dialog = TextInputDialog("")
         dialog.title = "Pairing PIN required"
         dialog.headerText = "Enter the 10-digit pairing PIN as shown on the Combo's LCD (Combo Bluetooth address: $pumpAddress)"
