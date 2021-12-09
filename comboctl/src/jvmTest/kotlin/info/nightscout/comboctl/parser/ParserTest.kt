@@ -384,6 +384,29 @@ class ParserTest {
     }
 
     @Test
+    fun checkNormalMainScreenWithNoBatteryParsing() {
+        val testContext = TestContext(testFrameMainScreenWithNoBattery, 1, parseTopLeftTime = true)
+        val result = StoppedMainScreenParser().parse(testContext.parseContext)
+
+        assertEquals(ParseResult.Value::class, result::class)
+        val screen = (result as ParseResult.Value<*>).value as ParsedScreen.MainScreen
+        assertEquals(
+            MainScreenContent.Stopped(
+                currentDateTime = DateTime(
+                    year = 0,
+                    month = 2,
+                    day = 1,
+                    hour = testContext.parseContext.topLeftTime!!.hour,
+                    minute = testContext.parseContext.topLeftTime!!.minute,
+                    second = 0
+                ),
+                batteryState = BatteryState.NO_BATTERY
+            ),
+            screen.content
+        )
+    }
+
+    @Test
     fun checkNormalMainScreenWithLowBatteryParsing() {
         val testContext = TestContext(testFrameMainScreenWithLowBattery, 1, parseTopLeftTime = true)
         val result = NormalMainScreenParser().parse(testContext.parseContext)
@@ -562,6 +585,22 @@ class ParserTest {
             Pair(testFrameW8CancelBolusWarningScreen1, AlertScreenContent.Warning(8)),
             Pair(testFrameW8CancelBolusWarningScreen2, AlertScreenContent.None),
             Pair(testFrameW8CancelBolusWarningScreen3, AlertScreenContent.Warning(8))
+        )
+
+        for (testScreen in testScreens) {
+            val testContext = TestContext(testScreen.first, 0, skipTitleString = true)
+            val result = AlertScreenParser().parse(testContext.parseContext)
+            assertEquals(ParseResult.Value::class, result::class)
+            val screen = (result as ParseResult.Value<*>).value as ParsedScreen.AlertScreen
+            assertEquals(testScreen.second, screen.content)
+        }
+    }
+
+    @Test
+    fun checkE2BatteryEmptyErrorScreenParsing() {
+        val testScreens = listOf(
+            Pair(testFrameE2BatteryEmptyErrorScreen0, AlertScreenContent.None),
+            Pair(testFrameE2BatteryEmptyErrorScreen1, AlertScreenContent.Error(2))
         )
 
         for (testScreen in testScreens) {

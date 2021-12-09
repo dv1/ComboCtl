@@ -1001,9 +1001,10 @@ class AlertScreenParser : Parser() {
     override fun parseImpl(parseContext: ParseContext): ParseResult {
         val parseResult = SequenceParser(
             listOf(
-                OptionalParser(SingleGlyphTypeParser(Glyph.LargeSymbol::class)),
-                OptionalParser(SingleGlyphTypeParser(Glyph.LargeCharacter::class)),
-                OptionalParser(IntegerParser()),
+                OptionalParser(SingleGlyphTypeParser(Glyph.LargeSymbol::class)), // warning/error symbol
+                OptionalParser(SingleGlyphTypeParser(Glyph.LargeCharacter::class)), // "W" or "E"
+                OptionalParser(IntegerParser()), // warning/error number
+                OptionalParser(SingleGlyphTypeParser(Glyph.LargeSymbol::class)), // stop symbol (only with errors)
                 SingleGlyphParser(Glyph.SmallSymbol(SmallSymbol.CHECK))
             )
         ).parse(parseContext)
