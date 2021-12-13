@@ -159,6 +159,17 @@ class ProgressReporter<Context>(
      */
     fun reset(context: Context) {
         this.context = context
+        reset()
+    }
+
+    /**
+     * Resets the reporter to its initial state.
+     *
+     * The flow's state will be set to a report whose stage is [BasicProgressStage.Idle].
+     *
+     * This overload works just like the other one, except that it keeps the context intact.
+     */
+    fun reset() {
         currentStageNumber = 0
         mutableProgressFlow.value = ProgressReport(0, numStages, BasicProgressStage.Idle, 0.0)
     }
