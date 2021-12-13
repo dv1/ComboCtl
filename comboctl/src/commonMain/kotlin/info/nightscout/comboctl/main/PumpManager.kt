@@ -192,6 +192,17 @@ class PumpManager(
     val pairingProgressFlow = pairingProgressReporter.progressFlow
 
     /**
+     * Resets the state of the [pairingProgressFlow] back to [BasicProgressStage.Idle].
+     *
+     * This is useful in case the user wants to try again to pair with a pump.
+     * By resetting the state, it is easier to manage UI elements when such
+     * a pairing retry is attempted, especially if the UI orients itself on
+     * the stage field of the [pairingProgressFlow] value, which is
+     * a [ProgressReport].
+     */
+    fun resetPairingProgress() = pairingProgressReporter.reset()
+
+    /**
      * Starts device discovery and pairs with a pump once one is discovered.
      *
      * This function suspends the calling coroutine until a device is found,
