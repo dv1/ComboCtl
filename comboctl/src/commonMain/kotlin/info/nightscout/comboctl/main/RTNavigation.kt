@@ -12,6 +12,7 @@ import info.nightscout.comboctl.parser.parsedScreenFlow
 import kotlin.reflect.KClassifier
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlin.math.abs
 
 private val logger = Logger.get("RTNavigation")
 
@@ -511,10 +512,18 @@ suspend fun shortPressRTButtonsUntil(
  * will not cause an error; instead, this function will just wait until the
  * callback returns a non-null value.
  *
+ * Some quantities may be cyclic in nature. For example, a minute value has a valid range
+ * of 0-59, but if the curret value is 55, and the target value is 3, it is faster to press
+ * the [incrementButton] until the value wraps around from 59 to 0 and then keeps increasing
+ * to 3. The alternative would be to press the [decrementButton] 52 times, which is slower.
+ * This requires a non-null [cyclicQuantityRange] value. If that argument is null, this
+ * function will not do such a cyclic logic.
+ *
  * @param rtNavigationContext Context to use for adjusting the quantity.
  * @param targetQuantity Quantity to set the on-screen quantity to.
  * @param incrementButton What RT button to press for incrementing the on-screen quantity.
  * @param decrementButton What RT button to press for decrementing the on-screen quantity.
+ * @param cyclicQuantityRange The cyclic quantity range, or null if no such range exists.
  * @param getQuantity Callback for extracting the on-screen quantity.
  * @throws AlertScreenException if alert screens are seen.
  */
@@ -523,8 +532,20 @@ suspend fun adjustQuantityOnScreen(
     targetQuantity: Int,
     incrementButton: RTNavigationButton = RTNavigationButton.UP,
     decrementButton: RTNavigationButton = RTNavigationButton.DOWN,
+    cyclicQuantityRange: Int? = null,
     getQuantity: (parsedScreen: ParsedScreen) -> Int?
 ) {
+    fun checkIfNeedsToIncrement(currentQuantity: Int): Boolean {
+        return if (cyclicQuantityRange != null) {
+            val distance = (targetQuantity - currentQuantity)
+            if (abs(distance) <= (cyclicQuantityRange / 2))
+                (currentQuantity < targetQuantity)
+            else
+                (currentQuantity > targetQuantity)
+        } else
+            (currentQuantity < targetQuantity)
+    }
+
     var initialQuantity = 0
 
     // Get the quantity that is initially shown on screen.
@@ -544,7 +565,7 @@ suspend fun adjustQuantityOnScreen(
     if (initialQuantity == targetQuantity)
         return
 
-    val needToIncrement = (initialQuantity < targetQuantity)
+    var needToIncrement = checkIfNeedsToIncrement(initialQuantity)
 
     // First phase: Adjust quantity with a long RT button press.
     // This is (much) faster than using short RT button presses,
@@ -598,13 +619,16 @@ suspend fun adjustQuantityOnScreen(
     shortPressRTButtonsUntil(rtNavigationContext) { parsedScreen ->
         val currentQuantity = getQuantity(parsedScreen)
 
-        if (currentQuantity == null)
+        if (currentQuantity == null) {
             ShortPressRTButtonsCommand.DoNothing
-        else if (currentQuantity < targetQuantity)
-            ShortPressRTButtonsCommand.PressButton(incrementButton)
-        else if (currentQuantity > targetQuantity)
-            ShortPressRTButtonsCommand.PressButton(decrementButton)
-        else
+        } else if (currentQuantity == targetQuantity) {
             ShortPressRTButtonsCommand.Stop
+        } else {
+            needToIncrement = checkIfNeedsToIncrement(currentQuantity)
+            if (needToIncrement)
+                ShortPressRTButtonsCommand.PressButton(incrementButton)
+            else
+                ShortPressRTButtonsCommand.PressButton(decrementButton)
+        }
     }
 }

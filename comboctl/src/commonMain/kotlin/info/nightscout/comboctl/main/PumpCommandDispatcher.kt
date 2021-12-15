@@ -1237,13 +1237,13 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
         try {
             setDateTimeProgressReporter.setCurrentProgressStage(RTCommandProgressStage.SettingDateTimeHour)
             navigateToRTScreen(rtNavigationContext, ParsedScreen.TimeAndDateSettingsHourScreen::class)
-            adjustQuantityOnScreen(rtNavigationContext, newDateTime.hour) { parsedScreen ->
+            adjustQuantityOnScreen(rtNavigationContext, newDateTime.hour, cyclicQuantityRange = 24) { parsedScreen ->
                 (parsedScreen as ParsedScreen.TimeAndDateSettingsHourScreen).hour
             }
 
             setDateTimeProgressReporter.setCurrentProgressStage(RTCommandProgressStage.SettingDateTimeMinute)
             navigateToRTScreen(rtNavigationContext, ParsedScreen.TimeAndDateSettingsMinuteScreen::class)
-            adjustQuantityOnScreen(rtNavigationContext, newDateTime.minute) { parsedScreen ->
+            adjustQuantityOnScreen(rtNavigationContext, newDateTime.minute, cyclicQuantityRange = 60) { parsedScreen ->
                 (parsedScreen as ParsedScreen.TimeAndDateSettingsMinuteScreen).minute
             }
 
