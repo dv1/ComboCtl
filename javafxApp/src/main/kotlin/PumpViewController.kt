@@ -278,6 +278,13 @@ class PumpViewController {
         }
     }
 
+    fun getCurrentBasalRateFactor() = launchJob {
+        val pumpCommandDispatcher = PumpCommandDispatcher(pump!!)
+        val basalRateFactor = pumpCommandDispatcher.readCurrentBasalRateFactor()
+        println("Current basal rate factor: $basalRateFactor")
+        Alert(Alert.AlertType.INFORMATION, "Current basal rate factor: $basalRateFactor").showAndWait()
+    }
+
     fun readPumpStatus() = launchJob {
         val pumpCommandDispatcher = PumpCommandDispatcher(pump!!)
         val pumpStatus = pumpCommandDispatcher.readPumpStatus()

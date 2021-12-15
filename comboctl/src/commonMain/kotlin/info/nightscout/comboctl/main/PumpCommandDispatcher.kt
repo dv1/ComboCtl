@@ -837,6 +837,48 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
     }
 
     /**
+     * Reads the basal rate factor that is currently active by looking at the main screen.
+     *
+     * In the stopped state, this returns 0.
+     *
+     * If a TBR is running, the Combo's main screen shows the basal rate factor adjusted
+     * for the TBR percentage. For example, if the factor normally were 2.5 IU, but a TBR
+     * of 200% is active, the main screen shows a factor of 5.0 IU. This function takes
+     * this into account and undoes this adjustment, returning the factor as it was
+     * before the Combo applied the TBR percentage on it. If the TBR is at 0% percent
+     * though this always returns 0 (otherwise there would be a division by zero).
+     *
+     * The current factor is returned as an integer-encoded-decimal. Its last 3 digits
+     * make up the 3 most significant fractional digits of the decimal basal rate
+     * factor. See [setBasalProfile] for more.
+     *
+     * @throws AlertScreenException if alerts occur during this call.
+     * @throws NoUsableRTScreenException if the quickinfo screen could not be found.
+     * @throws IllegalStateException if the [Pump] instance's background worker
+     *         has failed or the pump is not connected.
+     * @return The current basal rate factor.
+     */
+    suspend fun readCurrentBasalRateFactor() = dispatchCommand<Int>(pumpMode = PumpIO.Mode.REMOTE_TERMINAL, isIdempotent = true) {
+        navigateToRTScreen(rtNavigationContext, ParsedScreen.MainScreen::class)
+
+        val mainScreenContent = when (val parsedScreen = parsedScreenFlow.first()) {
+            is ParsedScreen.MainScreen -> parsedScreen.content
+            else -> throw NoUsableRTScreenException()
+        }
+
+        return@dispatchCommand when (mainScreenContent) {
+            is MainScreenContent.Normal -> mainScreenContent.currentBasalRateFactor
+            is MainScreenContent.Stopped -> 0
+            is MainScreenContent.Tbr -> {
+                if (mainScreenContent.tbrPercentage != 0)
+                    mainScreenContent.currentBasalRateFactor * 100 / mainScreenContent.tbrPercentage
+                else
+                    0
+            }
+        }
+    }
+
+    /**
      * Retrieves a summary of the pump's current status.
      *
      * This is a combination of the Combo's quickinfo and the main menu information.
