@@ -10,6 +10,8 @@ import kotlin.math.min
  * function. The time fields (hour/minute/second) are set to 0 when storing
  * dates only. The same applies to [DateTime.fromTime], except that the
  * date fields (year/month/day) are then set to 0 instead.
+ *
+ * Hours are always stored in the 24-hour format.
  */
 data class DateTime(
     val year: Int,

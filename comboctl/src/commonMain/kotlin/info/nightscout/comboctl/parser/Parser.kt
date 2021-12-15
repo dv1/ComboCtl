@@ -165,6 +165,14 @@ sealed class ParsedScreen {
  *** Fundamental parsers and parser base classes ***
  ***************************************************/
 
+private fun amPmTo24Hour(hour: Int, amPm: String) =
+    if ((hour == 12) && (amPm == "AM"))
+        0
+    else if ((hour != 12) && (amPm == "PM"))
+        hour + 12
+    else
+        hour
+
 /**
  * Context used to keep track of parse state.
  */
@@ -631,14 +639,6 @@ class DateParser : Parser() {
 class TimeParser : Parser() {
     private val timeRegex = "(\\d\\d):?(\\d\\d)(AM|PM)?|(\\d\\d)(AM|PM)".toRegex()
     private val asciiDigitOffset = '0'.code
-
-    private fun amPmTo24Hour(hour: Int, amPm: String) =
-        if ((hour == 12) && (amPm == "AM"))
-            0
-        else if ((hour != 12) && (amPm == "PM"))
-            hour + 12
-        else
-            hour
 
     override fun parseImpl(parseContext: ParseContext): ParseResult {
         // To be able to handle all time formats without too much
@@ -1324,8 +1324,8 @@ class TimeAndDateSettingsScreenParser(val titleId: TitleID) : Parser() {
         val ampm = parseResult.valueAtOrNull<String>(2)
         var quantity = parseResult.valueAtOrNull<Int>(1)
 
-        if ((quantity != null) && (ampm == "PM"))
-            quantity += 12
+        if (quantity != null)
+            quantity = amPmTo24Hour(quantity, ampm ?: "")
 
         val expectedSymbol = when (titleId) {
             TitleID.HOUR,
