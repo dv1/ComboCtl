@@ -315,6 +315,8 @@ suspend fun navigateToRTScreen(
     rtNavigationContext: RTNavigationContext,
     targetScreenType: KClassifier
 ) {
+    logger(LogLevel.DEBUG) { "About to navigate to RT screen of type $targetScreenType" }
+
     // Get the current screen so we know the starting point. If it is an
     // unrecognized screen, press BACK until we are at the main screen.
     var numAttemptsToRecognizeScreen = 0
@@ -330,6 +332,8 @@ suspend fun navigateToRTScreen(
                 true
             }
         }
+
+    logger(LogLevel.DEBUG) { "Navigation starts at screen $currentParsedScreen" }
 
     // Figure out the shortest path.
     var path = try {
@@ -374,20 +378,28 @@ suspend fun navigateToRTScreen(
             if (cycleCount >= rtNavigationContext.maxNumCycleAttempts)
                 throw CouldNotFindRTScreenException(targetScreenType)
 
+            logger(LogLevel.DEBUG) { "We are currently at screen $parsedScreen" }
+
             if (parsedScreen::class == nextTargetPathItem.screenType) {
                 cycleCount = 0
                 if (pathIt.hasNext()) {
+                    logger(LogLevel.DEBUG) { "Reached intermediate target type ${nextTargetPathItem.screenType}" }
                     nextTargetPathItem = pathIt.next()
-                } else
+                } else {
+                    logger(LogLevel.DEBUG) { "Target screen type reached" }
                     return@first true
+                }
             }
 
             if (nextTargetPathItem.nextNavButton != null) {
+                logger(LogLevel.DEBUG) { "Pressing button ${nextTargetPathItem.nextNavButton!!} to navigate further" }
                 rtNavigationContext.shortPressButton(nextTargetPathItem.nextNavButton!!)
                 cycleCount++
                 false
-            } else
+            } else {
+                logger(LogLevel.DEBUG) { "Reached end of navigation path" }
                 true
+            }
         }
 }
 
