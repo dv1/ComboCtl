@@ -1245,35 +1245,44 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
 
         try {
             setDateTimeProgressReporter.setCurrentProgressStage(RTCommandProgressStage.SettingDateTimeHour)
+
+            // Navigate from our current location to the first screen - the hour screen.
             navigateToRTScreen(rtNavigationContext, ParsedScreen.TimeAndDateSettingsHourScreen::class)
             adjustQuantityOnScreen(rtNavigationContext, newDateTime.hour, cyclicQuantityRange = 24) { parsedScreen ->
                 (parsedScreen as ParsedScreen.TimeAndDateSettingsHourScreen).hour
             }
 
+            // From here on, we just need to press MENU to move to the next datetime screen.
+
             setDateTimeProgressReporter.setCurrentProgressStage(RTCommandProgressStage.SettingDateTimeMinute)
-            navigateToRTScreen(rtNavigationContext, ParsedScreen.TimeAndDateSettingsMinuteScreen::class)
+            rtNavigationContext.shortPressButton(RTNavigationButton.MENU)
+            waitUntilScreenAppears(rtNavigationContext, ParsedScreen.TimeAndDateSettingsMinuteScreen::class)
             adjustQuantityOnScreen(rtNavigationContext, newDateTime.minute, cyclicQuantityRange = 60) { parsedScreen ->
                 (parsedScreen as ParsedScreen.TimeAndDateSettingsMinuteScreen).minute
             }
 
             setDateTimeProgressReporter.setCurrentProgressStage(RTCommandProgressStage.SettingDateTimeYear)
-            navigateToRTScreen(rtNavigationContext, ParsedScreen.TimeAndDateSettingsYearScreen::class)
+            rtNavigationContext.shortPressButton(RTNavigationButton.MENU)
+            waitUntilScreenAppears(rtNavigationContext, ParsedScreen.TimeAndDateSettingsYearScreen::class)
             adjustQuantityOnScreen(rtNavigationContext, newDateTime.year) { parsedScreen ->
                 (parsedScreen as ParsedScreen.TimeAndDateSettingsYearScreen).year
             }
 
             setDateTimeProgressReporter.setCurrentProgressStage(RTCommandProgressStage.SettingDateTimeMonth)
-            navigateToRTScreen(rtNavigationContext, ParsedScreen.TimeAndDateSettingsMonthScreen::class)
+            rtNavigationContext.shortPressButton(RTNavigationButton.MENU)
+            waitUntilScreenAppears(rtNavigationContext, ParsedScreen.TimeAndDateSettingsMonthScreen::class)
             adjustQuantityOnScreen(rtNavigationContext, newDateTime.month) { parsedScreen ->
                 (parsedScreen as ParsedScreen.TimeAndDateSettingsMonthScreen).month
             }
 
             setDateTimeProgressReporter.setCurrentProgressStage(RTCommandProgressStage.SettingDateTimeDay)
-            navigateToRTScreen(rtNavigationContext, ParsedScreen.TimeAndDateSettingsDayScreen::class)
+            rtNavigationContext.shortPressButton(RTNavigationButton.MENU)
+            waitUntilScreenAppears(rtNavigationContext, ParsedScreen.TimeAndDateSettingsDayScreen::class)
             adjustQuantityOnScreen(rtNavigationContext, newDateTime.day) { parsedScreen ->
                 (parsedScreen as ParsedScreen.TimeAndDateSettingsDayScreen).day
             }
 
+            // Everything configured. Press CHECK to confirm the new datetime.
             rtNavigationContext.shortPressButton(RTNavigationButton.CHECK)
 
             setDateTimeProgressReporter.setCurrentProgressStage(BasicProgressStage.Finished)
