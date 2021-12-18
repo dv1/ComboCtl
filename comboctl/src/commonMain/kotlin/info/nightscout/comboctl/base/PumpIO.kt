@@ -1205,7 +1205,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
         if (isCMDPingBackgroundLoopRunning())
             return
 
-        logger(LogLevel.DEBUG) { "Starting background CMD PING loop" }
+        logger(LogLevel.VERBOSE) { "Starting background CMD PING loop" }
 
         require(backgroundIOScope != null)
 
@@ -1250,13 +1250,13 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
         if (!isCMDPingBackgroundLoopRunning())
             return
 
-        logger(LogLevel.DEBUG) { "Stopping background CMD ping loop" }
+        logger(LogLevel.VERBOSE) { "Stopping background CMD ping loop" }
 
         cmdPingJob!!.cancel()
         cmdPingJob!!.join()
         cmdPingJob = null
 
-        logger(LogLevel.DEBUG) { "Background CMD ping loop stopped" }
+        logger(LogLevel.VERBOSE) { "Background CMD ping loop stopped" }
     }
 
     private fun isCMDPingBackgroundLoopRunning() = (cmdPingJob != null)
@@ -1265,7 +1265,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
         if (isRTKeepAliveBackgroundLoopRunning())
             return
 
-        logger(LogLevel.DEBUG) { "Starting background RT keep-alive loop" }
+        logger(LogLevel.VERBOSE) { "Starting background RT keep-alive loop" }
 
         require(backgroundIOScope != null)
 
@@ -1329,13 +1329,13 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
         if (!isRTKeepAliveBackgroundLoopRunning())
             return
 
-        logger(LogLevel.DEBUG) { "Stopping background RT keep-alive loop" }
+        logger(LogLevel.VERBOSE) { "Stopping background RT keep-alive loop" }
 
         rtKeepAliveJob!!.cancel()
         rtKeepAliveJob!!.join()
         rtKeepAliveJob = null
 
-        logger(LogLevel.DEBUG) { "Background RT keep-alive loop stopped" }
+        logger(LogLevel.VERBOSE) { "Background RT keep-alive loop stopped" }
     }
 
     private fun isRTKeepAliveBackgroundLoopRunning() = (rtKeepAliveJob != null)
