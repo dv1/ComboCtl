@@ -839,14 +839,14 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
     /**
      * Reads the basal rate factor that is currently active by looking at the main screen.
      *
-     * In the stopped state, this returns 0.
+     * In the stopped state, this returns null.
      *
      * If a TBR is running, the Combo's main screen shows the basal rate factor adjusted
      * for the TBR percentage. For example, if the factor normally were 2.5 IU, but a TBR
      * of 200% is active, the main screen shows a factor of 5.0 IU. This function takes
      * this into account and undoes this adjustment, returning the factor as it was
      * before the Combo applied the TBR percentage on it. If the TBR is at 0% percent
-     * though this always returns 0 (otherwise there would be a division by zero).
+     * though this always returns null to indicate that the factor could not be read.
      *
      * The current factor is returned as an integer-encoded-decimal. Its last 3 digits
      * make up the 3 most significant fractional digits of the decimal basal rate
@@ -856,9 +856,9 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
      * @throws NoUsableRTScreenException if the quickinfo screen could not be found.
      * @throws IllegalStateException if the [Pump] instance's background worker
      *         has failed or the pump is not connected.
-     * @return The current basal rate factor.
+     * @return The current basal rate factor, or null if no factor could be read.
      */
-    suspend fun readCurrentBasalRateFactor() = dispatchCommand<Int>(pumpMode = PumpIO.Mode.REMOTE_TERMINAL, isIdempotent = true) {
+    suspend fun readCurrentBasalRateFactor() = dispatchCommand<Int?>(pumpMode = PumpIO.Mode.REMOTE_TERMINAL, isIdempotent = true) {
         navigateToRTScreen(rtNavigationContext, ParsedScreen.MainScreen::class)
 
         val mainScreenContent = when (val parsedScreen = parsedScreenFlow.first()) {
@@ -868,12 +868,12 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
 
         return@dispatchCommand when (mainScreenContent) {
             is MainScreenContent.Normal -> mainScreenContent.currentBasalRateFactor
-            is MainScreenContent.Stopped -> 0
+            is MainScreenContent.Stopped -> null
             is MainScreenContent.Tbr -> {
                 if (mainScreenContent.tbrPercentage != 0)
                     mainScreenContent.currentBasalRateFactor * 100 / mainScreenContent.tbrPercentage
                 else
-                    0
+                    null
             }
         }
     }
