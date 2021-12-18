@@ -1057,6 +1057,15 @@ class PumpCommandDispatcher(private val pump: Pump, private val onEvent: (event:
         TBR_HISTORY
     }
 
+    /**
+     * Total daily dosage (TDD) history event.
+     *
+     * @property date Date of the TDD. Time fields are unused (-> set to zero).
+     * @property totalDailyAmount Total amount of insulin used in that day.
+     *           Stored as an integer-encoded-decimal; last 3 digits of that
+     *           integer are the 3 most significant fractional digits of the
+     *           decimal amount.
+     */
     data class TddHistoryEvent(val date: DateTime, val totalDailyAmount: Int)
     data class TbrHistoryEvent(val timestamp: DateTime, val percentage: Int, val durationInMinutes: Int)
 
