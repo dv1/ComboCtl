@@ -34,8 +34,8 @@ internal actual class SingleThreadDispatcherManager {
                 // may not be terminated properly, especially if C++ JNI
                 // code is involved, and the JVM never quits.
                 internalExecutor!!.shutdown()
-            } catch (e: Exception) {
-                logger(LogLevel.WARN) { "Exception while shutting down executor: $e ; swallowing this exception" }
+            } catch (t: Throwable) {
+                logger(LogLevel.WARN) { "Error while shutting down executor: $t ; swallowing this error" }
                 // In theory, shutdown() should not throw, since its only
                 // possible exception is SecurityException, which should
                 // not be a concern to us. Still, to be safe, swallow

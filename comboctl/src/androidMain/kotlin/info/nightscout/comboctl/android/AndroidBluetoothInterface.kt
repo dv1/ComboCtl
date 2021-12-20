@@ -101,7 +101,7 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
             try {
                 val comboctlBtAddress = androidBtAddressString.toBluetoothAddress()
                 pairedDeviceAddresses.add(comboctlBtAddress)
-            } catch (e: Exception) {
+            } catch (e: IllegalArgumentException) {
                 logger(LogLevel.ERROR) {
                     "Could not convert Android bluetooth device address " +
                             "\"$androidBtAddressString\" to a valid BluetoothAddress instance; skipping device"
@@ -183,7 +183,7 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
                         }
                     }
                 }
-            } catch (e: Exception) {
+            } catch (t: Throwable) {
                 // This happens when rfcommServerSocket.close() is called.
                 logger(LogLevel.DEBUG) { "RFCOMM listener accept() call aborted" }
             }
@@ -318,7 +318,7 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
 
         val comboctlBtAddress = try {
             androidBtAddressString.toBluetoothAddress()
-        } catch (e: Exception) {
+        } catch (t: Throwable) {
             logger(LogLevel.ERROR) {
                 "Could not convert Android bluetooth device address " +
                         "\"$androidBtAddressString\" to a valid BluetoothAddress instance; skipping device"
@@ -387,8 +387,8 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
                 stopDiscoveryInternal()
                 foundNewPairedDevice(comboctlBtAddress)
             }
-        } catch (e: Exception) {
-            logger(LogLevel.ERROR) { "Caught exception while invoking foundNewPairedDevice callback: $e" }
+        } catch (t: Throwable) {
+            logger(LogLevel.ERROR) { "Caught error while invoking foundNewPairedDevice callback: $t" }
         }
     }
 
@@ -411,7 +411,7 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
 
         val comboctlBtAddress = try {
             androidBtAddressString.toBluetoothAddress()
-        } catch (e: Exception) {
+        } catch (e: IllegalArgumentException) {
             logger(LogLevel.ERROR) {
                 "Could not convert Android bluetooth device address " +
                         "\"$androidBtAddressString\" to a valid BluetoothAddress instance; ignoring device"
@@ -449,8 +449,8 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
             if (deviceFilterCallback(comboctlBtAddress)) {
                 onDeviceUnpaired(comboctlBtAddress)
             }
-        } catch (e: Exception) {
-            logger(LogLevel.ERROR) { "Caught exception while invoking onDeviceUnpaired callback: $e" }
+        } catch (t: Throwable) {
+            logger(LogLevel.ERROR) { "Caught error while invoking onDeviceUnpaired callback: $t" }
         }
     }
 
@@ -467,7 +467,7 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
 
         val comboctlBtAddress = try {
             androidBtAddressString.toBluetoothAddress()
-        } catch (e: Exception) {
+        } catch (e: IllegalArgumentException) {
             logger(LogLevel.ERROR) {
                 "Could not convert Android bluetooth device address " +
                         "\"$androidBtAddressString\" to a valid BluetoothAddress instance; ignoring device"
@@ -492,16 +492,16 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
             if (!androidBtDevice.setPin(btPairingPin.encodeToByteArray())) {
                 logger(LogLevel.WARN) { "Could not set Bluetooth pairing PIN" }
             }
-        } catch (e: Exception) {
-            logger(LogLevel.WARN) { "Caught exception while setting Bluetooth pairing PIN: $e" }
+        } catch (t: Throwable) {
+            logger(LogLevel.WARN) { "Caught error while setting Bluetooth pairing PIN: $t" }
         }
 
         try {
             if (!androidBtDevice.createBond()) {
                 logger(LogLevel.WARN) { "Could not create bond" }
             }
-        } catch (e: Exception) {
-            logger(LogLevel.WARN) { "Caught exception while creating bond: $e" }
+        } catch (t: Throwable) {
+            logger(LogLevel.WARN) { "Caught error while creating bond: $t" }
         }
 
         // TODO: setPairingConfirmation requires the BLUETOOTH_PRIVILEGED
@@ -514,8 +514,8 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
             if (!androidBtDevice.setPairingConfirmation(true)) {
                 logger(LogLevel.WARN) { "Could not set pairing confirmation" }
             }
-        } catch (e: Exception) {
-            logger(LogLevel.WARN) { "Caught exception while setting pairing confirmation: $e" }
+        } catch (t: Throwable) {
+            logger(LogLevel.WARN) { "Caught exception while setting pairing confirmation: $t" }
         }
 
         logger(LogLevel.INFO) { "Established Bluetooth pairing with Combo pump with address $androidBtAddressString" }

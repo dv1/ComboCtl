@@ -8,6 +8,7 @@ import info.nightscout.comboctl.base.Logger
 import info.nightscout.comboctl.base.NUM_BLUETOOTH_ADDRESS_BYTES
 import info.nightscout.comboctl.base.toBluetoothAddress
 import info.nightscout.comboctl.base.toHexString
+import java.lang.IllegalArgumentException
 
 private val logger = Logger.get("BlueZInterface")
 
@@ -134,7 +135,7 @@ class BlueZInterface : BluetoothInterface {
                 val range = IntRange(index * NUM_BLUETOOTH_ADDRESS_BYTES, (index + 1) * NUM_BLUETOOTH_ADDRESS_BYTES - 1)
                 val bluetoothAddress = BluetoothAddress(addressBytes.slice(range))
                 result.add(bluetoothAddress)
-            } catch (e: Exception) {
+            } catch (e: IllegalArgumentException) {
                 // XXX: This should never happen, since an
                 // address is considered invalid if it
                 // doesn't consist of exactly 6 bytes.

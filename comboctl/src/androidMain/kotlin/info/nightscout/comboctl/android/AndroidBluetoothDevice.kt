@@ -103,8 +103,8 @@ class AndroidBluetoothDevice(
                 // and: https://stackoverflow.com/a/24269255/560774
                 systemBluetoothSocket!!.connect()
             }
-        } catch (e: Exception) {
-            throw BluetoothException("Could not establish an RFCOMM client connection to device with address $address", e)
+        } catch (t: Throwable) {
+            throw BluetoothException("Could not establish an RFCOMM client connection to device with address $address", t)
         }
 
         try {
@@ -144,8 +144,8 @@ class AndroidBluetoothDevice(
             // reflection to get to it and unpair this device.
             val removeBondMethod = device::class.java.getMethod("removeBond")
             removeBondMethod.invoke(device)
-        } catch (e: Exception) {
-            logger(LogLevel.ERROR) { "Unpairing device with address $address failed with exception $e" }
+        } catch (t: Throwable) {
+            logger(LogLevel.ERROR) { "Unpairing device with address $address failed with error $t" }
         }
     }
 
