@@ -74,7 +74,9 @@ class DisplayFrameAssembler {
      *         if the assembler had enough data to complete a frame.
      */
     fun processRTDisplayPayload(index: Int, row: Int, rowBytes: List<Byte>): DisplayFrame? {
-        require(rowBytes.size == NUM_DISPLAY_FRAME_BYTES / 4)
+        require(rowBytes.size == NUM_DISPLAY_FRAME_BYTES / 4) {
+            "Expected ${NUM_DISPLAY_FRAME_BYTES / 4} bytes in rowBytes list, got ${rowBytes.size} (index: $index row: $row)"
+        }
 
         // Check if we got data from a different frame. If so, we have to throw
         // away any previously collected data, since it belongs to a previous frame.

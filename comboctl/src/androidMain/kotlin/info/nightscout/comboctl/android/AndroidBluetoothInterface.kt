@@ -142,8 +142,7 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
         onDiscoveryStopped: (reason: BluetoothInterface.DiscoveryStoppedReason) -> Unit,
         onFoundNewPairedDevice: (deviceAddress: BluetoothAddress) -> Unit
     ) {
-        if (discoveryStarted)
-            throw IllegalStateException("Discovery already started")
+        check(!discoveryStarted) { "Discovery already started" }
 
         previouslyDiscoveredDevices.clear()
         foundDevice = false

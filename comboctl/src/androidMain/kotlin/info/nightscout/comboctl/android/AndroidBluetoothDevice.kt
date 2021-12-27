@@ -44,8 +44,7 @@ class AndroidBluetoothDevice(
     // Base class overrides.
 
     override fun connect(progressReporter: ProgressReporter<Unit>?) {
-        if (systemBluetoothSocket != null)
-            throw IllegalStateException("Connection already established")
+        check(systemBluetoothSocket == null) { "Connection already established" }
 
         logger(LogLevel.DEBUG) { "Attempting to get object representing device with address $address" }
 
@@ -150,8 +149,7 @@ class AndroidBluetoothDevice(
     }
 
     override fun blockingSend(dataToSend: List<Byte>) {
-        if (outputStream == null)
-            throw IllegalStateException("Device is not connected - cannot send data")
+        check(outputStream != null) { "Device is not connected - cannot send data" }
 
         try {
             outputStream!!.write(dataToSend.toByteArray())
@@ -161,8 +159,7 @@ class AndroidBluetoothDevice(
     }
 
     override fun blockingReceive(): List<Byte> {
-        if (inputStream == null)
-            throw IllegalStateException("Device is not connected - cannot receive data")
+        check(inputStream != null) { "Device is not connected - cannot receive data" }
 
         try {
             val buffer = ByteArray(512)
