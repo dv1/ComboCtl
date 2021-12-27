@@ -3,7 +3,7 @@ package info.nightscout.comboctl.base.testUtils
 import info.nightscout.comboctl.base.Cipher
 import info.nightscout.comboctl.base.ComboException
 import info.nightscout.comboctl.base.Nonce
-import info.nightscout.comboctl.base.TransportLayerIO
+import info.nightscout.comboctl.base.TransportLayer
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.test.fail
@@ -82,8 +82,8 @@ suspend fun coroutineScopeWithWatchdog(
     }
 }
 
-fun produceTpLayerPacket(outgoingPacketInfo: TransportLayerIO.OutgoingPacketInfo, cipher: Cipher): TransportLayerIO.Packet {
-    val packet = TransportLayerIO.Packet(
+fun produceTpLayerPacket(outgoingPacketInfo: TransportLayer.OutgoingPacketInfo, cipher: Cipher): TransportLayer.Packet {
+    val packet = TransportLayer.Packet(
         command = outgoingPacketInfo.command,
         sequenceBit = false,
         reliabilityBit = false,

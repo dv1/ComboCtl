@@ -10,7 +10,7 @@ private val logger = Logger.get("ExtraAndroidDispatchers")
 
 internal actual fun ioDispatcher(): CoroutineDispatcher = Dispatchers.IO
 
-internal actual class SingleThreadDispatcherManager {
+internal actual class SequencedDispatcherManager {
     private var internalExecutor: ExecutorService? = null
     private var internalDispatcher: CoroutineDispatcher? = null
 

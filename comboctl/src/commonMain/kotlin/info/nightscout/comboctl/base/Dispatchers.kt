@@ -6,13 +6,15 @@ import kotlinx.coroutines.CoroutineDispatcher
 // not available on all platforms.
 internal expect fun ioDispatcher(): CoroutineDispatcher
 
-// This dispatcher explicitly uses one thread for running tasks.
-// It is useful for cases where tasks must not be run in parallel
-// on separate threads (for thread safety reasons). Sometimes
-// achieving thread safety that way is more efficient than using
-// synchronization primitives, especially if the tasks don't
-// block the thread or don't do it for very long.
-// There is no default single-threaded dispatcher in
+// This manages a dispatcher that always runs coroutines in
+// a sequence, one task after the other. It is useful for cases
+// where parallelism would cause errors. With the Combo, it is
+// useful to do this, since parallel IO is not supported by the
+// pump, and only causes IO errors. Implementations may use
+// one dedicated thread just for this dispatcher, or may use
+// a thread pool but disallow parallelism.
+//
+// Currently, there is no such dispatcher available in
 // kotlin.coroutines, but specific platforms do, so use the
 // expect-actual framework in kotlin-multiplatform for this.
 // We have to use a class like this though because the platform
@@ -22,8 +24,14 @@ internal expect fun ioDispatcher(): CoroutineDispatcher
 // threaded executor service in the JVM, which provides this
 // functionality, but has to be manually ended by calling
 // its shutdown() function.
+//
 // Note that the functions must not throw.
-internal expect class SingleThreadDispatcherManager() {
+//
+// TODO: Once we move to Kotlin 1.6, replace platform specific
+// code with the new "limitedParallelism" feature in dispatchers.
+//
+// See: https://github.com/Kotlin/kotlinx.coroutines/issues/2919
+internal expect class SequencedDispatcherManager() {
     fun acquireDispatcher()
     fun releaseDispatcher()
     val dispatcher: CoroutineDispatcher

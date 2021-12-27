@@ -1,4 +1,4 @@
-package info.nightscout.comboctl.base
+package info.nightscout.comboctl.parser
 
 /**
  * Reservoir state as shown on display.

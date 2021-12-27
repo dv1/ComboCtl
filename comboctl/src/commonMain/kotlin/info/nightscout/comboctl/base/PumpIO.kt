@@ -4,7 +4,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
@@ -13,33 +15,53 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.transformWhile
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.plus
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 private val logger = Logger.get("PumpIO")
 
 /**
+ * Callback used during pairing for asking the user for the 10-digit PIN.
+ *
+ * This is passed to [PumpIO.performPairing] when pairing.
+ *
+ * [previousAttemptFailed] is useful for showing in a GUI that the
+ * previously entered PIN seems to be wrong and that the user needs
+ * to try again.
+ *
+ * If the user wants to cancel the pairing instead of entering the
+ * PIN, cancelling the coroutine where [PumpIO.performPairing] runs
+ * is sufficient.
+ *
+ * @param previousAttemptFailed true if the user was already asked for
+ *        the PIN and the KEY_RESPONSE authentication failed.
+ */
+typealias PairingPINCallback = suspend (previousAttemptFailed: Boolean) -> PairingPIN
+
+/**
  * Class for high-level Combo pump IO.
  *
- * This implements IO operations on top of the application layer IO.
- * Unlike [ApplicationLayerIO] and [TransportLayerIO], this class
- * does not deal with packets in its public API. Instead, a few high
- * level functions are implemented using these two other IO classes.
- * These are functions like pairing or RT button press actions.
+ * This implements high level IO actions on top of [TransportLayer.IO].
+ * It takes care of pairing, connection setup, remote terminal (RT)
+ * commands and RT display reception, and also supports the Combo's
+ * command mode. Basically, this class' public API reflects what the
+ * user can directly do with the pump (press RT buttons like UP or
+ * DOWN, send a command mode bolus etc.).
  *
  * For initiating the Combo pairing, the [performPairing] function is
  * available. This must not be used if a connection was already established
- * via [connect] - pairing is only possible in the disconnected state.
+ * via [connectAsync] - pairing is only possible in the disconnected state.
  *
- * For initiating a regular connection, use [connect]. Do not call
- * [connect] again until after disconnecting with [disconnect]. Also
+ * For initiating a regular connection, use [connectAsync]. Do not call
+ * [connectAsync] again until after disconnecting with [disconnect]. Also
  * see the remarks above about pairing and connecting at the same time.
  *
- * Note that [connect], [disconnect], [performPairing] do not establish
+ * Note that [connectAsync], [disconnect], [performPairing] do not establish
  * anything related to Bluetooth connection. Those are beyond the scope
- * of this class. See [Pump] for a class that combines both this class
- * and Bluetooth classes.
+ * of this class.
  *
  * The Combo regularly sends new display frames when running in the
  * REMOTE_TERMINAL (RT) mode. These frames come as the payload of
@@ -48,40 +70,71 @@ private val logger = Logger.get("PumpIO")
  * a full frame). Once enough parts were gathered to assemble a full
  * frame, the frame is emitted via the [displayFrameFlow].
  *
- * Internally, this class runs a "background worker", which is the
- * sum of coroutines started by [connect] and [performPairing]. These
- * coroutines are run by a special internal dispatcher that is single
- * threaded. Internal states are updated in these coroutines. Since they
- * run on the same thread, race conditions are prevented, and thread
- * safety is established.
+ * To handle IO at the transport layer, this uses [TransportLayer.IO]
+ * internally.
  *
- * Likewise, access to the pumpStateStore is done in a thread
- * safe manner, since updates to the store happen inside those coroutines.
- * This implies that [PumpStateStore] functions do not have to
- * be thread safe themselves.
+ * In regular connections, the Combo needs "heartbeats" to periodically
+ * let it know that the client still exists. If too much time passes since
+ * the last heartbeat, the Combo terminates the connection. Each mode has a
+ * different type of heartbeat: RT mode has RT_KEEP_ALIVE commands, command
+ * mode has CMD_PING commands. To periodically send these, this class runs
+ * separate coroutines with loops inside that send these commands. Only one
+ * of these two heartbeats are active, depending on the current mode of the
+ * Combo.
+ * Note that other commands sent to the Combo _also_ count as heartbeats,
+ * so RT_KEEP_ALIVE / CMD_PING only need to be sent if no other command
+ * has been sent for a while now.
+ * In some cases (typically unit tests), a regular connection without
+ * a heartbeat is needed. [connectAsync] accepts an argument to start
+ * without one for this purpose.
  *
- * [disconnect] cancels the coroutines, and thus "stops" the worker.
- * [performPairing] starts and stops the worker internally, since during
- * pairing, the worker is only needed for communicating the pairing
- * packets with the Combo.
+ * The supplied [pumpStateStore] is used during pairing and regular
+ * connections. During pairing, a new pump state is set up for the
+ * pump that is being paired. It is during pairing that the invariant
+ * portion of the pump state is written. During regular (= not pairing)
+ * connections, the invariant part is read, not written. Only the nonce
+ * gets updated regularly during regular IO.
+ *
+ * This class accesses the pump state in a thread safe manner, ensuring
+ * that no two threads access the pump state at the same time. See
+ * [PumpStateStore] for details about thread safety.
  *
  * @param pumpStateStore Pump state store to use.
  * @param pumpAddress Bluetooth address of the pump. Used for
- *        accessing the pump state store.
+ *   accessing the pump state store.
  * @param comboIO Combo IO object to use for sending/receiving data.
+ * @param disconnectDeviceCallback Callback to be invoked during the
+ *   shutdown process to disconnect the device that is used for IO. See
+ *   the [TransportLayer.IO.stop] documentation for details. This callback
+ *   is used both when pairing finishes and when a [disconnect] call
+ *   terminates a regular connection.
  */
-class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress: BluetoothAddress, private val comboIO: ComboIO) {
-    private val applicationLayerIO: ApplicationLayerIO
+class PumpIO(
+    private val pumpStateStore: PumpStateStore,
+    private val pumpAddress: BluetoothAddress,
+    comboIO: ComboIO,
+    private val disconnectDeviceCallback: suspend () -> Unit = { }
+) {
+    // Mutex to synchronize sendPacketWithResponse and sendPacketWithoutResponse calls.
+    private val sendPacketMutex = Mutex()
 
-    // The coroutine scope passed to connect() as an argument.
-    // Used for starting other coroutines such as the RT keep-alive loop.
-    private var backgroundIOScope: CoroutineScope? = null
+    // RT sequence number. Used in outgoing RT packets.
+    private var currentRTSequence: Int = 0
 
-    // Job representing the coroutine that runs the CMD ping loop.
-    private var cmdPingJob: Job? = null
+    private var transportLayerIO = TransportLayer.IO(
+        pumpStateStore, pumpAddress, comboIO
+    ) { packetReceiverException ->
+        // If the packet receiver fails, close the barrier to wake
+        // up any caller that is waiting on it.
+        rtButtonConfirmationBarrier.close(packetReceiverException)
+    }
 
-    // Job representing the coroutine that runs the RT keep-alive loop.
-    private var rtKeepAliveJob: Job? = null
+    private var sequencedDispatcherScope: CoroutineScope? = null
+
+    // Job representing the coroutine that runs the CMD ping heartbeat.
+    private var cmdPingHeartbeatJob: Job? = null
+    // Job representing the coroutine that runs the RT keep-alive heartbeat.
+    private var rtKeepAliveHeartbeatJob: Job? = null
 
     // Members associated with long-pressing buttons in RT mode.
     // Long-pressing is implemented by repeatedly sending RT_BUTTON_STATUS
@@ -91,18 +144,25 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
     // We use a Deferred instance instead of Job to be able to catch
     // and store exceptions & rethrow them later.
     private var currentLongRTPressJob: Deferred<Unit>? = null
-    private var currentLongRTPressedButtons = listOf<Button>()
-    // This runs the inner loop that repeatedly sends long RT button
-    // press commands to the Combo. It is separate to allow for orderly
-    // shutdowns. See the sendLongRTButtonPress function for more.
-    private var currentLongRTPressInnerFlow = MutableStateFlow(true)
+    private var currentLongRTPressedButtons = listOf<ApplicationLayer.RTButton>()
+    private var longRTPressLoopRunning = true
 
-    // A rendezvous channel that is used as a barrier of sorts to block
-    // button pressing functions from continuing until the Combo sends
-    // a confirmation for the key press. Up until that confirmation is
-    // received, the client must not send any other button press
+    // A Channel that is used as a "barrier" of sorts to block button
+    // pressing functions from continuing until the Combo sends
+    // a confirmation for the key press. Up until that confirmation
+    // is received, the client must not send any other button press
     // commands to the Combo. To ensure that, this barrier exists.
-    private var rtButtonConfirmationBarrier = Channel<Unit>(0)
+    // Its payload is a Boolean to let waiting coroutines know whether
+    // to finish or to continue any internal loops. The former happens
+    // during disconnect. It is set up as a conflated channel. That
+    // way, if a confirmation is received before button press commands
+    // call receive(), information about the confirmation is not lost
+    // (which would happen with a rendezvous channel). And, in case
+    // disconnect() is called, it is important to overwrite any other
+    // existing value with "false" to stop button pressing commands
+    // (hence a conflated channel instead of DROP_OLDEST buffer
+    // overflow behavior).
+    private var rtButtonConfirmationBarrier = newRtButtonConfirmationBarrier()
 
     // Members associated with display frame generation.
     // The mutable version of the displayFrameFlow is used internally
@@ -114,7 +174,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
     // frames. That way, the display frame producer is not blocked
     // by backpressure. To allow subscribers to immediately get data
     // (the last received display frame), the replay cache is set to 1.
-    private var mutableDisplayFrameFlow = MutableSharedFlow<DisplayFrame>(
+    private var _displayFrameFlow = MutableSharedFlow<DisplayFrame>(
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
         replay = 1
     )
@@ -122,7 +182,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
 
     // Whether we are in RT or COMMAND mode, or null at startup
     // before an initial mode was set.
-    private val mutableCurrentModeFlow = MutableStateFlow<Mode?>(null)
+    private val _currentModeFlow = MutableStateFlow<Mode?>(null)
 
     /************************************
      *** PUBLIC FUNCTIONS AND CLASSES ***
@@ -131,33 +191,17 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
     /**
      * Read-only [SharedFlow] property that delivers newly assembled display frames.
      *
-     * Note that, unlike most other flow types, a [SharedFlow] is a _hot_ flow.
-     * This means that its emitter runs independently of any collector.
-     *
      * See [DisplayFrame] for details about these frames.
      */
-    val displayFrameFlow = mutableDisplayFrameFlow.asSharedFlow()
+    val displayFrameFlow = _displayFrameFlow.asSharedFlow()
 
     /**
-     * Read-only [StateFlow] property that announces when the current [Mode] changed.
-     *
-     * Note that, unlike most other flow types, a [StateFlow] is a _hot_ flow.
-     * This means that its emitter runs independently of any collector.
+     * Read-only [StateFlow] property that announces when the current [Mode] changes.
      */
-    val currentModeFlow = mutableCurrentModeFlow.asStateFlow()
+    val currentModeFlow = _currentModeFlow.asStateFlow()
 
     /**
-     * Callback for when an exception is thrown in the background IO worker.
-     *
-     * This is mainly meant for internal use in code that performs automated
-     * pump operation in RT mode, for example for getting the quick info.
-     */
-    var onBackgroundIOException: (e: Exception) -> Unit
-        get() = applicationLayerIO.onBackgroundIOException
-        set(value) { applicationLayerIO.onBackgroundIOException = value }
-
-    /**
-     * The mode the IO can operate in.
+     * The mode the pump can operate in.
      */
     enum class Mode(val str: String) {
         REMOTE_TERMINAL("REMOTE_TERMINAL"),
@@ -167,108 +211,23 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
     }
 
     /**
-     * Buttons available in the RT mode.
-     */
-    enum class Button(val str: String) {
-        UP("UP"),
-        DOWN("DOWN"),
-        MENU("MENU"),
-        CHECK("CHECK");
-
-        override fun toString() = str
-    }
-
-    init {
-        // Set up ApplicationLayerIO subclass that processes incoming
-        // packets in order to handle notifications from the Combo.
-        applicationLayerIO = object : ApplicationLayerIO(pumpStateStore, pumpAddress, comboIO) {
-            override fun processIncomingPacket(appLayerPacket: Packet): Boolean {
-                // RT_DISPLAY packets regularly come from the Combo (when running in RT mode),
-                // and contains new display frame updates.
-                //
-                // CTRL_SERVICE_ERROR packets are errors that must be handled immediately.
-                // Unlike the transport layer ERROR_RESPONSE packet, these packets report
-                // errors at the application layer.
-                //
-                // RT_AUDIO and RT_VIBRATION packets inform us about simulated notification
-                // sounds and vibrations, respectively. We do not need those here.
-                //
-                // As for the RT_KEEP_ALIVE packets, they are notifications that we don't
-                // need here, so we ignore them. (Note that RT_KEEP_ALIVE serves a dual
-                // purpose; we _do_ have to also send such packets _to_ the Combo. The
-                // rtKeepAliveJob takes care of that.)
-                //
-                // Both RT_DISPLAY and RT_BUTTON_CONFIRMATION are confirmations sent by
-                // the Combo when a button status was sent to it. Up until the Combo sends
-                // such a confirmation, no further button status commands may be sent by
-                // the client to the Combo. The rtButtonConfirmationBarrier makes sure that
-                // code that sends such commands is suspended until a confirmation arrived.
-
-                when (appLayerPacket.command) {
-                    ApplicationLayerIO.Command.RT_DISPLAY -> {
-                        processRTDisplayPayload(ApplicationLayerIO.parseRTDisplayPacket(appLayerPacket))
-                        // Signal the arrival of the button confirmation.
-                        // (Either RT_BUTTON_CONFIRMATION or RT_DISPLAY
-                        // function as confirmations.)
-                        rtButtonConfirmationBarrier.trySend(Unit)
-                    }
-                    ApplicationLayerIO.Command.RT_BUTTON_CONFIRMATION -> {
-                        logger(LogLevel.VERBOSE) { "Got RT_BUTTON_CONFIRMATION packet from the Combo" }
-                        // Signal the arrival of the button confirmation.
-                        // (Either RT_BUTTON_CONFIRMATION or RT_DISPLAY
-                        // function as confirmations.)
-                        rtButtonConfirmationBarrier.trySend(Unit)
-                    }
-                    ApplicationLayerIO.Command.RT_KEEP_ALIVE -> {
-                        logger(LogLevel.VERBOSE) { "Got RT_KEEP_ALIVE packet from the Combo; ignoring" }
-                    }
-                    ApplicationLayerIO.Command.RT_AUDIO -> {
-                        logger(LogLevel.VERBOSE) {
-                            val audioType = ApplicationLayerIO.parseRTAudioPacket(appLayerPacket)
-                            "Got RT_AUDIO packet with audio type ${audioType.toHexString(8)}; ignoring"
-                        }
-                    }
-                    ApplicationLayerIO.Command.RT_PAUSE,
-                    ApplicationLayerIO.Command.RT_RELEASE -> {
-                        logger(LogLevel.VERBOSE) {
-                            "Got ${ApplicationLayerIO.Command} packet with payload ${appLayerPacket.payload.toHexString()}; ignoring"
-                        }
-                    }
-                    ApplicationLayerIO.Command.RT_VIBRATION -> {
-                        logger(LogLevel.VERBOSE) {
-                            val vibrationType = ApplicationLayerIO.parseRTVibrationPacket(appLayerPacket)
-                            "Got RT_VIBRATION packet with vibration type ${vibrationType.toHexString(8)}; ignoring"
-                        }
-                    }
-                    ApplicationLayerIO.Command.CTRL_SERVICE_ERROR -> {
-                        val ctrlServiceError = ApplicationLayerIO.parseCTRLServiceErrorPacket(appLayerPacket)
-                        logger(LogLevel.ERROR) { "Got CTRL_SERVICE_ERROR packet from the Combo; throwing exception" }
-                        throw ApplicationLayerIO.ServiceErrorException(appLayerPacket, ctrlServiceError)
-                    }
-                    else -> return true
-                }
-
-                return false
-            }
-        }
-    }
-
-    /**
      * Performs a pairing procedure with a Combo.
      *
      * This performs the Combo-specific pairing. When this is called,
      * the pump must have been paired at the Bluetooth level already.
      * From Bluetooth's point of view, the pump is already paired with
      * the client at this point. But the Combo itself needs an additional
-     * custom pairing.
+     * custom pairing. As part of this extra pairing, this function sets
+     * up a special temporary pairing connection to the Combo, and terminates
+     * that connection before finishing. Manually setting up such a connection
+     * is not necessary and not supported by the public API.
      *
-     * Pairing will initialize the [PumpStateStore] that was
-     * passed to the constructor of this class. The store will then contain
+     * Cancelling the coroutine this function runs in will abort the pairing
+     * process in an orderly fashion.
+     *
+     * Pairing will initialize a new state for this pump [PumpStateStore] that
+     * was passed to the constructor of this class. This state will contain
      * new pairing data, a new pump ID string, and a new initial nonce.
-     *
-     * This function starts the background worker to be able to receive
-     * packets from the Combo. Once pairing is done (or an error occurs),
-     * the worker is stopped again.
      *
      * The pairingPINCallback callback has two arguments. previousAttemptFailed
      * is set to false initially, and true if this is a repeated call due
@@ -276,32 +235,30 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      * happens because the user mistyped the PIN, but in rare cases can also
      * happen due to corrupted packets.
      *
-     * WARNING: Do not run multiple performPairing functions simultaneously
-     *  on the same pump. Otherwise, undefined behavior occurs.
-     *
      * @param bluetoothFriendlyName The Bluetooth friendly name to use in
-     *        REQUEST_ID packets. Use [BluetoothInterface.getAdapterFriendlyName]
-     *        to get the friendly name.
+     *   REQUEST_ID packets. Use [BluetoothInterface.getAdapterFriendlyName]
+     *   to get the friendly name.
      * @param progressReporter [ProgressReporter] for tracking pairing progress.
      * @param pairingPINCallback Callback that gets invoked as soon as
-     *        the pairing process needs the 10-digit-PIN.
+     *   the pairing process needs the 10-digit-PIN.
      * @throws IllegalStateException if this is ran while a connection
-     *         is running.
-     * @throws TransportLayerIO.BackgroundIOException if an exception is
-     *         thrown inside the worker while an IO call is waiting for
-     *         completion.
+     *   is running.
+     * @throws PumpStateAlreadyExistsException if the pump was already
+     *   fully paired before.
+     * @throws TransportLayer.PacketReceiverException if an exception
+     *   is thrown while this function is waiting for a packet.
      */
     suspend fun performPairing(
         bluetoothFriendlyName: String,
         progressReporter: ProgressReporter<Unit>?,
         pairingPINCallback: PairingPINCallback
     ) {
-        if (isConnected())
-            throw IllegalStateException("Attempted to perform pairing while a connection is ongoing")
+        check(!isConnected()) { "Attempted to perform pairing while pump is connected" }
 
+        // Set up a custom coroutine scope to run the packet receiver in.
         coroutineScope {
             try {
-                applicationLayerIO.startIO(backgroundIOScope = this, pairingPINCallback = pairingPINCallback)
+                transportLayerIO.start(packetReceiverScope = this) { tpLayerPacket -> processReceivedPacket(tpLayerPacket) }
 
                 progressReporter?.setCurrentProgressStage(BasicProgressStage.PerformingConnectionHandshake)
 
@@ -309,27 +266,85 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
                 // (The response contains no meaningful payload.)
                 logger(LogLevel.DEBUG) { "Sending pairing connection request" }
                 sendPacketWithResponse(
-                    TransportLayerIO.createRequestPairingConnectionPacketInfo(),
-                    TransportLayerIO.Command.PAIRING_CONNECTION_REQUEST_ACCEPTED
+                    TransportLayer.createRequestPairingConnectionPacketInfo(),
+                    TransportLayer.Command.PAIRING_CONNECTION_REQUEST_ACCEPTED
                 )
 
                 // Initiate pump-client and client-pump keys request.
                 // This will cause the pump to generate and show a
                 // 10-digit PIN.
                 logger(LogLevel.DEBUG) { "Requesting the pump to generate and show the pairing PIN" }
-                sendPacketNoResponse(TransportLayerIO.createRequestKeysPacketInfo())
+                sendPacketWithoutResponse(TransportLayer.createRequestKeysPacketInfo())
 
                 progressReporter?.setCurrentProgressStage(BasicProgressStage.ComboPairingKeyAndPinRequested)
 
-                logger(LogLevel.DEBUG) { "Requesting the keys and IDs from the pump" }
-                sendPacketWithResponse(
-                    TransportLayerIO.createGetAvailableKeysPacketInfo(),
-                    TransportLayerIO.Command.KEY_RESPONSE
+                logger(LogLevel.DEBUG) { "Requesting the keys from the pump" }
+                val keyResponsePacket = sendPacketWithResponse(
+                    TransportLayer.createGetAvailableKeysPacketInfo(),
+                    TransportLayer.Command.KEY_RESPONSE
                 )
-                sendPacketWithResponse(
-                    TransportLayerIO.createRequestIDPacketInfo(bluetoothFriendlyName),
-                    TransportLayerIO.Command.ID_RESPONSE
+
+                logger(LogLevel.DEBUG) { "Will ask for pairing PIN" }
+                var previousPINAttemptFailed = false
+
+                lateinit var keyResponseInfo: KeyResponseInfo
+                while (true) {
+                    logger(LogLevel.DEBUG) { "Waiting for the PIN to be provided" }
+
+                    // Request the PIN. If canceled, PairingAbortedException is
+                    // thrown by the callback.
+                    val pin = pairingPINCallback.invoke(previousPINAttemptFailed)
+
+                    logger(LogLevel.DEBUG) { "Provided PIN: $pin" }
+
+                    val weakCipher = Cipher(generateWeakKeyFromPIN(pin))
+                    logger(LogLevel.DEBUG) { "Generated weak cipher key ${weakCipher.key.toHexString()} out of pairing PIN" }
+
+                    if (keyResponsePacket.verifyAuthentication(weakCipher)) {
+                        logger(LogLevel.DEBUG) { "KEY_RESPONSE packet verified" }
+                        keyResponseInfo = processKeyResponsePacket(keyResponsePacket, weakCipher)
+                        // Exit the loop since we successfully verified the packet.
+                        break
+                    } else {
+                        logger(LogLevel.DEBUG) { "Could not verify KEY_RESPONSE packet; user may have entered PIN incorrectly; asking again for PIN" }
+                        previousPINAttemptFailed = true
+                    }
+                }
+
+                // Manually set the cached invariant pump data inside transportLayerIO,
+                // otherwise the next outgoing packets will not be properly authenticated
+                // (and their address bytes won't be valid). We'll update this later on
+                // with the final version of the invariant data. That's also the one
+                // that will be written into the pump state store.
+                transportLayerIO.setManualInvariantPumpData(
+                    InvariantPumpData(
+                        clientPumpCipher = keyResponseInfo.clientPumpCipher,
+                        pumpClientCipher = keyResponseInfo.pumpClientCipher,
+                        keyResponseAddress = keyResponseInfo.keyResponseAddress,
+                        pumpID = ""
+                    )
                 )
+
+                logger(LogLevel.DEBUG) { "Requesting the pump ID from the pump" }
+                val idResponsePacket = sendPacketWithResponse(
+                    TransportLayer.createRequestIDPacketInfo(bluetoothFriendlyName),
+                    TransportLayer.Command.ID_RESPONSE
+                )
+                val pumpID = processIDResponsePacket(idResponsePacket)
+
+                val newPumpData = InvariantPumpData(
+                    clientPumpCipher = keyResponseInfo.clientPumpCipher,
+                    pumpClientCipher = keyResponseInfo.pumpClientCipher,
+                    keyResponseAddress = keyResponseInfo.keyResponseAddress,
+                    pumpID = pumpID
+                )
+                transportLayerIO.setManualInvariantPumpData(newPumpData)
+                pumpStateStore.createPumpState(pumpAddress, newPumpData)
+
+                val firstTxNonce = Nonce(byteArrayListOfInts(
+                    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+                ))
+                pumpStateStore.setCurrentTxNonce(pumpAddress, firstTxNonce)
 
                 progressReporter?.setCurrentProgressStage(BasicProgressStage.ComboPairingFinishing)
 
@@ -340,16 +355,16 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
                 // Wait for the response and verify it.
                 logger(LogLevel.DEBUG) { "Sending regular connection request" }
                 sendPacketWithResponse(
-                    TransportLayerIO.createRequestRegularConnectionPacketInfo(),
-                    TransportLayerIO.Command.REGULAR_CONNECTION_REQUEST_ACCEPTED
+                    TransportLayer.createRequestRegularConnectionPacketInfo(),
+                    TransportLayer.Command.REGULAR_CONNECTION_REQUEST_ACCEPTED
                 )
 
                 // Initiate application-layer connection and wait for the response.
                 // (The response contains no meaningful payload.)
                 logger(LogLevel.DEBUG) { "Initiating application layer connection" }
                 sendPacketWithResponse(
-                    ApplicationLayerIO.createCTRLConnectPacket(),
-                    ApplicationLayerIO.Command.CTRL_CONNECT_RESPONSE
+                    ApplicationLayer.createCTRLConnectPacket(),
+                    ApplicationLayer.Command.CTRL_CONNECT_RESPONSE
                 )
 
                 // Next, we have to query the versions of both command mode and
@@ -359,15 +374,15 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
                 // TODO: Further verify this.
                 logger(LogLevel.DEBUG) { "Requesting command mode service version" }
                 sendPacketWithResponse(
-                    ApplicationLayerIO.createCTRLGetServiceVersionPacket(ApplicationLayerIO.ServiceID.COMMAND_MODE),
-                    ApplicationLayerIO.Command.CTRL_GET_SERVICE_VERSION_RESPONSE
+                    ApplicationLayer.createCTRLGetServiceVersionPacket(ApplicationLayer.ServiceID.COMMAND_MODE),
+                    ApplicationLayer.Command.CTRL_GET_SERVICE_VERSION_RESPONSE
                 )
                 // NOTE: These two steps may not be necessary. See the
                 // "Application layer pairing" section in the spec.
                 /*
                 sendPacketWithResponse(
-                    ApplicationLayerIO.ApplicationLayerIO.createCTRLGetServiceVersionPacket(ApplicationLayerIO.ServiceID.RT_MODE),
-                    ApplicationLayerIO.Command.CTRL_GET_SERVICE_VERSION_RESPONSE
+                    ApplicationLayer.ApplicationLayer.createCTRLGetServiceVersionPacket(ApplicationLayer.ServiceID.RT_MODE),
+                    ApplicationLayer.Command.CTRL_GET_SERVICE_VERSION_RESPONSE
                 )
                 */
 
@@ -375,8 +390,8 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
                 // (The response contains no meaningful payload.)
                 logger(LogLevel.DEBUG) { "Sending BIND command" }
                 sendPacketWithResponse(
-                    ApplicationLayerIO.createCTRLBindPacket(),
-                    ApplicationLayerIO.Command.CTRL_BIND_RESPONSE
+                    ApplicationLayer.createCTRLBindPacket(),
+                    ApplicationLayer.Command.CTRL_BIND_RESPONSE
                 )
 
                 // We have to re-connect the regular connection at the
@@ -385,16 +400,18 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
                 // Wait for the response and verify it.
                 logger(LogLevel.DEBUG) { "Reconnecting regular connection" }
                 sendPacketWithResponse(
-                    TransportLayerIO.createRequestRegularConnectionPacketInfo(),
-                    TransportLayerIO.Command.REGULAR_CONNECTION_REQUEST_ACCEPTED
+                    TransportLayer.createRequestRegularConnectionPacketInfo(),
+                    TransportLayer.Command.REGULAR_CONNECTION_REQUEST_ACCEPTED
                 )
 
                 // Pairing complete.
                 logger(LogLevel.DEBUG) { "Pairing finished successfully" }
-
-                // Disconnect packet is automatically sent by stopIO().
             } finally {
-                applicationLayerIO.stopIO()
+                val disconnectPacketInfo = ApplicationLayer.createCTRLDisconnectPacket()
+                transportLayerIO.stop(
+                    disconnectPacketInfo.toTransportLayerPacketInfo(),
+                    disconnectDeviceCallback
+                )
             }
         }
     }
@@ -406,162 +423,143 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      * regular Combo operation. The client must have been paired with
      * the Combo before such connections can be established.
      *
-     * This must be called before [sendShortRTButtonPress], [startLongRTButtonPress],
-     * [stopLongRTButtonPress], and [switchMode] can be used.
+     * This must be called before [switchMode] and any RT / command mode
+     * function are used.
      *
-     * This function starts the background worker, using the
-     * [backgroundIOScope] as the scope for the coroutines that make up
-     * the worker. Some functions such as [startLongRTButtonPress] also
-     * launch coroutines. They use this same coroutine scope.
+     * The [packetReceiverScope] is used as the scope to run the transport
+     * layer packet receiver in (handled by [TransportLayer.IO]). Some functions
+     * like [startLongRTButtonPress] also launch coroutines. Any function that
+     * launches coroutines does that in that scope.
      *
      * The actual connection procedure also happens in that scope, in its
-     * own coroutine. That coroutine is represented by the instance of
-     * [kotlinx.coroutines.Deferred] that is returned by this function.
-     * If an exception occurs _during_ connection setup, the connection
-     * attempt is aborted, this Pump instance reverts to the disconnected
-     * state, and the exception is caught by the returned Deferred value.
-     * Users call [kotlinx.coroutines.Deferred.await] to wait for the
-     * connection procedure to finish; if an exception occurred during
-     * that procedure, it is re-thrown by that function.
+     * own coroutine. That coroutine is represented by the [Deferred] that
+     * is returned by this function.
      *
-     * Exceptions from inside the running worker cause the worker to "fail".
-     * In that failed state, any of the Pump functions ([switchMode] etc.)
-     * mentioned above will immediately throw [TransportLayerIO.BackgroundIOException].
-     * The user has to call [disconnect] to change the worker from a failed
-     * to a disconnected state. Then, the user can attempt to connect again.
+     * If an exception occurs _during_ connection setup, the connection
+     * attempt is aborted, this PumpIO instance reverts to the disconnected
+     * state, and the exception is caught by the returned Deferred value.
+     * Users call [Deferred.await] to wait for the connection procedure to
+     * finish; if an exception occurred during that procedure, it is re-thrown
+     * by that function.
      *
      * [isConnected] will return true if the connection was established.
      *
      * [disconnect] is the counterpart to this function. It terminates
      * an existing connection and stops the worker.
      *
-     * This also launches a loop inside the worker that keeps sending
-     * out RT_KEEP_ALIVE packets if the pump is operating in the
-     * REMOTE_TERMINAL (RT) mode. This is necessary to keep the connection
-     * alive (if the pump does not get these in RT mode it closes the
-     * connection). This is enabled by default, but can be disabled if
-     * needed. This is useful for unit tests for example. If the pump
-     * is operating in COMMAND mode, it transmits CMD_PING packets in
-     * that loop instead. That loop is stopped if the worker fails.
+     * This also starts the "heartbeat" (unless explicitly requested not to).
+     * See the [PumpIO] documentation above for details.
      *
-     * @param backgroundIOScope Coroutine scope to start the background
-     *        worker in.
+     * @param packetReceiverScope Scope to run the packet receiver and other
+     *   internal coroutines in.
      * @param progressReporter [ProgressReporter] for tracking connect progress.
      * @param initialMode What mode to initially switch to.
-     * @param runKeepAliveLoop Whether or not to run a loop in the worker
-     *        that repeatedly sends out RT_KEEP_ALIVE or CMD_PING packets
-     *        if the pump is running in the REMOTE_TERMINAL or COMMAND mode
-     *        respectively.
-     * @return [kotlinx.coroutines.Deferred] representing the coroutine
-     *         that runs the connection setup procedure.
-     * @throws IllegalStateException if IO was already started by a
-     *         previous [startIO] call or if the [PumpStateStore]
-     *         that was passed to the class constructor isn't initialized
-     *         (= [PumpStateStore.isValid] returns false).
+     * @param runHeartbeat True if the heartbeat shall be started.
+     * @return [Deferred] representing the coroutine that finishes the connection
+     *   setup procedure.
+     * @throws IllegalStateException if IO was already started by a previous
+     *   [connectAsync] call or if the [PumpStateStore] that was passed to the
+     *   class constructor has no pairing data for this pump (most likely
+     *   because the pump isn't paired yet).
      */
-    fun connect(
-        backgroundIOScope: CoroutineScope,
+    fun connectAsync(
+        packetReceiverScope: CoroutineScope,
         progressReporter: ProgressReporter<Unit>?,
         initialMode: Mode = Mode.REMOTE_TERMINAL,
-        runKeepAliveLoop: Boolean = true
+        runHeartbeat: Boolean = true
     ): Deferred<Unit> {
         // Prerequisites.
 
-        if (!pumpStateStore.hasPumpState(pumpAddress)) {
-            throw IllegalStateException(
-                "Attempted to connect without a valid persistent state; pairing may not have been done"
-            )
+        check(pumpStateStore.hasPumpState(pumpAddress)) {
+            "Attempted to connect without a valid persistent state; pairing may not have been done"
         }
-
-        if (isConnected())
-            throw IllegalStateException("Attempted to connect even though a connection is already ongoing")
-
-        // Keep a reference to the scope around to be able to launch
-        // corooutines in that same scope in other functions.
-        this.backgroundIOScope = backgroundIOScope
+        check(!isConnected()) { "Attempted to connect even though a connection is already ongoing or established" }
 
         // Reset the display frame assembler in case it contains
         // partial frames from an earlier connection.
         displayFrameAssembler.reset()
 
         // Get rid of any existing frame in the replay cache.
+        // Otherwise, subscribers will always be one frame
+        // behind what the Combo is _actually_ currently showing,
+        // which can cause serious errors while programmatically
+        // navigating through RT screens.
         @Suppress("EXPERIMENTAL_API_USAGE")
-        mutableDisplayFrameFlow.resetReplayCache()
+        _displayFrameFlow.resetReplayCache()
+
+        // Reinitialize the barrier, since it may have been closed
+        // earlier due to an exception in the packet receiver.
+        // (See the transportLayerIO initialization code.)
+        rtButtonConfirmationBarrier = newRtButtonConfirmationBarrier()
 
         // Start the actual IO activity.
-        applicationLayerIO.startIO(backgroundIOScope)
+        transportLayerIO.start(packetReceiverScope) { tpLayerPacket -> processReceivedPacket(tpLayerPacket) }
+
+        // Store the scope to allow other functions such as
+        // startLongRTButtonPress to start coroutines in this scope.
+        // We use our own sequenced dispatcher with it to disallow
+        // parallelism in our internal coroutines.
+        this.sequencedDispatcherScope = packetReceiverScope + transportLayerIO.sequencedDispatcher()
 
         logger(LogLevel.DEBUG) { "Pump IO connecting asynchronously" }
 
         progressReporter?.setCurrentProgressStage(BasicProgressStage.PerformingConnectionHandshake)
 
         // Launch the coroutine that sets up the connection.
-        return backgroundIOScope.async {
+        return this.sequencedDispatcherScope!!.async {
             try {
                 logger(LogLevel.DEBUG) { "Sending regular connection request" }
 
                 // Initiate connection at the transport layer.
                 sendPacketWithResponse(
-                    TransportLayerIO.createRequestRegularConnectionPacketInfo(),
-                    TransportLayerIO.Command.REGULAR_CONNECTION_REQUEST_ACCEPTED
+                    TransportLayer.createRequestRegularConnectionPacketInfo(),
+                    TransportLayer.Command.REGULAR_CONNECTION_REQUEST_ACCEPTED
                 )
 
                 // Initiate connection at the application layer.
                 logger(LogLevel.DEBUG) { "Initiating application layer connection" }
                 sendPacketWithResponse(
-                    ApplicationLayerIO.createCTRLConnectPacket(),
-                    ApplicationLayerIO.Command.CTRL_CONNECT_RESPONSE
+                    ApplicationLayer.createCTRLConnectPacket(),
+                    ApplicationLayer.Command.CTRL_CONNECT_RESPONSE
                 )
 
                 // Explicitly switch to the initial mode.
-                switchMode(initialMode, runKeepAliveLoop)
+                switchMode(initialMode, runHeartbeat)
 
                 logger(LogLevel.INFO) { "Pump IO connected" }
-            } catch (e: Exception) {
+            } catch (t: Throwable) {
                 disconnect()
-                // Re-throw the exception to let this Job fail. This makes
-                // sure that any ongoing join() call detects the failure
-                // and throws a CancellationException.
-                throw e
+                throw t
             }
         }
     }
 
-    /**
-     * Closes a regular connection to the Combo.
-     *
-     * This terminates the connection and stops the background worker that
-     * was started by [connect].
-     *
-     * If there is no connection, this does nothing.
-     *
-     * Calling this ensures an orderly IO shutdown and should
-     * not be omitted when shutting down an application.
-     * This also clears the "failed" mark on a failed worker.
-     *
-     * After this call, [isConnected] will return false.
-     *
-     * @param disconnectDeviceCallback Callback to be invoked during the
-     *        shutdown process to disconnect a device object. See the
-     *        [TransportLayerIO.stopIO] documentation for details.
-     */
-    suspend fun disconnect(disconnectDeviceCallback: suspend () -> Unit = { }) {
+    suspend fun disconnect() {
         // Make sure that any function that is suspended by this
-        // barrier is woken up.
-        rtButtonConfirmationBarrier.trySend(Unit)
+        // barrier is woken up. Pass "false" to these functions
+        // to let them know that they need to abort any loop
+        // they might be running.
+        rtButtonConfirmationBarrier.trySend(false)
 
-        stopCMDPingBackgroundLoop()
-        stopRTKeepAliveBackgroundLoop()
-        applicationLayerIO.stopIO(disconnectDeviceCallback)
+        stopCMDPingHeartbeat()
+        stopRTKeepAliveHeartbeat()
 
-        backgroundIOScope = null
-        mutableCurrentModeFlow.value = null
+        val disconnectPacketInfo = ApplicationLayer.createCTRLDisconnectPacket()
+        logger(LogLevel.VERBOSE) { "Will send application layer disconnect packet:  $disconnectPacketInfo" }
+
+        transportLayerIO.stop(
+            disconnectPacketInfo.toTransportLayerPacketInfo(),
+            disconnectDeviceCallback
+        )
+
+        sequencedDispatcherScope = null
+        _currentModeFlow.value = null
 
         logger(LogLevel.DEBUG) { "Pump IO disconnected" }
     }
 
-    /** Returns true if IO is ongoing (due to a [connect] call), false otherwise. */
-    fun isConnected() = applicationLayerIO.isIORunning()
+    /** Returns true if IO is ongoing (due to a [connectAsync] call), false otherwise. */
+    fun isConnected() = transportLayerIO.isIORunning()
 
     /**
      * Reads the current datetime of the pump in COMMAND (CMD) mode.
@@ -570,26 +568,23 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      *
      * @return The current datetime.
      * @throws IllegalStateException if the pump is not in the comand
-     *         mode or the pump is not connected.
-     * @throws TransportLayerIO.BackgroundIOException if an exception is thrown
-     *         inside the worker while this call is waiting for a packet or if
-     *         an exception was thrown inside the worker prior to this call.
-     * @throws ApplicationLayerIO.InvalidPayloadException if the size
-     *         of a packet's payload does not match the expected size.
+     *   mode or the pump is not connected.
+     * @throws TransportLayer.PacketReceiverException if an exception is thrown
+     *   in the packet receiver while this call is waiting for a packet or if
+     *   an exception was thrown in the packet receiver prior to this call.
+     * @throws ApplicationLayer.InvalidPayloadException if the size
+     *   of a packet's payload does not match the expected size.
      * @throws ComboIOException if IO with the pump fails.
      */
     suspend fun readCMDDateTime(): DateTime {
-        if (!isConnected())
-            throw IllegalStateException("Cannot get current pump datetime because the pump is not connected")
-
-        if (mutableCurrentModeFlow.value != Mode.COMMAND)
-            throw IllegalStateException("Cannot get current pump datetime while being in ${mutableCurrentModeFlow.value} mode")
+        check(isConnected()) { "Cannot get current pump datetime because the pump is not connected" }
+        check(_currentModeFlow.value == Mode.COMMAND) { "Cannot get current pump datetime while being in ${_currentModeFlow.value} mode" }
 
         val packet = sendPacketWithResponse(
-            ApplicationLayerIO.createCMDReadDateTimePacket(),
-            ApplicationLayerIO.Command.CMD_READ_DATE_TIME_RESPONSE
+            ApplicationLayer.createCMDReadDateTimePacket(),
+            ApplicationLayer.Command.CMD_READ_DATE_TIME_RESPONSE
         )
-        return ApplicationLayerIO.parseCMDReadDateTimeResponsePacket(packet)
+        return ApplicationLayer.parseCMDReadDateTimeResponsePacket(packet)
     }
 
     /**
@@ -598,27 +593,24 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      * The pump can be either in the stopped or in the running status.
      *
      * @return The current status.
-     * @throws IllegalStateException if the pump is not in the comand
-     *         mode or the pump is not connected.
-     * @throws TransportLayerIO.BackgroundIOException if an exception is thrown
-     *         inside the worker while this call is waiting for a packet or if
-     *         an exception was thrown inside the worker prior to this call.
-     * @throws ApplicationLayerIO.InvalidPayloadException if the size
-     *         of a packet's payload does not match the expected size.
+     * @throws IllegalStateException if the pump is not in the command
+     *   mode or the pump is not connected.
+     * @throws TransportLayer.PacketReceiverException if an exception is thrown
+     *   in the packet receiver while this call is waiting for a packet or if
+     *   an exception was thrown in the packet receiver prior to this call.
+     * @throws ApplicationLayer.InvalidPayloadException if the size
+     *   of a packet's payload does not match the expected size.
      * @throws ComboIOException if IO with the pump fails.
      */
-    suspend fun readCMDPumpStatus(): ApplicationLayerIO.CMDPumpStatus {
-        if (!isConnected())
-            throw IllegalStateException("Cannot get pump status because the pump is not connected")
-
-        if (mutableCurrentModeFlow.value != Mode.COMMAND)
-            throw IllegalStateException("Cannot get pump status while being in ${mutableCurrentModeFlow.value} mode")
+    suspend fun readCMDPumpStatus(): ApplicationLayer.CMDPumpStatus {
+        check(isConnected()) { "Cannot get pump status because the pump is not connected" }
+        check(_currentModeFlow.value == Mode.COMMAND) { "Cannot get pump status while being in ${_currentModeFlow.value} mode" }
 
         val packet = sendPacketWithResponse(
-            ApplicationLayerIO.createCMDReadPumpStatusPacket(),
-            ApplicationLayerIO.Command.CMD_READ_PUMP_STATUS_RESPONSE
+            ApplicationLayer.createCMDReadPumpStatusPacket(),
+            ApplicationLayer.Command.CMD_READ_PUMP_STATUS_RESPONSE
         )
-        return ApplicationLayerIO.parseCMDReadPumpStatusResponsePacket(packet)
+        return ApplicationLayer.parseCMDReadPumpStatusResponsePacket(packet)
     }
 
     /**
@@ -626,26 +618,23 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      *
      * @return The current status.
      * @throws IllegalStateException if the pump is not in the comand
-     *         mode or the pump is not connected.
-     * @throws TransportLayerIO.BackgroundIOException if an exception is thrown
-     *         inside the worker while this call is waiting for a packet or if
-     *         an exception was thrown inside the worker prior to this call.
-     * @throws ApplicationLayerIO.InvalidPayloadException if the size
-     *         of a packet's payload does not match the expected size.
+     *   mode or the pump is not connected.
+     * @throws TransportLayer.PacketReceiverException if an exception is thrown
+     *   in the packet receiver while this call is waiting for a packet or if
+     *   an exception was thrown in the packet receiver prior to this call.
+     * @throws ApplicationLayer.InvalidPayloadException if the size
+     *   of a packet's payload does not match the expected size.
      * @throws ComboIOException if IO with the pump fails.
      */
-    suspend fun readCMDErrorWarningStatus(): ApplicationLayerIO.CMDErrorWarningStatus {
-        if (!isConnected())
-            throw IllegalStateException("Cannot get error/warning status because the pump is not connected")
-
-        if (mutableCurrentModeFlow.value != Mode.COMMAND)
-            throw IllegalStateException("Cannot get error/warning status while being in ${mutableCurrentModeFlow.value} mode")
+    suspend fun readCMDErrorWarningStatus(): ApplicationLayer.CMDErrorWarningStatus {
+        check(isConnected()) { "Cannot get error/warning status because the pump is not connected" }
+        check(_currentModeFlow.value == Mode.COMMAND) { "Cannot get error/warning status while being in ${_currentModeFlow.value} mode" }
 
         val packet = sendPacketWithResponse(
-            ApplicationLayerIO.createCMDReadErrorWarningStatusPacket(),
-            ApplicationLayerIO.Command.CMD_READ_ERROR_WARNING_STATUS_RESPONSE
+            ApplicationLayer.createCMDReadErrorWarningStatusPacket(),
+            ApplicationLayer.Command.CMD_READ_ERROR_WARNING_STATUS_RESPONSE
         )
-        return ApplicationLayerIO.parseCMDReadErrorWarningStatusResponsePacket(packet)
+        return ApplicationLayer.parseCMDReadErrorWarningStatusResponsePacket(packet)
     }
 
     /**
@@ -671,30 +660,25 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      * @return The history delta.
      * @throws IllegalArgumentException if maxRequests is less than 10.
      * @throws IllegalStateException if the pump is not in the comand
-     *         mode or the pump is not connected.
-     * @throws TransportLayerIO.BackgroundIOException if an exception is thrown
-     *         inside the worker while this call is waiting for a packet or if
-     *         an exception was thrown inside the worker prior to this call.
-     * @throws ApplicationLayerIO.InvalidPayloadException if the size
-     *         of a packet's payload does not match the expected size.
-     * @throws ApplicationLayerIO.PayloadDataCorruptionException if
-     *         packet data integrity is compromised.
-     * @throws ApplicationLayerIO.InfiniteHistoryDataException if the
-     *         call did not ever get a history block that marked an end
-     *         to the history.
+     *   mode or the pump is not connected.
+     * @throws TransportLayer.PacketReceiverException if an exception is thrown
+     *   in the packet receiver while this call is waiting for a packet or if
+     *   an exception was thrown in the packet receiver prior to this call.
+     * @throws ApplicationLayer.InvalidPayloadException if the size
+     *   of a packet's payload does not match the expected size.
+     * @throws ApplicationLayer.PayloadDataCorruptionException if
+     *   packet data integrity is compromised.
+     * @throws ApplicationLayer.InfiniteHistoryDataException if the
+     *   call did not ever get a history block that marked an end
+     *   to the history.
      * @throws ComboIOException if IO with the pump fails.
      */
-    suspend fun getCMDHistoryDelta(maxRequests: Int): List<ApplicationLayerIO.CMDHistoryEvent> {
-        if (maxRequests < 10)
-            throw IllegalArgumentException("Maximum amount of requests must be at least 10; caller specified $maxRequests")
+    suspend fun getCMDHistoryDelta(maxRequests: Int): List<ApplicationLayer.CMDHistoryEvent> {
+        require(maxRequests <= 10) { "Maximum allowed amount of requests are 10; caller specified $maxRequests" }
+        check(isConnected()) { "Cannot get history delta because the pump is not connected" }
+        check(_currentModeFlow.value == Mode.COMMAND) { "Cannot get history delta while being in ${_currentModeFlow.value} mode" }
 
-        if (!isConnected())
-            throw IllegalStateException("Cannot get history delta because the pump is not connected")
-
-        if (mutableCurrentModeFlow.value != Mode.COMMAND)
-            throw IllegalStateException("Cannot get history delta while being in ${mutableCurrentModeFlow.value} mode")
-
-        val historyDelta = mutableListOf<ApplicationLayerIO.CMDHistoryEvent>()
+        val historyDelta = mutableListOf<ApplicationLayer.CMDHistoryEvent>()
         var reachedEnd = false
 
         // Keep requesting history blocks until we reach the end,
@@ -704,16 +688,16 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
         for (requestNr in 1 until maxRequests) {
             // Request the current history block from the Combo.
             val packet = sendPacketWithResponse(
-                ApplicationLayerIO.createCMDReadHistoryBlockPacket(),
-                ApplicationLayerIO.Command.CMD_READ_HISTORY_BLOCK_RESPONSE
+                ApplicationLayer.createCMDReadHistoryBlockPacket(),
+                ApplicationLayer.Command.CMD_READ_HISTORY_BLOCK_RESPONSE
             )
 
             // Try to parse and validate the packet data.
             val historyBlock = try {
-                ApplicationLayerIO.parseCMDReadHistoryBlockResponsePacket(packet)
-            } catch (e: Exception) {
+                ApplicationLayer.parseCMDReadHistoryBlockResponsePacket(packet)
+            } catch (t: Throwable) {
                 logger(LogLevel.ERROR) {
-                    "Could not parse history block; data may have been corrupted; requesting the block again (exception: $e)"
+                    "Could not parse history block; data may have been corrupted; requesting the block again (throwable: $t)"
                 }
                 continue
             }
@@ -722,8 +706,8 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
             // it processed. The Combo can then move on to the next
             // history block.
             sendPacketWithResponse(
-                ApplicationLayerIO.createCMDConfirmHistoryBlockPacket(),
-                ApplicationLayerIO.Command.CMD_CONFIRM_HISTORY_BLOCK_RESPONSE
+                ApplicationLayer.createCMDConfirmHistoryBlockPacket(),
+                ApplicationLayer.Command.CMD_CONFIRM_HISTORY_BLOCK_RESPONSE
             )
 
             historyDelta.addAll(historyBlock.events)
@@ -738,7 +722,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
         }
 
         if (!reachedEnd)
-            throw ApplicationLayerIO.InfiniteHistoryDataException(
+            throw ApplicationLayer.InfiniteHistoryDataException(
                 "Did not reach an end of the history event list even after $maxRequests request(s)"
             )
 
@@ -750,34 +734,33 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      *
      * This is used for keeping track of the status of an ongoing bolus.
      * If no bolus is ongoing, the return value's bolusType field is
-     * set to [ApplicationLayerIO.CMDBolusDeliveryState.NOT_DELIVERING].
+     * set to [ApplicationLayer.CMDBolusDeliveryState.NOT_DELIVERING].
      *
      * @return The current status.
      * @throws IllegalStateException if the pump is not in the comand
-     *         mode or the pump is not connected.
-     * @throws TransportLayerIO.BackgroundIOException if an exception is thrown
-     *         inside the worker while this call is waiting for a packet or if
-     *         an exception was thrown inside the worker prior to this call.
-     * @throws ApplicationLayerIO.InvalidPayloadException if the size
-     *         of a packet's payload does not match the expected size.
-     * @throws ApplicationLayerIO.DataCorruptionException if some of
-     *         the fields in the status data received from the pump
-     *         contain invalid values.
+     *   mode or the pump is not connected.
+     * @throws TransportLayer.PacketReceiverException if an exception is thrown
+     *   in the packet receiver while this call is waiting for a packet or if
+     *   an exception was thrown in the packet receiver prior to this call.
+     * @throws ApplicationLayer.InvalidPayloadException if the size
+     *   of a packet's payload does not match the expected size.
+     * @throws ApplicationLayer.DataCorruptionException if some of
+     *   the fields in the status data received from the pump
+     *   contain invalid values.
      * @throws ComboIOException if IO with the pump fails.
      */
-    suspend fun getCMDCurrentBolusDeliveryStatus(): ApplicationLayerIO.CMDBolusDeliveryStatus {
-        if (!isConnected())
-            throw IllegalStateException("Cannot get history delta because the pump is not connected")
-
-        if (mutableCurrentModeFlow.value != Mode.COMMAND)
-            throw IllegalStateException("Cannot get history delta while being in ${mutableCurrentModeFlow.value} mode")
+    suspend fun getCMDCurrentBolusDeliveryStatus(): ApplicationLayer.CMDBolusDeliveryStatus {
+        check(isConnected()) { "Cannot get current bolus delivery status because the pump is not connected" }
+        check(_currentModeFlow.value == Mode.COMMAND) {
+            "Cannot get current bolus delivery status while being in ${_currentModeFlow.value} mode"
+        }
 
         val packet = sendPacketWithResponse(
-            ApplicationLayerIO.createCMDGetBolusStatusPacket(),
-            ApplicationLayerIO.Command.CMD_GET_BOLUS_STATUS_RESPONSE
+            ApplicationLayer.createCMDGetBolusStatusPacket(),
+            ApplicationLayer.Command.CMD_GET_BOLUS_STATUS_RESPONSE
         )
 
-        return ApplicationLayerIO.parseCMDGetBolusStatusResponsePacket(packet)
+        return ApplicationLayer.parseCMDGetBolusStatusResponsePacket(packet)
     }
 
     /**
@@ -797,55 +780,49 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      *        in 0.1 IU units, so for example, "57" means 5.7 IU.
      * @return true if the bolus could be delivered, false otherwise.
      * @throws IllegalStateException if the pump is not in the comand
-     *         mode or the pump is not connected.
-     * @throws TransportLayerIO.BackgroundIOException if an exception is thrown
-     *         inside the worker while this call is waiting for a packet or if
-     *         an exception was thrown inside the worker prior to this call.
-     * @throws ApplicationLayerIO.InvalidPayloadException if the size
-     *         of a packet's payload does not match the expected size.
+     *   mode or the pump is not connected.
+     * @throws TransportLayer.PacketReceiverException if an exception is thrown
+     *   in the packet receiver while this call is waiting for a packet or if
+     *   an exception was thrown in the packet receiver prior to this call.
+     * @throws ApplicationLayer.InvalidPayloadException if the size
+     *   of a packet's payload does not match the expected size.
      * @throws ComboIOException if IO with the pump fails.
      */
     suspend fun deliverCMDStandardBolus(bolusAmount: Int): Boolean {
-        if (!isConnected())
-            throw IllegalStateException("Cannot deliver standard bolus because the pump is not connected")
-
-        if (mutableCurrentModeFlow.value != Mode.COMMAND)
-            throw IllegalStateException("Cannot deliver standard bolus while being in ${mutableCurrentModeFlow.value} mode")
+        check(isConnected()) { "Cannot deliver standard bolus because the pump is not connected" }
+        check(_currentModeFlow.value == Mode.COMMAND) { "Cannot deliver standard bolus while being in ${_currentModeFlow.value} mode" }
 
         val packet = sendPacketWithResponse(
-            ApplicationLayerIO.createCMDDeliverBolusPacket(bolusAmount),
-            ApplicationLayerIO.Command.CMD_DELIVER_BOLUS_RESPONSE
+            ApplicationLayer.createCMDDeliverBolusPacket(bolusAmount),
+            ApplicationLayer.Command.CMD_DELIVER_BOLUS_RESPONSE
         )
 
-        return ApplicationLayerIO.parseCMDDeliverBolusResponsePacket(packet)
+        return ApplicationLayer.parseCMDDeliverBolusResponsePacket(packet)
     }
 
     /**
      * Cancels an ongoing bolus.
      *
      * @return true if the bolus was cancelled, false otherwise.
-     *         If no bolus is ongoing, this returns false as well.
+     *   If no bolus is ongoing, this returns false as well.
      * @throws IllegalStateException if the pump is not in the command
-     *         mode or the pump is not connected.
-     * @throws TransportLayerIO.BackgroundIOException if an exception is thrown
-     *         inside the worker while this call is waiting for a packet or if
-     *         an exception was thrown inside the worker prior to this call.
+     *   mode or the pump is not connected.
+     * @throws TransportLayer.PacketReceiverException if an exception is thrown
+     *   in the packet receiver while this call is waiting for a packet or if
+     *   an exception was thrown in the packet receiver prior to this call.
      */
     suspend fun cancelCMDStandardBolus(): Boolean {
         // TODO: Test that this function does the expected thing
         // when no bolus is actually ongoing.
-        if (!isConnected())
-            throw IllegalStateException("Cancel bolus because the pump is not connected")
-
-        if (mutableCurrentModeFlow.value != Mode.COMMAND)
-            throw IllegalStateException("Cannot cancel bolus while being in ${mutableCurrentModeFlow.value} mode")
+        check(isConnected()) { "Cannot cancel bolus because the pump is not connected" }
+        check(_currentModeFlow.value == Mode.COMMAND) { "Cannot cancel bolus while being in ${_currentModeFlow.value} mode" }
 
         val packet = sendPacketWithResponse(
-            ApplicationLayerIO.createCMDCancelBolusPacket(ApplicationLayerIO.CMDBolusType.STANDARD),
-            ApplicationLayerIO.Command.CMD_CANCEL_BOLUS_RESPONSE
+            ApplicationLayer.createCMDCancelBolusPacket(ApplicationLayer.CMDBolusType.STANDARD),
+            ApplicationLayer.Command.CMD_CANCEL_BOLUS_RESPONSE
         )
 
-        return ApplicationLayerIO.parseCMDCancelBolusResponsePacket(packet)
+        return ApplicationLayer.parseCMDCancelBolusResponsePacket(packet)
     }
 
     /**
@@ -865,45 +842,56 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      * @param buttons What button(s) to short-press.
      * @throws IllegalArgumentException If the buttons list is empty.
      * @throws IllegalStateException if a long button press is
-     *         ongoing, the pump is not in the RT mode, or the
-     *         pump is not connected.
-     * @throws TransportLayerIO.BackgroundIOException if an exception is thrown
-     *         inside the worker while this call is waiting for a packet or if
-     *         an exception was thrown inside the worker prior to this call.
+     *   ongoing, the pump is not in the RT mode, or the
+     *   pump is not connected.
+     * @throws TransportLayer.PacketReceiverException if an exception is thrown
+     *   in the packet receiver while this call is waiting for a packet or if
+     *   an exception was thrown in the packet receiver prior to this call.
      */
-    suspend fun sendShortRTButtonPress(buttons: List<Button>) {
-        if (!isConnected())
-            throw IllegalStateException("Cannot send short RT button press because the pump is not connected")
-
-        if (currentLongRTPressJob != null)
-            throw IllegalStateException("Cannot send short RT button press while a long RT button press is ongoing")
-
-        if (buttons.isEmpty())
-            throw IllegalArgumentException("Cannot send short RT button press since the specified buttons list is empty")
-
-        if (mutableCurrentModeFlow.value != Mode.REMOTE_TERMINAL)
-            throw IllegalStateException("Cannot send short RT button press while being in ${mutableCurrentModeFlow.value} mode")
+    suspend fun sendShortRTButtonPress(buttons: List<ApplicationLayer.RTButton>) {
+        require(buttons.isNotEmpty()) { "Cannot send short RT button press since the specified buttons list is empty" }
+        check(isConnected()) { "Cannot send short RT button press because the pump is not connected" }
+        check(_currentModeFlow.value == Mode.REMOTE_TERMINAL) {
+            "Cannot send short RT button press while being in ${_currentModeFlow.value} mode"
+        }
+        check(currentLongRTPressJob == null) { "Cannot send short RT button press while a long RT button press is ongoing" }
 
         val buttonCodes = getCombinedButtonCodes(buttons)
+        var delayBeforeNoButton = false
 
         try {
-            // Run this block in the single-threaded dispatcher to make
-            // sure the code in processIncomingPacket() does not signal
-            // the arrival of the RT_BUTTON_CONFIRMATION before we wait
-            // for it here via the receive() call.
-            applicationLayerIO.runInSingleThreadedDispatcher {
-                sendPacketNoResponse(ApplicationLayerIO.createRTButtonStatusPacket(buttonCodes, true))
+            withContext(transportLayerIO.sequencedDispatcher()) {
+                sendPacketWithoutResponse(ApplicationLayer.createRTButtonStatusPacket(buttonCodes, true))
+                // Wait by "receiving" a value. We aren't actually interested
+                // in that value, just in receive() suspending this coroutine
+                // until the RT button was confirmed by the Combo.
                 rtButtonConfirmationBarrier.receive()
             }
+        } catch (e: CancellationException) {
+            delayBeforeNoButton = true
+            throw e
+        } catch (t: Throwable) {
+            delayBeforeNoButton = true
+            logger(LogLevel.ERROR) { "Error thrown during short RT button press: ${t.stackTraceToString()}" }
+            throw t
         } finally {
+            // Wait 200 milliseconds before sending NO_BUTTON if we reached this
+            // location due to an exception. That's because in that case we cannot
+            // know if the button confirmation barrier' receive() call was
+            // cancelled or not, and we shouldn't send button status packets
+            // to the Combo too quickly.
+            if (delayBeforeNoButton)
+                delay(TransportLayer.PACKET_SEND_INTERVAL_IN_MS)
+
             // Make sure we always attempt to send the NO_BUTTON
             // code to finish the short button press, even if
             // an exception is thrown.
             try {
-                sendPacketNoResponse(
-                    ApplicationLayerIO.createRTButtonStatusPacket(ApplicationLayerIO.RTButtonCode.NO_BUTTON.id, true)
+                sendPacketWithoutResponse(
+                    ApplicationLayer.createRTButtonStatusPacket(ApplicationLayer.RTButton.NO_BUTTON.id, true)
                 )
-            } catch (ignore: Exception) {
+            } catch (t: Throwable) {
+                logger(LogLevel.DEBUG) { "Swallowing error that was thrown while sending NO_BUTTON; exception: $t" }
             }
         }
     }
@@ -914,7 +902,7 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      * This overload is for convenience in case exactly one button
      * is to be pressed.
      */
-    suspend fun sendShortRTButtonPress(button: Button) =
+    suspend fun sendShortRTButtonPress(button: ApplicationLayer.RTButton) =
         sendShortRTButtonPress(listOf(button))
 
     /**
@@ -948,45 +936,44 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      * before deciding whether to return true or false, it becomes
      * possible to stop the bolus increment at precisely the correct
      * moment (= when the target amount is reached). If however the
-     * confirmation commands are set _too_ quickly, the user would see
-     * that the bolus amount is incremented even after "releasing" the
-     * button.
+     * confirmation commands were sent _too_ quickly, the user would
+     * see that the bolus amount is incremented even after "releasing"
+     * the button.
      *
      * @param buttons What button(s) to long-press.
-     * @param keepGoing Predicate for deciding whether or not to
-     *        continue the internal loop. If this is set to null,
-     *        the loop behaves as if this returned true all the time.
+     * @param keepGoing Predicate for deciding whether to continue
+     *        the internal loop. If this is set to null, the loop
+     *        behaves as if this returned true all the time.
      * @throws IllegalArgumentException If the buttons list is empty.
      * @throws IllegalStateException if the pump is not in the RT mode
-     *         or the pump is not connected.
-     * @throws TransportLayerIO.BackgroundIOException if an exception is thrown
-     *         inside the worker while this call is waiting for a packet or if
-     *         an exception was thrown inside the worker prior to this call.
+     *   or the pump is not connected.
+     * @throws TransportLayer.PacketReceiverException if an exception is thrown
+     *   in the packet receiver while this call is waiting for a packet or if
+     *   an exception was thrown in the packet receiver prior to this call.
      */
-    suspend fun startLongRTButtonPress(buttons: List<Button>, keepGoing: (suspend () -> Boolean)? = null) {
-        if (!isConnected())
-            throw IllegalStateException("Cannot send long RT button press because the pump is not connected")
+    suspend fun startLongRTButtonPress(buttons: List<ApplicationLayer.RTButton>, keepGoing: (suspend () -> Boolean)? = null) {
+        check(isConnected()) {
+            "Cannot send long RT button press because the pump is not connected"
+        }
 
-        if (buttons.isEmpty())
-            throw IllegalArgumentException("Cannot send long RT button press since the specified buttons list is empty")
+        require(buttons.isNotEmpty()) {
+            "Cannot send long RT button press since the specified buttons list is empty"
+        }
 
         if (currentLongRTPressJob != null) {
-            logger(LogLevel.DEBUG) {
-                "Long RT button press job already running, and button press state is PRESSED; ignoring redundant call"
-            }
+            logger(LogLevel.DEBUG) { "Long RT button press job already running; ignoring redundant call" }
             return
         }
 
-        if (mutableCurrentModeFlow.value != Mode.REMOTE_TERMINAL)
-            throw IllegalStateException("Cannot send long RT button press while being in ${mutableCurrentModeFlow.value} mode")
+        check(_currentModeFlow.value == Mode.REMOTE_TERMINAL) {
+            "Cannot send long RT button press while being in ${_currentModeFlow.value} mode"
+        }
 
         try {
-            sendLongRTButtonPress(buttons, keepGoing, pressing = true)
-        } catch (e: Exception) {
-            // In case of an exception, we abort by stopping
-            // the long RT button press attempt, then rethrow.
+            issueLongRTButtonPressUpdate(buttons, keepGoing, pressing = true)
+        } catch (t: Throwable) {
             stopLongRTButtonPress()
-            throw e
+            throw t
         }
     }
 
@@ -996,25 +983,11 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      * This overload is for convenience in case exactly one button
      * is to be pressed.
      */
-    suspend fun startLongRTButtonPress(button: Button, keepGoing: (suspend () -> Boolean)? = null) =
+    suspend fun startLongRTButtonPress(button: ApplicationLayer.RTButton, keepGoing: (suspend () -> Boolean)? = null) =
         startLongRTButtonPress(listOf(button), keepGoing)
 
-    /**
-     * Stops an ongoing RT button press, imitating buttons being released.
-     *
-     * This is the counterpart to [startLongRTButtonPress]. It stops
-     * long button presses that were started by that function.
-     *
-     * If no long button press is ongoing, this function does nothing.
-     *
-     * @throws IllegalStateException if the pump is not in the RT mode
-     *         or the worker has failed (see [connect]).
-     * @throws Exception Exceptions that were thrown in the keepGoing callback
-     *         that was passed to [startLongRTButtonPress].
-     */
     suspend fun stopLongRTButtonPress() {
-        if (!isConnected())
-            throw IllegalStateException("Cannot stop long RT button press because the pump is not connected")
+        check(isConnected()) { "Cannot stop long RT button press because the pump is not connected" }
 
         if (currentLongRTPressJob == null) {
             logger(LogLevel.DEBUG) {
@@ -1025,14 +998,9 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
 
         // If a long RT button press job is running, we must
         // be in the RT mode, otherwise something is wrong.
-        require(mutableCurrentModeFlow.value == Mode.REMOTE_TERMINAL)
+        check(_currentModeFlow.value == Mode.REMOTE_TERMINAL)
 
-        // We use the Button.CHECK button code here, but it
-        // actually does not matter what code we use, since
-        // the "pressing" argument is set to false, in which
-        // case the function will always transmit the NO_BUTTON
-        // RT button code to the Combo.
-        sendLongRTButtonPress(listOf(Button.CHECK), keepGoing = null, pressing = false)
+        issueLongRTButtonPressUpdate(listOf(ApplicationLayer.RTButton.NO_BUTTON), keepGoing = null, pressing = false)
     }
 
     /**
@@ -1046,14 +1014,11 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      * and just exits immediately.
      *
      * @throws Exception Exceptions that were thrown in the keepGoing callback
-     *         that was passed to [startLongRTButtonPress].
+     *   that was passed to [startLongRTButtonPress].
      */
     suspend fun waitForLongRTButtonPressToFinish() =
-        try {
-            currentLongRTPressJob?.await()
-        } finally {
-            currentLongRTPressJob = null
-        }
+        // currentLongRTPressJob is set to null automatically when the job finishes
+        currentLongRTPressJob?.await()
 
     /**
      * Switches the Combo to a different mode.
@@ -1063,31 +1028,33 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      * If an exception occurs, either disconnect, or try to repeat the mode switch.
      * This is important to make sure the pump is in a known mode.
      *
-     * The runKeepAliveLoop argument functions just like the one in [connect].
+     * The runHeartbeat argument functions just like the one in [connectAsync].
+     * It is necessary because mode switching stops any currently ongoing heartbeat.
      *
      * If the mode specified by newMode is the same as the current mode,
      * this function does nothing.
      *
      * @param newMode Mode to switch to.
-     * @param runKeepAliveLoop Whether or not to run a loop in the worker
-     *        that repeatedly sends out RT_KEEP_ALIVE or CMD_PING packets.
+     * @param runHeartbeat Whether or not to run the "heartbeat".
      * @throws IllegalStateException if the pump is not connected.
-     * @throws TransportLayerIO.BackgroundIOException if an exception is thrown
-     *         inside the worker while this call is waiting for a packet or if
-     *         an exception was thrown inside the worker prior to this call.
+     * @throws TransportLayer.PacketReceiverException if an exception is thrown
+     *   inside the packet receiver while this call is waiting for a packet
+     *   or if an exception was thrown inside the receiver prior to this call.
      * @throws ComboIOException if IO with the pump fails.
      */
-    suspend fun switchMode(newMode: Mode, runKeepAliveLoop: Boolean = true) {
-        if (!isConnected())
-            throw IllegalStateException("Cannot switch mode because the pump is not connected")
+    suspend fun switchMode(newMode: Mode, runHeartbeat: Boolean = true) = withContext(NonCancellable) {
+        // This function is in a NonCancellable context to avoid undefined behavior
+        // if cancellation occurs during mode change.
 
-        if (mutableCurrentModeFlow.value == newMode)
-            return
+        check(isConnected()) { "Cannot switch mode because the pump is not connected" }
 
-        logger(LogLevel.DEBUG) { "Switching mode from ${mutableCurrentModeFlow.value} to $newMode" }
+        if (_currentModeFlow.value == newMode)
+            return@withContext
 
-        stopCMDPingBackgroundLoop()
-        stopRTKeepAliveBackgroundLoop()
+        logger(LogLevel.DEBUG) { "Switching mode from ${_currentModeFlow.value} to $newMode" }
+
+        stopCMDPingHeartbeat()
+        stopRTKeepAliveHeartbeat()
 
         // Get rid of any existing frame in the replay cache. The displayFrameFlow
         // contains the last frame that was received in the remote terminal mode
@@ -1098,42 +1065,41 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
         // what the flow thinks the current screen is and what the current screen
         // actually is.
         @Suppress("EXPERIMENTAL_API_USAGE")
-        mutableDisplayFrameFlow.resetReplayCache()
+        _displayFrameFlow.resetReplayCache()
 
         // Send the command to switch the mode.
 
-        if (mutableCurrentModeFlow.value != null) {
-            val modeToDeactivate = mutableCurrentModeFlow.value!!
+        _currentModeFlow.value?.let { modeToDeactivate ->
             logger(LogLevel.DEBUG) { "Deactivating current service" }
             sendPacketWithResponse(
-                ApplicationLayerIO.createCTRLDeactivateServicePacket(
+                ApplicationLayer.createCTRLDeactivateServicePacket(
                     when (modeToDeactivate) {
-                        Mode.REMOTE_TERMINAL -> ApplicationLayerIO.ServiceID.RT_MODE
-                        Mode.COMMAND -> ApplicationLayerIO.ServiceID.COMMAND_MODE
+                        Mode.REMOTE_TERMINAL -> ApplicationLayer.ServiceID.RT_MODE
+                        Mode.COMMAND -> ApplicationLayer.ServiceID.COMMAND_MODE
                     }
                 ),
-                ApplicationLayerIO.Command.CTRL_DEACTIVATE_SERVICE_RESPONSE
+                ApplicationLayer.Command.CTRL_DEACTIVATE_SERVICE_RESPONSE
             )
         }
 
         logger(LogLevel.DEBUG) { "Activating new service" }
         sendPacketWithResponse(
-            ApplicationLayerIO.createCTRLActivateServicePacket(
+            ApplicationLayer.createCTRLActivateServicePacket(
                 when (newMode) {
-                    Mode.REMOTE_TERMINAL -> ApplicationLayerIO.ServiceID.RT_MODE
-                    Mode.COMMAND -> ApplicationLayerIO.ServiceID.COMMAND_MODE
+                    Mode.REMOTE_TERMINAL -> ApplicationLayer.ServiceID.RT_MODE
+                    Mode.COMMAND -> ApplicationLayer.ServiceID.COMMAND_MODE
                 }
             ),
-            ApplicationLayerIO.Command.CTRL_ACTIVATE_SERVICE_RESPONSE
+            ApplicationLayer.Command.CTRL_ACTIVATE_SERVICE_RESPONSE
         )
 
-        mutableCurrentModeFlow.value = newMode
+        _currentModeFlow.value = newMode
 
-        if (runKeepAliveLoop) {
-            logger(LogLevel.DEBUG) { "(Re)starting keep-alive loop" }
+        if (runHeartbeat) {
+            logger(LogLevel.DEBUG) { "Resetting heartbeat" }
             when (newMode) {
-                Mode.COMMAND -> startCMDPingBackgroundLoop()
-                Mode.REMOTE_TERMINAL -> startRTKeepAliveBackgroundLoop()
+                Mode.COMMAND -> startCMDPingHeartbeat()
+                Mode.REMOTE_TERMINAL -> startRTKeepAliveHeartbeat()
             }
         }
     }
@@ -1142,74 +1108,243 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
      *** PRIVATE FUNCTIONS AND CLASSES ***
      *************************************/
 
-    private fun getCombinedButtonCodes(buttons: List<Button>) =
-        buttons.fold(0) { codes, button -> codes or toInternalButtonCode(button).id }
+    private fun newRtButtonConfirmationBarrier() =
+        Channel<Boolean>(capacity = Channel.CONFLATED)
 
-    private fun toString(buttons: List<Button>) = buttons.joinToString(" ") { it.str }
+    private fun getCombinedButtonCodes(buttons: List<ApplicationLayer.RTButton>) =
+        buttons.fold(0) { codes, button -> codes or button.id }
 
-    private fun toInternalButtonCode(button: Button) =
-        when (button) {
-            Button.UP -> ApplicationLayerIO.RTButtonCode.UP
-            Button.DOWN -> ApplicationLayerIO.RTButtonCode.DOWN
-            Button.MENU -> ApplicationLayerIO.RTButtonCode.MENU
-            Button.CHECK -> ApplicationLayerIO.RTButtonCode.CHECK
-        }
+    private fun toString(buttons: List<ApplicationLayer.RTButton>) = buttons.joinToString(" ") { it.str }
 
-    // Proxy functions to reset the RT keep-alive timeout
-    // if the application layer packet contains an RT command.
-    // This reset is only done if the RT keep-alive background
-    // loop is running. If it isn't, then these functions
-    // behave exactly as the ApplicationLayerIO ones
-
-    private suspend fun sendPacketNoResponse(appLayerPacket: ApplicationLayerIO.Packet) {
-        restartKeepAliveIfRequired(appLayerPacket)
-        applicationLayerIO.sendPacketNoResponse(appLayerPacket)
-    }
-
-    private suspend fun sendPacketWithResponse(
-        appLayerPacket: ApplicationLayerIO.Packet,
-        expectedResponseCommand: ApplicationLayerIO.Command? = null
-    ): ApplicationLayerIO.Packet {
-        restartKeepAliveIfRequired(appLayerPacket)
-        return applicationLayerIO.sendPacketWithResponse(appLayerPacket, expectedResponseCommand)
-    }
-
-    // Overloads provided for convenience (since we
-    // also provide sendPacket* proxy functions above
-    // for application layer packets).
-
-    private suspend fun sendPacketNoResponse(tpLayerPacketInfo: TransportLayerIO.OutgoingPacketInfo) =
-        applicationLayerIO.sendPacketNoResponse(tpLayerPacketInfo)
+    // The sendPacketWithResponse and sendPacketWithoutResponse calls
+    // are surrounded by a sendPacketMutex lock to prevent these functions
+    // from being called concurrently. This is essential, since the Combo
+    // cannot handle such concurrent calls. In particular, if a command
+    // that is sent to the Combo will cause the pump to respond with
+    // another command, we must make sure that we receive the response
+    // _before_ sending another command to the pump. (The main potential
+    // cause of concurrent send calls are the heartbeat coroutines.)
+    //
+    // Note that these functions use a coroutine mutex, not a "classical",
+    // thread level mutex. See kotlinx.coroutines.sync.Mutex for details.
+    //
+    // Furthermore, these use the NonCancellable context to prevent the
+    // prompt cancellation guarantee from cancelling any send attempts.
 
     private suspend fun sendPacketWithResponse(
-        tpLayerPacketInfo: TransportLayerIO.OutgoingPacketInfo,
-        expectedResponseCommand: TransportLayerIO.Command? = null
-    ): TransportLayerIO.Packet =
-        applicationLayerIO.sendPacketWithResponse(tpLayerPacketInfo, expectedResponseCommand)
-
-    // Restarts the keep-alive background loop if the
-    // given application layer packet contains an
-    // RT command and if the RT keep-alive loop is
-    // already running.
-    // TODO: Do the same for CMD commands and the
-    // CMD ping loop (if it functions the same way).
-    private suspend fun restartKeepAliveIfRequired(appLayerPacket: ApplicationLayerIO.Packet) {
-        if (isRTKeepAliveBackgroundLoopRunning() &&
-            (appLayerPacket.command.serviceID == ApplicationLayerIO.ServiceID.RT_MODE)) {
-            stopRTKeepAliveBackgroundLoop()
-            startRTKeepAliveBackgroundLoop()
+        tpLayerPacketInfo: TransportLayer.OutgoingPacketInfo,
+        expectedResponseCommand: TransportLayer.Command? = null
+    ): TransportLayer.Packet = sendPacketMutex.withLock {
+        return withContext(NonCancellable) {
+            transportLayerIO.send(tpLayerPacketInfo)
+            transportLayerIO.receive(expectedResponseCommand)
         }
     }
 
-    private fun startCMDPingBackgroundLoop() {
-        if (isCMDPingBackgroundLoopRunning())
+    private suspend fun sendPacketWithResponse(
+        appLayerPacketToSend: ApplicationLayer.Packet,
+        expectedResponseCommand: ApplicationLayer.Command? = null
+    ): ApplicationLayer.Packet = sendPacketMutex.withLock {
+        return withContext(NonCancellable) {
+            restartHeartbeat()
+
+            sendAppLayerPacket(appLayerPacketToSend)
+
+            logger(LogLevel.VERBOSE) {
+                if (expectedResponseCommand == null)
+                    "Waiting for application layer packet (will arrive in a transport layer DATA packet)"
+                else
+                    "Waiting for application layer ${expectedResponseCommand.name} " +
+                    "packet (will arrive in a transport layer DATA packet)"
+            }
+
+            val receivedAppLayerPacket = transportLayerIO.receive(TransportLayer.Command.DATA).toAppLayerPacket()
+
+            if ((expectedResponseCommand != null) && (receivedAppLayerPacket.command != expectedResponseCommand))
+                throw ApplicationLayer.IncorrectPacketException(receivedAppLayerPacket, expectedResponseCommand)
+
+            receivedAppLayerPacket
+        }
+    }
+
+    private suspend fun sendPacketWithoutResponse(
+        tpLayerPacketInfo: TransportLayer.OutgoingPacketInfo
+    ) = sendPacketMutex.withLock {
+        withContext(NonCancellable) {
+            transportLayerIO.send(tpLayerPacketInfo)
+        }
+    }
+
+    private suspend fun sendPacketWithoutResponse(
+        appLayerPacketToSend: ApplicationLayer.Packet
+    ) = sendPacketMutex.withLock {
+        withContext(NonCancellable) {
+            restartHeartbeat()
+            sendAppLayerPacket(appLayerPacketToSend)
+        }
+    }
+
+    private suspend fun sendAppLayerPacket(appLayerPacket: ApplicationLayer.Packet) {
+        // NOTE: This function does NOT lock a mutex and does NOT use
+        // NonCancellable. Make sure to set these up before calling this.
+
+        logger(LogLevel.VERBOSE) {
+            "Sending application layer packet via transport layer:  $appLayerPacket"
+        }
+
+        val outgoingPacketInfo = appLayerPacket.toTransportLayerPacketInfo()
+
+        if (appLayerPacket.command.serviceID == ApplicationLayer.ServiceID.RT_MODE) {
+            if (outgoingPacketInfo.payload.size < (ApplicationLayer.PAYLOAD_BYTES_OFFSET + 2)) {
+                throw ApplicationLayer.InvalidPayloadException(
+                    appLayerPacket,
+                    "Cannot send application layer RT packet since there's no room in the payload for the RT sequence number"
+                )
+            }
+
+            logger(LogLevel.VERBOSE) { "Writing current RT sequence number $currentRTSequence into packet" }
+
+            // The RT sequence is always stored in the
+            // first 2 bytes  of an RT packet's payload.
+            //
+            // Also, we set the RT sequence in the outgoingPacketInfo,
+            // and not in appLayerPacket's payload, since the latter
+            // is a function argument, and modifying the payload of
+            // an outside value may lead to confusing behavior.
+            // By writing the RT sequence into outgoingPacketInfo
+            // instead, that change stays contained in here.
+            outgoingPacketInfo.payload[ApplicationLayer.PAYLOAD_BYTES_OFFSET + 0] =
+                ((currentRTSequence shr 0) and 0xFF).toByte()
+            outgoingPacketInfo.payload[ApplicationLayer.PAYLOAD_BYTES_OFFSET + 1] =
+                ((currentRTSequence shr 8) and 0xFF).toByte()
+
+            // After using the RT sequence, increment it to
+            // make sure the next RT packet doesn't use the
+            // same RT sequence.
+            currentRTSequence++
+            if (currentRTSequence > 65535)
+                currentRTSequence = 0
+        }
+
+        transportLayerIO.send(outgoingPacketInfo)
+    }
+
+    private fun processReceivedPacket(tpLayerPacket: TransportLayer.Packet) =
+        if (tpLayerPacket.command == TransportLayer.Command.DATA) {
+            when (ApplicationLayer.extractAppLayerPacketCommand(tpLayerPacket)) {
+                ApplicationLayer.Command.CTRL_ACTIVATE_SERVICE_RESPONSE -> {
+                    logger(LogLevel.DEBUG) { "New service was activated; resetting RT sequence number" }
+                    currentRTSequence = 0
+                    TransportLayer.IO.ReceiverBehavior.FORWARD_PACKET
+                }
+
+                ApplicationLayer.Command.RT_DISPLAY -> {
+                    processRTDisplayPayload(
+                        ApplicationLayer.parseRTDisplayPacket(tpLayerPacket.toAppLayerPacket())
+                    )
+                    // Signal the arrival of the button confirmation.
+                    // (Either RT_BUTTON_CONFIRMATION or RT_DISPLAY
+                    // function as confirmations.) Transmit "true"
+                    // to let the receivers know that everything
+                    // is OK and that they don't need to abort.
+                    rtButtonConfirmationBarrier.trySend(true)
+                    TransportLayer.IO.ReceiverBehavior.DROP_PACKET
+                }
+
+                ApplicationLayer.Command.RT_BUTTON_CONFIRMATION -> {
+                    logger(LogLevel.VERBOSE) { "Got RT_BUTTON_CONFIRMATION packet from the Combo" }
+                    // Signal the arrival of the button confirmation.
+                    // (Either RT_BUTTON_CONFIRMATION or RT_DISPLAY
+                    // function as confirmations.) Transmit "true"
+                    // to let the receivers know that everything
+                    // is OK and that they don't need to abort.
+                    rtButtonConfirmationBarrier.trySend(true)
+                    TransportLayer.IO.ReceiverBehavior.DROP_PACKET
+                }
+
+                // We do not care about keep-alive packets from the Combo.
+                ApplicationLayer.Command.RT_KEEP_ALIVE -> {
+                    logger(LogLevel.VERBOSE) { "Got RT_KEEP_ALIVE packet from the Combo; ignoring" }
+                    TransportLayer.IO.ReceiverBehavior.DROP_PACKET
+                }
+
+                // RT_AUDIO, RT_PAUSE, RT_RELEASE, RT_VIBRATION packets
+                // are purely for information. We just log them and
+                // otherwise ignore them.
+
+                ApplicationLayer.Command.RT_AUDIO -> {
+                    logger(LogLevel.VERBOSE) {
+                        val audioType = ApplicationLayer.parseRTAudioPacket(tpLayerPacket.toAppLayerPacket())
+                        "Got RT_AUDIO packet with audio type ${audioType.toHexString(8)}; ignoring"
+                    }
+                    TransportLayer.IO.ReceiverBehavior.DROP_PACKET
+                }
+
+                ApplicationLayer.Command.RT_PAUSE,
+                ApplicationLayer.Command.RT_RELEASE -> {
+                    logger(LogLevel.VERBOSE) {
+                        "Got ${ApplicationLayer.Command} packet with payload " +
+                                "${tpLayerPacket.toAppLayerPacket().payload.toHexString()}; ignoring"
+                    }
+                    TransportLayer.IO.ReceiverBehavior.DROP_PACKET
+                }
+
+                ApplicationLayer.Command.RT_VIBRATION -> {
+                    logger(LogLevel.VERBOSE) {
+                        val vibrationType = ApplicationLayer.parseRTVibrationPacket(
+                            tpLayerPacket.toAppLayerPacket()
+                        )
+                        "Got RT_VIBRATION packet with vibration type ${vibrationType.toHexString(8)}; ignoring"
+                    }
+                    TransportLayer.IO.ReceiverBehavior.DROP_PACKET
+                }
+
+                // This is an information by the pump that something is wrong
+                // with the connection / with the service. This error is
+                // not recoverable. Throw an exception here to let the
+                // packet receiver fail. It will forward the exception to
+                // any ongoing send and receive calls.
+                ApplicationLayer.Command.CTRL_SERVICE_ERROR -> {
+                    val appLayerPacket = tpLayerPacket.toAppLayerPacket()
+                    val ctrlServiceError = ApplicationLayer.parseCTRLServiceErrorPacket(appLayerPacket)
+                    logger(LogLevel.ERROR) { "Got CTRL_SERVICE_ERROR packet from the Combo; throwing exception" }
+                    throw ApplicationLayer.ServiceErrorException(appLayerPacket, ctrlServiceError)
+                }
+
+                else -> TransportLayer.IO.ReceiverBehavior.FORWARD_PACKET
+            }
+        } else
+            TransportLayer.IO.ReceiverBehavior.FORWARD_PACKET
+
+    private fun processRTDisplayPayload(rtDisplayPayload: ApplicationLayer.RTDisplayPayload) {
+        // Feed the payload to the display frame assembler to let it piece together
+        // frames and output them via the callback.
+
+        try {
+            val displayFrame = displayFrameAssembler.processRTDisplayPayload(
+                rtDisplayPayload.index,
+                rtDisplayPayload.row,
+                rtDisplayPayload.rowBytes
+            )
+            if (displayFrame != null)
+                _displayFrameFlow.tryEmit(displayFrame)
+        } catch (t: Throwable) {
+            logger(LogLevel.ERROR) { "Could not process RT_DISPLAY payload: $t" }
+            throw t
+        }
+    }
+
+    private fun isCMDPingHeartbeatRunning() = (cmdPingHeartbeatJob != null)
+
+    private fun startCMDPingHeartbeat() {
+        if (isCMDPingHeartbeatRunning())
             return
 
-        logger(LogLevel.VERBOSE) { "Starting background CMD PING loop" }
+        logger(LogLevel.VERBOSE) { "Starting background CMD ping heartbeat" }
 
-        require(backgroundIOScope != null)
+        require(sequencedDispatcherScope != null)
 
-        cmdPingJob = backgroundIOScope!!.launch {
+        cmdPingHeartbeatJob = sequencedDispatcherScope!!.launch {
             // We have to send a CMD_PING packet to the Combo
             // every second to let the Combo know that we are still
             // there. Otherwise, it will terminate the connection,
@@ -1218,27 +1353,27 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
             while (true) {
                 logger(LogLevel.VERBOSE) { "Transmitting CMD ping packet" }
                 try {
-                    applicationLayerIO.sendPacketWithResponse(
-                        ApplicationLayerIO.createCMDPingPacket(),
-                        ApplicationLayerIO.Command.CMD_PING_RESPONSE
+                    sendPacketWithResponse(
+                        ApplicationLayer.createCMDPingPacket(),
+                        ApplicationLayer.Command.CMD_PING_RESPONSE
                     )
                 } catch (e: CancellationException) {
-                    cmdPingJob = null
+                    cmdPingHeartbeatJob = null
                     throw e
-                } catch (e: TransportLayerIO.BackgroundIOException) {
+                } catch (e: TransportLayer.PacketReceiverException) {
                     logger(LogLevel.ERROR) {
-                        "Could not send CMD ping packet because background IO worker failed - stopping CMD ping loop"
+                        "Could not send CMD ping packet because packet receiver failed - stopping CMD ping heartbeat"
                     }
-                    cmdPingJob = null
+                    cmdPingHeartbeatJob = null
                     break
-                } catch (e: Exception) {
+                } catch (t: Throwable) {
                     logger(LogLevel.ERROR) {
-                        "Exception caught when attempting to transmit CMD ping packet - stopping CMD ping loop"
+                        "Error caught when attempting to transmit CMD ping packet - stopping CMD ping heartbeat"
                     }
                     logger(LogLevel.ERROR) {
-                        "Exception: ${e.stackTraceToString()}"
+                        "Error: ${t.stackTraceToString()}"
                     }
-                    cmdPingJob = null
+                    cmdPingHeartbeatJob = null
                     break
                 }
                 delay(1000)
@@ -1246,30 +1381,29 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
         }
     }
 
-    private suspend fun stopCMDPingBackgroundLoop() {
-        if (!isCMDPingBackgroundLoopRunning())
+    private suspend fun stopCMDPingHeartbeat() {
+        if (!isCMDPingHeartbeatRunning())
             return
 
-        logger(LogLevel.VERBOSE) { "Stopping background CMD ping loop" }
+        logger(LogLevel.VERBOSE) { "Stopping background CMD ping heartbeat" }
 
-        cmdPingJob!!.cancel()
-        cmdPingJob!!.join()
-        cmdPingJob = null
+        cmdPingHeartbeatJob?.cancelAndJoin()
+        cmdPingHeartbeatJob = null
 
-        logger(LogLevel.VERBOSE) { "Background CMD ping loop stopped" }
+        logger(LogLevel.VERBOSE) { "Background CMD ping heartbeat stopped" }
     }
 
-    private fun isCMDPingBackgroundLoopRunning() = (cmdPingJob != null)
+    private fun isRTKeepAliveHeartbeatRunning() = (rtKeepAliveHeartbeatJob != null)
 
-    private fun startRTKeepAliveBackgroundLoop() {
-        if (isRTKeepAliveBackgroundLoopRunning())
+    private fun startRTKeepAliveHeartbeat() {
+        if (isRTKeepAliveHeartbeatRunning())
             return
 
-        logger(LogLevel.VERBOSE) { "Starting background RT keep-alive loop" }
+        logger(LogLevel.VERBOSE) { "Starting background RT keep-alive heartbeat" }
 
-        require(backgroundIOScope != null)
+        require(sequencedDispatcherScope != null)
 
-        rtKeepAliveJob = backgroundIOScope!!.launch {
+        rtKeepAliveHeartbeatJob = sequencedDispatcherScope!!.launch {
             // In RT mode, if no RT command has been sent to the Combo
             // within about 1-1.5 seconds, the Combo terminates the
             // connection, assuming that the client is gone. As a
@@ -1285,13 +1419,12 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
             // RT_KEEP_ALIVE packet isn't sent until no more RT
             // commands are sent.
             //
-            // Also note that in here, we use applicationLayerIO's
-            // sendPacketNoResponse() function directly, and not
-            // this class' sendPacketNoResponse() version. The reason
-            // for this is that the sendPacketNoResponse() version
-            // in this class internally resets the timeout using that
-            // restartKeepAliveIfRequired(), and doing that here would
-            // make no sense.
+            // Also note that in here, we use sendAppLayerPacket()
+            // directly, and not sendPacketWithoutResponse(). The reason
+            // for this is that the sendPacketWithoutResponse() function
+            // internally resets the timeout using restartHeartbeat(),
+            // and doing that here would cause an infinite loop
+            // (and makes no sense).
             while (true) {
                 // *First* wait, and only *afterwards* send the
                 // RT_KEEP_ALIVE packet. This order is important, since
@@ -1301,224 +1434,245 @@ class PumpIO(private val pumpStateStore: PumpStateStore, private val pumpAddress
                 delay(1000)
                 logger(LogLevel.VERBOSE) { "Transmitting RT keep-alive packet" }
                 try {
-                    applicationLayerIO.sendPacketNoResponse(ApplicationLayerIO.createRTKeepAlivePacket())
+                    sendAppLayerPacket(ApplicationLayer.createRTKeepAlivePacket())
                 } catch (e: CancellationException) {
-                    rtKeepAliveJob = null
+                    rtKeepAliveHeartbeatJob = null
                     throw e
-                } catch (e: TransportLayerIO.BackgroundIOException) {
+                } catch (e: TransportLayer.PacketReceiverException) {
                     logger(LogLevel.ERROR) {
-                        "Could not send RT keep-alive packet because background IO worker failed - stopping RT keep-alive loop"
+                        "Could not send RT keep-alive packet because packet receiver failed - stopping RT keep-alive heartbeat"
                     }
-                    rtKeepAliveJob = null
+                    rtKeepAliveHeartbeatJob = null
                     break
-                } catch (e: Exception) {
+                } catch (t: Throwable) {
                     logger(LogLevel.ERROR) {
-                        "Exception caught when attempting to transmit RT keep-alive packet - stopping RT keep-alive loop"
+                        "Error caught when attempting to transmit RT keep-alive packet - stopping RT keep-alive heartbeat"
                     }
                     logger(LogLevel.ERROR) {
-                        "Exception: ${e.stackTraceToString()}"
+                        "Error: ${t.stackTraceToString()}"
                     }
-                    rtKeepAliveJob = null
+                    rtKeepAliveHeartbeatJob = null
                     break
                 }
             }
         }
     }
 
-    private suspend fun stopRTKeepAliveBackgroundLoop() {
-        if (!isRTKeepAliveBackgroundLoopRunning())
+    private suspend fun stopRTKeepAliveHeartbeat() {
+        if (!isRTKeepAliveHeartbeatRunning())
             return
 
-        logger(LogLevel.VERBOSE) { "Stopping background RT keep-alive loop" }
+        logger(LogLevel.VERBOSE) { "Stopping background RT keep-alive heartbeat" }
 
-        rtKeepAliveJob!!.cancel()
-        rtKeepAliveJob!!.join()
-        rtKeepAliveJob = null
+        rtKeepAliveHeartbeatJob!!.cancelAndJoin()
+        rtKeepAliveHeartbeatJob = null
 
-        logger(LogLevel.VERBOSE) { "Background RT keep-alive loop stopped" }
+        logger(LogLevel.VERBOSE) { "Background RT keep-alive heartbeat stopped" }
     }
 
-    private fun isRTKeepAliveBackgroundLoopRunning() = (rtKeepAliveJob != null)
+    private suspend fun restartHeartbeat() {
+        when (currentModeFlow.value) {
+            Mode.REMOTE_TERMINAL -> {
+                if (isRTKeepAliveHeartbeatRunning()) {
+                    stopRTKeepAliveHeartbeat()
+                    startRTKeepAliveHeartbeat()
+                }
+            }
 
-    private suspend fun sendLongRTButtonPress(buttons: List<Button>, keepGoing: (suspend () -> Boolean)?, pressing: Boolean) {
+            Mode.COMMAND -> {
+                if (isCMDPingHeartbeatRunning()) {
+                    stopCMDPingHeartbeat()
+                    startCMDPingHeartbeat()
+                }
+            }
+        }
+    }
+
+    private suspend fun issueLongRTButtonPressUpdate(
+        buttons: List<ApplicationLayer.RTButton>,
+        keepGoing: (suspend () -> Boolean)?,
+        pressing: Boolean
+    ) {
         if (!pressing) {
             logger(LogLevel.DEBUG) {
                 "Releasing RTs button(s) ${toString(currentLongRTPressedButtons)}"
             }
 
-            // This wakes up the ongoing flow and cancels it.
-            currentLongRTPressInnerFlow.value = false
+            // Set this to false to stop the long RT button press.
+            longRTPressLoopRunning = false
 
             // Wait for job completion by using await(). This will
             // also re-throw any exceptions caught in that coroutine.
-            try {
-                currentLongRTPressJob?.await()
-            } finally {
-                currentLongRTPressJob = null
-            }
+            // In cases where connection to the pump fails, and no
+            // confirmation can be received anymore, this is still
+            // woken up, because in tha case, this channel is closed.
+            // See the transportLayerIO initialization above.
+            currentLongRTPressJob?.await()
 
             return
         }
 
         currentLongRTPressedButtons = buttons
         val buttonCodes = getCombinedButtonCodes(buttons)
+        longRTPressLoopRunning = true
 
-        var endButtonSequence = true
+        var delayBeforeNoButton = false
 
-        // Set this to true to make sure the flow will keep running
-        // once it is started. (If its value is true, it runs. If it
-        // is false, it is cancelled.)
-        currentLongRTPressInnerFlow.value = true
-
-        // Launch the coroutine that will run the flow that keeps
-        // sending the button status commands to the Combo. This
-        // will keep running until the flow is cancelled. We do
-        // _not_ cancel the currentLongRTPressJob coroutine directly.
-        // See the code below for the reason why.
-        currentLongRTPressJob = backgroundIOScope!!.async {
+        currentLongRTPressJob = sequencedDispatcherScope!!.async {
             try {
-                applicationLayerIO.runInSingleThreadedDispatcher {
-                    // Run the inner long press button loop in the single
-                    // threaded dispatcher. We run it there because we
-                    // must be sure that the code in processIncomingPacket()
-                    // does not signal the arrival of RT_BUTTON_CONFIRMATION
-                    // before we wait for it here via the receive() call.
-                    //
-                    // Also, we run this loop inside an "inner flow" to
-                    // ensure that the final NO_BUTTON button status is
-                    // always sent (see below). The flow works this way:
-                    //
-                    // Initially, its value is true. The transformWhile
-                    // block passes that value through with the emit()
-                    // call, and also returns true to inform the
-                    // transformWhile function to let the flow continue.
-                    // In the collectLatest block, the value is received.
-                    // Since the value is "true", the while-loop inside
-                    // the block starts, and runs indefinitely.
-                    //
-                    // When the flow's value is set to false, the
-                    // transformWhile passes through that value, but
-                    // returns false, which instructs transformWhile to
-                    // abort the flow once its current iteration is done.
-                    // The value reaches the collectLatest block. The
-                    // behavior of collectLatest is such that if a new
-                    // value arrives, it cancels any previously started
-                    // block. In this case, it means it cancels the block
-                    // that has been running the infinite while-loop and
-                    // then runs the new block. But this new block gets
-                    // the value "false", which means that the while-loop
-                    // is _not_ run (the block exits immediately instead).
-                    //
-                    // That way, it becomes possible to control how long
-                    // that loop keeps running without having to resort
-                    // to trickery with internal coroutines and Job
-                    // instances, or with NonCancellable withContext calls.
+                // First time, we send the button status with
+                // the CHANGED status and with the codes for
+                // the pressed buttons.
+                var buttonStatusChanged = true
 
-                    // TODO: As of Kotlin 1.4.31 and kotlinx-coroutines-core
-                    // 1.4.3, transformWhile is still marked as experimental.
-                    // Revisit this in the future.
-                    @Suppress("EXPERIMENTAL_API_USAGE")
-                    currentLongRTPressInnerFlow.transformWhile { emit(it); it }.collectLatest {
-                        // First time, we send the button status with
-                        // the CHANGED status and with the codes for
-                        // the pressed buttons.
-                        var buttonStatusChanged = true
-
-                        while (it) {
-                            logger(LogLevel.DEBUG) {
-                                "Sending long RT button press; button(s) = ${toString(buttons)} status changed = $buttonStatusChanged"
+                while (longRTPressLoopRunning) {
+                    // If there is a keepGoing predicate, call it _before_ sending
+                    // a button status packet in case keepGoing() wishes to abort
+                    // this loop already in its first iteration (for example, because
+                    // a quantity that is shown on-screen is already correct).
+                    if (keepGoing != null) {
+                        try {
+                            if (!keepGoing()) {
+                                logger(LogLevel.DEBUG) { "Aborting long RT button press flow" }
+                                break
                             }
-
-                            sendPacketNoResponse(
-                                ApplicationLayerIO.createRTButtonStatusPacket(buttonCodes, buttonStatusChanged)
-                            )
-
-                            // Wait for the Combo to send us a button
-                            // confirmation. We cannot send more button
-                            // status commands until then.
-                            logger(LogLevel.DEBUG) { "Waiting for button confirmation" }
-                            rtButtonConfirmationBarrier.receive()
-                            logger(LogLevel.DEBUG) { "Got button confirmation" }
-
-                            if (keepGoing != null) {
-                                var keepButtonPressGoing = false
-
-                                try {
-                                    keepButtonPressGoing = keepGoing()
-                                } catch (e: CancellationException) {
-                                    throw e
-                                } catch (e: Exception) {
-                                    logger(LogLevel.DEBUG) { "keepGoing callback threw exception: $e" }
-                                    throw e
-                                } finally {
-                                    if (!keepButtonPressGoing) {
-                                        logger(LogLevel.DEBUG) { "Aborting long RT button press flow" }
-                                        currentLongRTPressInnerFlow.value = false
-                                        currentLongRTPressJob = null
-                                    }
-                                }
-
-                                if (!keepButtonPressGoing)
-                                    break
-                            }
-
-                            // The next time we send the button status, we must
-                            // send NOT_CHANGED to the Combo.
-                            buttonStatusChanged = false
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (t: Throwable) {
+                            logger(LogLevel.DEBUG) { "keepGoing callback threw error: $t" }
+                            throw t
                         }
                     }
+
+                    // Dummy tryReceive() call to clear out the barrier in case it isn't empty.
+                    rtButtonConfirmationBarrier.tryReceive()
+
+                    logger(LogLevel.DEBUG) {
+                        "Sending long RT button press; button(s) = ${toString(buttons)} status changed = $buttonStatusChanged"
+                    }
+
+                    // Send the button status. This triggers an update on the Combo's
+                    // remote terminal screen. For example, when pressing UP to
+                    // increment a quantity, said quantity is incremented only
+                    // after the Combo receives this status.
+                    sendPacketWithoutResponse(
+                        ApplicationLayer.createRTButtonStatusPacket(buttonCodes, buttonStatusChanged)
+                    )
+
+                    // Wait for the Combo to send us a button
+                    // confirmation. We cannot send more button
+                    // status commands until then.
+                    logger(LogLevel.DEBUG) { "Waiting for button confirmation" }
+                    val canContinue = rtButtonConfirmationBarrier.receive()
+                    logger(LogLevel.DEBUG) { "Got button confirmation; canContinue = $canContinue" }
+
+                    if (!canContinue)
+                        break
+
+                    // The next time we send the button status, we must
+                    // send NOT_CHANGED to the Combo.
+                    buttonStatusChanged = false
                 }
             } catch (e: CancellationException) {
+                delayBeforeNoButton = true
                 throw e
-            } catch (e: Exception) {
-                logger(LogLevel.ERROR) { "Caught exception during long RT press loop: $e" }
-                endButtonSequence = false
-                throw e
+            } catch (t: Throwable) {
+                delayBeforeNoButton = true
+                logger(LogLevel.ERROR) { "Error thrown during long RT button press: ${t.stackTraceToString()}" }
+                throw t
             } finally {
-                // We must make sure that the long press sequence
-                // is ended with a NO_BUTTON code. This is why the
-                // actual long press button loop exits inside the
-                // inner flow. By cancelling that inner flow, and
-                // not this entire coroutine, it becomes possible
-                // to still send this NO_BUTTON button status.
-                // If this coroutine were to be cancelled, the
-                // resulting CancellationException would cause this
-                // block to be reached, but sendPacketNoResponse()
-                // would not actually do anything. That's because
-                // internally,it uses a withContext call, and due
-                // to the "prompt cancellation guarantee" in Kotlin
-                // coroutines, a withContext call that is executed
-                // in a cancelled coroutine will cancel itself
-                // immediately and not run its block. By cancelling
-                // the inner flow instead, this is circumvented,
-                // and the NO_BUTTON status is sent successfully.
-                // The endButtonSequence check exists to avoid an
-                // attempt to send NO_BUTTON if an exception other
-                // than CancellationException occurred.
-                if (endButtonSequence) {
-                    logger(LogLevel.DEBUG) { "Ending long RT button press by sending NO_BUTTON" }
-                    sendPacketNoResponse(
-                        ApplicationLayerIO.createRTButtonStatusPacket(
-                            ApplicationLayerIO.RTButtonCode.NO_BUTTON.id,
-                            buttonStatusChanged = true
+                logger(LogLevel.DEBUG) { "Ending long RT button press by sending NO_BUTTON" }
+                try {
+                    // Call sendPacketWithoutResponse() and delay() in a NonCancellable
+                    // context to circumvent the prompt cancellation guarantee (it is
+                    // undesirable here because we need to let the Combo know that we
+                    // want to stop the long RT button press).
+                    withContext(NonCancellable) {
+                        // Wait 200 milliseconds before sending NO_BUTTON if we reached this
+                        // location due to an exception. That's because in that case we cannot
+                        // know if the button confirmation barrier' receive() call was
+                        // cancelled or not, and we shouldn't send button status packets
+                        // to the Combo too quickly.
+                        if (delayBeforeNoButton)
+                            delay(200L)
+
+                        sendPacketWithoutResponse(
+                            ApplicationLayer.createRTButtonStatusPacket(
+                                ApplicationLayer.RTButton.NO_BUTTON.id,
+                                buttonStatusChanged = true
+                            )
                         )
-                    )
+                    }
+                } catch (t: Throwable) {
+                    logger(LogLevel.DEBUG) { "Swallowing error that was thrown while sending NO_BUTTON; exception: $t" }
                 }
+
+                currentLongRTPressJob = null
             }
         }
     }
 
-    private fun processRTDisplayPayload(rtDisplayPayload: ApplicationLayerIO.RTDisplayPayload) {
-        // Feed the payload to the display frame assembler to let it piece together
-        // frames and output them via the callback.
+    private data class KeyResponseInfo(val pumpClientCipher: Cipher, val clientPumpCipher: Cipher, val keyResponseAddress: Byte)
 
-        try {
-            val displayFrame = displayFrameAssembler.processRTDisplayPayload(rtDisplayPayload)
-            if (displayFrame != null)
-                mutableDisplayFrameFlow.tryEmit(displayFrame)
-        } catch (e: Exception) {
-            logger(LogLevel.ERROR) { "Could not process RT_DISPLAY payload: $e" }
-            throw e
+    private fun processKeyResponsePacket(packet: TransportLayer.Packet, weakCipher: Cipher): KeyResponseInfo {
+        if (packet.payload.size != (CIPHER_KEY_SIZE * 2))
+            throw TransportLayer.InvalidPayloadException(packet, "Expected ${CIPHER_KEY_SIZE * 2} bytes, got ${packet.payload.size}")
+
+        val encryptedPCKey = ByteArray(CIPHER_KEY_SIZE)
+        val encryptedCPKey = ByteArray(CIPHER_KEY_SIZE)
+
+        for (i in 0 until CIPHER_KEY_SIZE) {
+            encryptedPCKey[i] = packet.payload[i + 0]
+            encryptedCPKey[i] = packet.payload[i + CIPHER_KEY_SIZE]
         }
+
+        val pumpClientCipher = Cipher(weakCipher.decrypt(encryptedPCKey))
+        val clientPumpCipher = Cipher(weakCipher.decrypt(encryptedCPKey))
+
+        // Note: Source and destination addresses are reversed,
+        // since they are set from the perspective of the pump.
+        val addressInt = packet.address.toPosInt()
+        val sourceAddress = addressInt and 0xF
+        val destinationAddress = (addressInt shr 4) and 0xF
+        val keyResponseAddress = ((sourceAddress shl 4) or destinationAddress).toByte()
+
+        // We begin setting up the invariant pump data here. However,
+        // the pump state store cannot be initialized yet, because
+        // we do not yet know the pump ID. This initialization continues
+        // in processIDResponsePacket(). We fill cachedInvariantPumpData
+        // with the data we currently know. Later, it is filled again,
+        // and the remaining unknown data is also added.
+
+        return KeyResponseInfo(
+            pumpClientCipher = pumpClientCipher,
+            clientPumpCipher = clientPumpCipher,
+            keyResponseAddress = keyResponseAddress
+        )
+    }
+
+    private fun processIDResponsePacket(packet: TransportLayer.Packet): String {
+        if (packet.payload.size != 17)
+            throw TransportLayer.InvalidPayloadException(packet, "Expected 17 bytes, got ${packet.payload.size}")
+
+        val serverID = ((packet.payload[0].toPosLong() shl 0) or
+                (packet.payload[1].toPosLong() shl 8) or
+                (packet.payload[2].toPosLong() shl 16) or
+                (packet.payload[3].toPosLong() shl 24))
+
+        // The pump ID string can be up to 13 bytes long. If it
+        // is shorter, the unused bytes are filled with nullbytes.
+        val pumpIDStrBuilder = StringBuilder()
+        for (i in 0 until 13) {
+            val pumpIDByte = packet.payload[4 + i]
+            if (pumpIDByte == 0.toByte()) break
+            else pumpIDStrBuilder.append(pumpIDByte.toInt().toChar())
+        }
+        val pumpID = pumpIDStrBuilder.toString()
+
+        logger(LogLevel.DEBUG) {
+            "Received IDs: server ID: $serverID pump ID: $pumpID"
+        }
+
+        return pumpID
     }
 }

@@ -2,8 +2,6 @@ package info.nightscout.comboctl.parser
 
 import info.nightscout.comboctl.base.DateTime
 import info.nightscout.comboctl.base.DisplayFrame
-import info.nightscout.comboctl.base.Quickinfo
-import info.nightscout.comboctl.base.ReservoirState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull

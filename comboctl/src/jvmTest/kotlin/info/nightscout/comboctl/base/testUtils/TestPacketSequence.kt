@@ -1,7 +1,7 @@
 package info.nightscout.comboctl.base.testUtils
 
-import info.nightscout.comboctl.base.ApplicationLayerIO
-import info.nightscout.comboctl.base.TransportLayerIO
+import info.nightscout.comboctl.base.ApplicationLayer
+import info.nightscout.comboctl.base.TransportLayer
 import info.nightscout.comboctl.base.toTransportLayerPacket
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -11,8 +11,8 @@ typealias TestPacketData = List<Byte>
 fun newTestPacketSequence() = mutableListOf<TestPacketData>()
 
 sealed class TestRefPacketItem {
-    data class TransportLayerPacketItem(val packetInfo: TransportLayerIO.OutgoingPacketInfo) : TestRefPacketItem()
-    data class ApplicationLayerPacketItem(val packet: ApplicationLayerIO.Packet) : TestRefPacketItem()
+    data class TransportLayerPacketItem(val packetInfo: TransportLayer.OutgoingPacketInfo) : TestRefPacketItem()
+    data class ApplicationLayerPacketItem(val packet: ApplicationLayer.Packet) : TestRefPacketItem()
 }
 
 fun checkTestPacketSequence(referenceSequence: List<TestRefPacketItem>, testPacketSequence: List<TestPacketData>) {
@@ -30,7 +30,7 @@ fun checkTestPacketSequence(referenceSequence: List<TestRefPacketItem>, testPack
             }
             is TestRefPacketItem.ApplicationLayerPacketItem -> {
                 val refAppLayerPacket = referenceItem.packet
-                val testAppLayerPacket = ApplicationLayerIO.Packet(testTpLayerPacket)
+                val testAppLayerPacket = ApplicationLayer.Packet(testTpLayerPacket)
                 assertEquals(refAppLayerPacket, testAppLayerPacket)
             }
         }

@@ -21,10 +21,15 @@ class PumpIOTest {
         var pumpIO: PumpIO
 
         init {
+            Logger.threshold = LogLevel.VERBOSE
+
             // Set up the invariant pump data to be able to test regular connections.
 
             testPumpStateStore = TestPumpStateStore()
             testBluetoothAddress = BluetoothAddress(byteArrayListOfInts(1, 2, 3, 4, 5, 6))
+
+            testIO = TestComboIO()
+            testIO.respondToRTKeypressWithConfirmation = true
 
             if (setupInvariantPumpData) {
                 val invariantPumpData = InvariantPumpData(
@@ -38,9 +43,9 @@ class PumpIOTest {
                     pumpID = "testPump"
                 )
                 testPumpStateStore.createPumpState(testBluetoothAddress, invariantPumpData)
+                testIO.pumpClientCipher = invariantPumpData.pumpClientCipher
             }
 
-            testIO = TestComboIO()
             pumpIO = PumpIO(testPumpStateStore, testBluetoothAddress, testIO)
         }
 
@@ -50,7 +55,7 @@ class PumpIOTest {
         // a series of similar packet with the buttonStatusChanged
         // flag set to false, and finished by an RT_BUTTON_STATUS
         // packet whose button code is NO_BUTTON.
-        fun checkLongRTButtonPressPacketSequence(appLayerButtonCode: ApplicationLayerIO.RTButtonCode) {
+        fun checkLongRTButtonPressPacketSequence(appLayerButton: ApplicationLayer.RTButton) {
             assertTrue(
                 testIO.sentPacketData.size >= 3,
                 "Expected at least 3 items in sentPacketData list, got ${testIO.sentPacketData.size}"
@@ -58,7 +63,7 @@ class PumpIOTest {
 
             checkRTButtonStatusPacketData(
                 testIO.sentPacketData.first(),
-                appLayerButtonCode,
+                appLayerButton,
                 true
             )
             testIO.sentPacketData.removeAt(0)
@@ -68,7 +73,7 @@ class PumpIOTest {
 
             checkRTButtonStatusPacketData(
                 testIO.sentPacketData.last(),
-                ApplicationLayerIO.RTButtonCode.NO_BUTTON,
+                ApplicationLayer.RTButton.NO_BUTTON,
                 true
             )
             testIO.sentPacketData.removeAt(testIO.sentPacketData.size - 1)
@@ -76,7 +81,7 @@ class PumpIOTest {
             for (packetData in testIO.sentPacketData) {
                 checkRTButtonStatusPacketData(
                     packetData,
-                    appLayerButtonCode,
+                    appLayerButton,
                     false
                 )
             }
@@ -92,8 +97,8 @@ class PumpIOTest {
 
             testIO.feedIncomingData(
                 produceTpLayerPacket(
-                    TransportLayerIO.OutgoingPacketInfo(
-                        command = TransportLayerIO.Command.REGULAR_CONNECTION_REQUEST_ACCEPTED
+                    TransportLayer.OutgoingPacketInfo(
+                        command = TransportLayer.Command.REGULAR_CONNECTION_REQUEST_ACCEPTED
                     ),
                     invariantPumpData.pumpClientCipher
                 ).toByteList()
@@ -101,8 +106,8 @@ class PumpIOTest {
 
             testIO.feedIncomingData(
                 produceTpLayerPacket(
-                    ApplicationLayerIO.Packet(
-                        command = ApplicationLayerIO.Command.CTRL_CONNECT_RESPONSE
+                    ApplicationLayer.Packet(
+                        command = ApplicationLayer.Command.CTRL_CONNECT_RESPONSE
                     ).toTransportLayerPacketInfo(),
                     invariantPumpData.pumpClientCipher
                 ).toByteList()
@@ -110,8 +115,8 @@ class PumpIOTest {
 
             testIO.feedIncomingData(
                 produceTpLayerPacket(
-                    ApplicationLayerIO.Packet(
-                        command = ApplicationLayerIO.Command.CTRL_ACTIVATE_SERVICE_RESPONSE,
+                    ApplicationLayer.Packet(
+                        command = ApplicationLayer.Command.CTRL_ACTIVATE_SERVICE_RESPONSE,
                         payload = byteArrayListOfInts(1, 2, 3, 4, 5)
                     ).toTransportLayerPacketInfo(),
                     invariantPumpData.pumpClientCipher
@@ -127,13 +132,13 @@ class PumpIOTest {
         fun checkAndRemoveInitialSentPackets() {
             val expectedInitialPacketSequence = listOf(
                 TestRefPacketItem.TransportLayerPacketItem(
-                    TransportLayerIO.createRequestRegularConnectionPacketInfo()
+                    TransportLayer.createRequestRegularConnectionPacketInfo()
                 ),
                 TestRefPacketItem.ApplicationLayerPacketItem(
-                    ApplicationLayerIO.createCTRLConnectPacket()
+                    ApplicationLayer.createCTRLConnectPacket()
                 ),
                 TestRefPacketItem.ApplicationLayerPacketItem(
-                    ApplicationLayerIO.createCTRLActivateServicePacket(ApplicationLayerIO.ServiceID.RT_MODE)
+                    ApplicationLayer.createCTRLActivateServicePacket(ApplicationLayer.ServiceID.RT_MODE)
                 )
             )
 
@@ -144,18 +149,76 @@ class PumpIOTest {
 
         fun checkRTButtonStatusPacketData(
             packetData: List<Byte>,
-            rtButtonCode: ApplicationLayerIO.RTButtonCode,
+            rtButton: ApplicationLayer.RTButton,
             buttonStatusChangedFlag: Boolean
         ) {
-            val appLayerPacket = ApplicationLayerIO.Packet(packetData.toTransportLayerPacket())
-            assertEquals(ApplicationLayerIO.Command.RT_BUTTON_STATUS, appLayerPacket.command, "Application layer packet command mismatch")
-            assertEquals(rtButtonCode.id.toByte(), appLayerPacket.payload[2], "RT_BUTTON_STATUS button byte mismatch")
+            val appLayerPacket = ApplicationLayer.Packet(packetData.toTransportLayerPacket())
+            assertEquals(ApplicationLayer.Command.RT_BUTTON_STATUS, appLayerPacket.command, "Application layer packet command mismatch")
+            assertEquals(rtButton.id.toByte(), appLayerPacket.payload[2], "RT_BUTTON_STATUS button byte mismatch")
             assertEquals((if (buttonStatusChangedFlag) 0xB7 else 0x48).toByte(), appLayerPacket.payload[3], "RT_BUTTON_STATUS status flag mismatch")
         }
 
         fun checkDisconnectPacketData(packetData: List<Byte>) {
-            val appLayerPacket = ApplicationLayerIO.Packet(packetData.toTransportLayerPacket())
-            assertEquals(ApplicationLayerIO.Command.CTRL_DISCONNECT, appLayerPacket.command, "Application layer packet command mismatch")
+            val appLayerPacket = ApplicationLayer.Packet(packetData.toTransportLayerPacket())
+            assertEquals(ApplicationLayer.Command.CTRL_DISCONNECT, appLayerPacket.command, "Application layer packet command mismatch")
+        }
+    }
+
+    @Test
+    fun checkShortButtonPress() {
+        // Check that a short button press is handled correctly.
+        // Short button presses are performed by sending two RT_BUTTON_STATUS
+        // packets. The first one contains the actual button code, the second
+        // one contains a NO_BUTTON code.
+
+        runBlockingWithWatchdog(6000) {
+            val testStates = TestStates(true)
+            val mainScope = this
+            val pumpIO = testStates.pumpIO
+            val testIO = testStates.testIO
+
+            testStates.feedInitialPackets()
+
+            pumpIO.connectAsync(
+                packetReceiverScope = mainScope,
+                progressReporter = null,
+                runHeartbeat = false
+            ).join()
+
+            /* launch {
+                delay(300L)
+                val invariantPumpData = testStates.testPumpStateStore.getInvariantPumpData(testStates.testBluetoothAddress)
+                testIO.feedIncomingData(
+                    produceTpLayerPacket(
+                        ApplicationLayer.Packet(
+                            command = ApplicationLayer.Command.RT_BUTTON_CONFIRMATION,
+                            payload = byteArrayListOfInts(0, 0)
+                        ).toTransportLayerPacketInfo(),
+                        invariantPumpData.pumpClientCipher
+                    ).toByteList()
+                )
+            } */
+
+            pumpIO.sendShortRTButtonPress(ApplicationLayer.RTButton.UP)
+            delay(500L)
+
+            pumpIO.disconnect()
+
+            testStates.checkAndRemoveInitialSentPackets()
+
+            assertEquals(3, testIO.sentPacketData.size)
+
+            testStates.checkRTButtonStatusPacketData(
+                testIO.sentPacketData[0],
+                ApplicationLayer.RTButton.UP,
+                true
+            )
+            testStates.checkRTButtonStatusPacketData(
+                testIO.sentPacketData[1],
+                ApplicationLayer.RTButton.NO_BUTTON,
+                true
+            )
+            testStates.checkDisconnectPacketData(testIO.sentPacketData[2])
         }
     }
 
@@ -178,34 +241,60 @@ class PumpIOTest {
 
             testStates.feedInitialPackets()
 
-            pumpIO.connect(
-                backgroundIOScope = mainScope,
+            pumpIO.connectAsync(
+                packetReceiverScope = mainScope,
                 progressReporter = null,
-                runKeepAliveLoop = false
+                runHeartbeat = false
             ).join()
 
-            pumpIO.startLongRTButtonPress(PumpIO.Button.UP)
-            delay(500L)
-            pumpIO.stopLongRTButtonPress()
-            delay(500L)
+            /* launch {
+                delay(300L)
+                val invariantPumpData = testStates.testPumpStateStore.getInvariantPumpData(testStates.testBluetoothAddress)
+                testIO.feedIncomingData(
+                    produceTpLayerPacket(
+                        ApplicationLayer.Packet(
+                            command = ApplicationLayer.Command.RT_BUTTON_CONFIRMATION,
+                            payload = byteArrayListOfInts(0, 0)
+                        ).toTransportLayerPacketInfo(),
+                        invariantPumpData.pumpClientCipher
+                    ).toByteList()
+                )
+            } */
+
+            var counter = 0
+            pumpIO.startLongRTButtonPress(ApplicationLayer.RTButton.UP) {
+                counter++
+
+                counter <= 1
+            }
+            pumpIO.waitForLongRTButtonPressToFinish()
 
             pumpIO.disconnect()
 
             testStates.checkAndRemoveInitialSentPackets()
-            testStates.checkLongRTButtonPressPacketSequence(ApplicationLayerIO.RTButtonCode.UP)
+            testStates.checkLongRTButtonPressPacketSequence(ApplicationLayer.RTButton.UP)
 
-            testIO.resetSentPacketData()
+            /* testIO.resetSentPacketData()
             testIO.resetIncomingPacketDataChannel()
 
             testStates.feedInitialPackets()
+            testIO.feedIncomingData(
+                produceTpLayerPacket(
+                    ApplicationLayer.Packet(
+                        command = ApplicationLayer.Command.RT_BUTTON_CONFIRMATION,
+                        payload = byteArrayListOfInts(0, 0)
+                    ).toTransportLayerPacketInfo(),
+                    testStates.testPumpStateStore.getInvariantPumpData(testStates.testBluetoothAddress).pumpClientCipher // TODO simplify
+                ).toByteList()
+            )
 
-            pumpIO.connect(
-                backgroundIOScope = mainScope,
+            pumpIO.connectAsync(
+                packetReceiverScope = mainScope,
                 progressReporter = null,
-                runKeepAliveLoop = false
+                runHeartbeat = false
             ).join()
 
-            pumpIO.startLongRTButtonPress(PumpIO.Button.DOWN)
+            pumpIO.startLongRTButtonPress(ApplicationLayer.RTButton.DOWN)
             delay(500L)
             pumpIO.stopLongRTButtonPress()
             delay(500L)
@@ -213,11 +302,11 @@ class PumpIOTest {
             pumpIO.disconnect()
 
             testStates.checkAndRemoveInitialSentPackets()
-            testStates.checkLongRTButtonPressPacketSequence(ApplicationLayerIO.RTButtonCode.DOWN)
+            testStates.checkLongRTButtonPressPacketSequence(ApplicationLayer.RTButton.DOWN) */
         }
     }
 
-    @Test
+    /* @Test
     fun checkDoubleLongButtonPress() {
         // Check what happens if the user issues redundant startLongRTButtonPress()
         // calls. The second call here should be ignored.
@@ -229,84 +318,19 @@ class PumpIOTest {
 
             testStates.feedInitialPackets()
 
-            pumpIO.connect(
-                backgroundIOScope = mainScope,
+            pumpIO.connectAsync(
+                packetReceiverScope = mainScope,
                 progressReporter = null,
-                runKeepAliveLoop = false
-            ).join()
-
-            pumpIO.startLongRTButtonPress(PumpIO.Button.UP)
-            pumpIO.startLongRTButtonPress(PumpIO.Button.UP)
-            delay(500L)
-            pumpIO.stopLongRTButtonPress()
-            delay(500L)
-
-            pumpIO.disconnect()
-
-            testStates.checkAndRemoveInitialSentPackets()
-            testStates.checkLongRTButtonPressPacketSequence(ApplicationLayerIO.RTButtonCode.UP)
-        }
-    }
-
-    @Test
-    fun checkDoubleLongButtonRelease() {
-        // Check what happens if the user issues redundant stopLongRTButtonPress()
-        // calls. The second call here should be ignored.
-
-        runBlockingWithWatchdog(6000) {
-            val testStates = TestStates(true)
-            val mainScope = this
-            val pumpIO = testStates.pumpIO
-
-            testStates.feedInitialPackets()
-
-            pumpIO.connect(
-                backgroundIOScope = mainScope,
-                progressReporter = null,
-                runKeepAliveLoop = false
-            ).join()
-
-            pumpIO.startLongRTButtonPress(PumpIO.Button.UP)
-            delay(500L)
-            pumpIO.stopLongRTButtonPress()
-            pumpIO.stopLongRTButtonPress()
-            delay(500L)
-
-            pumpIO.disconnect()
-
-            testStates.checkAndRemoveInitialSentPackets()
-            testStates.checkLongRTButtonPressPacketSequence(ApplicationLayerIO.RTButtonCode.UP)
-        }
-    }
-
-    @Test
-    fun checkShortButtonPress() {
-        // Check that a short button press is handled correctly.
-        // Short button presses are performed by sending two RT_BUTTON_STATUS
-        // packets. The first one contains the actual button code, the second
-        // one contains a NO_BUTTON code.
-
-        runBlockingWithWatchdog(6000) {
-            val testStates = TestStates(true)
-            val mainScope = this
-            val pumpIO = testStates.pumpIO
-            val testIO = testStates.testIO
-
-            testStates.feedInitialPackets()
-
-            pumpIO.connect(
-                backgroundIOScope = mainScope,
-                progressReporter = null,
-                runKeepAliveLoop = false
+                runHeartbeat = false
             ).join()
 
             launch {
                 delay(300L)
                 val invariantPumpData = testStates.testPumpStateStore.getInvariantPumpData(testStates.testBluetoothAddress)
-                testIO.feedIncomingData(
+                testStates.testIO.feedIncomingData(
                     produceTpLayerPacket(
-                        ApplicationLayerIO.Packet(
-                            command = ApplicationLayerIO.Command.RT_BUTTON_CONFIRMATION,
+                        ApplicationLayer.Packet(
+                            command = ApplicationLayer.Command.RT_BUTTON_CONFIRMATION,
                             payload = byteArrayListOfInts(0, 0)
                         ).toTransportLayerPacketInfo(),
                         invariantPumpData.pumpClientCipher
@@ -314,272 +338,27 @@ class PumpIOTest {
                 )
             }
 
-            pumpIO.sendShortRTButtonPress(PumpIO.Button.UP)
+            //pumpIO.startLongRTButtonPress(ApplicationLayer.RTButton.UP)
+            //pumpIO.startLongRTButtonPress(ApplicationLayer.RTButton.UP)
+
+            var counter = 0
+            pumpIO.startLongRTButtonPress(ApplicationLayer.RTButton.UP) {
+                counter++
+
+                counter <= 1
+            }
+            pumpIO.startLongRTButtonPress(ApplicationLayer.RTButton.UP)
+            pumpIO.waitForLongRTButtonPressToFinish()
+            /*
             delay(500L)
+            pumpIO.stopLongRTButtonPress()
+            delay(500L)
+            */
 
             pumpIO.disconnect()
 
             testStates.checkAndRemoveInitialSentPackets()
-
-            assertEquals(3, testIO.sentPacketData.size)
-
-            testStates.checkRTButtonStatusPacketData(
-                testIO.sentPacketData[0],
-                ApplicationLayerIO.RTButtonCode.UP,
-                true
-            )
-            testStates.checkRTButtonStatusPacketData(
-                testIO.sentPacketData[1],
-                ApplicationLayerIO.RTButtonCode.NO_BUTTON,
-                true
-            )
-            testStates.checkDisconnectPacketData(testIO.sentPacketData[2])
+            testStates.checkLongRTButtonPressPacketSequence(ApplicationLayer.RTButton.UP)
         }
-    }
-
-    @Test
-    fun cmdCMDReadErrorWarningStatus() {
-        runBlockingWithWatchdog(6000) {
-            // Check that a simulated CMD error/warning status retrieval is performed successfully.
-            // Feed in raw data bytes into the test IO. These raw bytes are packets that contain
-            // error/warning status data. Check that these packets are correctly parsed and that
-            // the retrieved status is correct.
-
-            val testStates = TestStates(setupInvariantPumpData = false)
-            val mainScope = this
-            val pumpIO = testStates.pumpIO
-            val testIO = testStates.testIO
-
-            // Need to set up custom keys since the test data was
-            // created with those instead of the default test keys.
-            val invariantPumpData = InvariantPumpData(
-                keyResponseAddress = 0x10,
-                clientPumpCipher = Cipher(byteArrayOfInts(
-                    0x12, 0xe2, 0x4a, 0xb6, 0x67, 0x50, 0xe5, 0xb4,
-                    0xc4, 0xea, 0x10, 0xa7, 0x55, 0x11, 0x61, 0xd4)),
-                pumpClientCipher = Cipher(byteArrayOfInts(
-                    0x8e, 0x0d, 0x35, 0xe3, 0x7c, 0xd7, 0x20, 0x55,
-                    0x57, 0x2b, 0x05, 0x50, 0x34, 0x43, 0xc9, 0x8d)),
-                pumpID = "testPump"
-            )
-            testStates.testPumpStateStore.createPumpState(testStates.testBluetoothAddress, invariantPumpData)
-
-            testStates.feedInitialPackets()
-
-            pumpIO.connect(
-                backgroundIOScope = mainScope,
-                progressReporter = null,
-                initialMode = PumpIO.Mode.COMMAND,
-                runKeepAliveLoop = false
-            ).join()
-
-            val errorWarningStatusData = byteArrayListOfInts(
-                0x10, 0x23, 0x08, 0x00, 0x01, 0x39, 0x01, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0xb7, 0xa5, 0xaa,
-                0x00, 0x00, 0x48, 0xb7, 0xa0, 0xea, 0x70, 0xc3, 0xd4, 0x42, 0x61, 0xd7
-            )
-            testIO.feedIncomingData(errorWarningStatusData)
-
-            val errorWarningStatus = pumpIO.readCMDErrorWarningStatus()
-
-            pumpIO.disconnect()
-
-            assertEquals(
-                ApplicationLayerIO.CMDErrorWarningStatus(errorOccurred = false, warningOccurred = true),
-                errorWarningStatus
-            )
-        }
-    }
-
-    @Test
-    fun checkCMDHistoryDeltaRetrieval() {
-        runBlockingWithWatchdog(6000) {
-            // Check that a simulated CMD history delta retrieval is performed successfully.
-            // Feed in raw data bytes into the test IO. These raw bytes are packets that
-            // contain history data with a series of events inside. Check that these packets
-            // are correctly parsed and that the retrieved history is correct.
-
-            val testStates = TestStates(setupInvariantPumpData = false)
-            val mainScope = this
-            val pumpIO = testStates.pumpIO
-            val testIO = testStates.testIO
-
-            // Need to set up custom keys since the test data was
-            // created with those instead of the default test keys.
-            val invariantPumpData = InvariantPumpData(
-                keyResponseAddress = 0x10,
-                clientPumpCipher = Cipher(byteArrayOfInts(
-                    0x75, 0xb8, 0x88, 0xa8, 0xe7, 0x68, 0xc9, 0x25,
-                    0x66, 0xc9, 0x3c, 0x4b, 0xd8, 0x09, 0x27, 0xd8)),
-                pumpClientCipher = Cipher(byteArrayOfInts(
-                    0xb8, 0x75, 0x8c, 0x54, 0x88, 0x71, 0x78, 0xed,
-                    0xad, 0xb7, 0xb7, 0xc1, 0x48, 0x37, 0xf3, 0x07)),
-                pumpID = "testPump"
-            )
-            testStates.testPumpStateStore.createPumpState(testStates.testBluetoothAddress, invariantPumpData)
-
-            val historyBlockPacketData = listOf(
-                // CMD_READ_HISTORY_BLOCK_RESPONSE
-                byteArrayListOfInts(
-                    0x10, 0xa3, 0x65, 0x00, 0x01, 0x08, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                    0x10, 0xb7, 0x96, 0xa9, 0x00, 0x00, 0x10, 0x00, 0x48, 0xb7, 0x05, 0xaa, 0x0d, 0x93, 0x54, 0x0f, 0x00, 0x00,
-                    0x00, 0x04, 0x00, 0x6b, 0xf3, 0x09, 0x3b, 0x01, 0x00, 0x92, 0x4c, 0xb1, 0x0d, 0x93, 0x54, 0x0f, 0x00, 0x00,
-                    0x00, 0x05, 0x00, 0xa1, 0x25, 0x0b, 0x3b, 0x01, 0x00, 0xe4, 0x75, 0x46, 0x0e, 0x93, 0x54, 0x1d, 0x00, 0x00,
-                    0x00, 0x06, 0x00, 0xb7, 0xda, 0x0d, 0x3b, 0x01, 0x00, 0x7e, 0x3e, 0x54, 0x0e, 0x93, 0x54, 0x1d, 0x00, 0x00,
-                    0x00, 0x07, 0x00, 0x73, 0x49, 0x0f, 0x3b, 0x01, 0x00, 0x08, 0x07, 0x77, 0x0e, 0x93, 0x54, 0x05, 0x00, 0x00,
-                    0x00, 0x04, 0x00, 0x2f, 0xd8, 0x11, 0x3b, 0x01, 0x00, 0xeb, 0x6a, 0x81, 0xf5, 0x6c, 0x43, 0xf0, 0x88, 0x15, 0x3b
-                ),
-                // CMD_CONFIRM_HISTORY_BLOCK_RESPONSE
-                byteArrayListOfInts(
-                    0x10, 0x23, 0x06, 0x00, 0x01, 0x0a, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                    0x00, 0x00, 0x10, 0xb7, 0x99, 0xa9, 0x00, 0x00, 0x8f, 0xec, 0xfa, 0xa7, 0xf5, 0x0d, 0x01, 0x6c
-                ),
-                // CMD_READ_HISTORY_BLOCK_RESPONSE
-                byteArrayListOfInts(
-                    0x10, 0xa3, 0x65, 0x00, 0x01, 0x0c, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                    0x10, 0xb7, 0x96, 0xa9, 0x00, 0x00, 0x0b, 0x00, 0x48, 0xb7, 0x05, 0x79, 0x0e, 0x93, 0x54, 0x05, 0x00, 0x00,
-                    0x00, 0x05, 0x00, 0x0c, 0x40, 0x13, 0x3b, 0x01, 0x00, 0x9d, 0x53, 0xad, 0x0e, 0x93, 0x54, 0x12, 0x00, 0x00,
-                    0x00, 0x06, 0x00, 0x46, 0xa5, 0x15, 0x3b, 0x01, 0x00, 0x07, 0x18, 0xb6, 0x0e, 0x93, 0x54, 0x12, 0x00, 0x00,
-                    0x00, 0x07, 0x00, 0x8c, 0x73, 0x17, 0x3b, 0x01, 0x00, 0x71, 0x21, 0x13, 0x10, 0x93, 0x54, 0xb1, 0x00, 0x0f,
-                    0x00, 0x08, 0x00, 0xbb, 0x78, 0x1a, 0x3b, 0x01, 0x00, 0xfe, 0xaa, 0xd2, 0x13, 0x93, 0x54, 0xb1, 0x00, 0x0f,
-                    0x00, 0x09, 0x00, 0xce, 0x68, 0x1c, 0x3b, 0x01, 0x00, 0x64, 0xe1, 0x2c, 0xc8, 0x37, 0xb3, 0xe5, 0xb7, 0x7c, 0xc4
-                ),
-                // CMD_CONFIRM_HISTORY_BLOCK_RESPONSE
-                byteArrayListOfInts(
-                    0x10, 0x23, 0x06, 0x00, 0x01, 0x0e, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                    0x00, 0x00, 0x10, 0xb7, 0x99, 0xa9, 0x00, 0x00, 0xe5, 0xab, 0x11, 0x6d, 0xfc, 0x60, 0xfb, 0xee
-                ),
-                // CMD_READ_HISTORY_BLOCK_RESPONSE
-                byteArrayListOfInts(
-                    0x10, 0xa3, 0x65, 0x00, 0x01, 0x10, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                    0x10, 0xb7, 0x96, 0xa9, 0x00, 0x00, 0x06, 0x00, 0x48, 0xb7, 0x05, 0x5f, 0x15, 0x93, 0x54, 0xc1, 0x94, 0xe0,
-                    0x01, 0x0a, 0x00, 0x76, 0x3b, 0x1e, 0x3b, 0x01, 0x00, 0x12, 0xd8, 0xc8, 0x1c, 0x93, 0x54, 0xc1, 0x94, 0xe0,
-                    0x01, 0x0b, 0x00, 0xc8, 0xa4, 0x20, 0x3b, 0x01, 0x00, 0xa2, 0x3a, 0x59, 0x20, 0x93, 0x54, 0x40, 0x30, 0x93,
-                    0x54, 0x18, 0x00, 0xbb, 0x0c, 0x23, 0x3b, 0x01, 0x00, 0x6f, 0x1f, 0x40, 0x30, 0x93, 0x54, 0x00, 0x00, 0x00,
-                    0x00, 0x19, 0x00, 0x2b, 0x80, 0x24, 0x3b, 0x01, 0x00, 0x4e, 0x48, 0x85, 0x30, 0x93, 0x54, 0x14, 0x00, 0x00,
-                    0x00, 0x04, 0x00, 0xe8, 0x98, 0x2b, 0x3b, 0x01, 0x00, 0xb7, 0xfa, 0x0e, 0x32, 0x37, 0x19, 0xb6, 0x59, 0x5a, 0xb1
-                ),
-                // CMD_CONFIRM_HISTORY_BLOCK_RESPONSE
-                byteArrayListOfInts(
-                    0x10, 0x23, 0x06, 0x00, 0x01, 0x12, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                    0x00, 0x00, 0x10, 0xb7, 0x99, 0xa9, 0x00, 0x00, 0xae, 0xaa, 0xa7, 0x3a, 0xbc, 0x82, 0x8c, 0x15
-                ),
-                // CMD_READ_HISTORY_BLOCK_RESPONSE
-                byteArrayListOfInts(
-                    0x10, 0xa3, 0x1d, 0x00, 0x01, 0x14, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                    0x10, 0xb7, 0x96, 0xa9, 0x00, 0x00, 0x01, 0x00, 0xb7, 0xb7, 0x01, 0x8f, 0x30, 0x93, 0x54, 0x14, 0x00, 0x00,
-                    0x00, 0x05, 0x00, 0x57, 0xb0, 0x2d, 0x3b, 0x01, 0x00, 0x2d, 0xb1, 0x29, 0x32, 0xde, 0x3c, 0xa0, 0x80, 0x33, 0xd3
-                ),
-                // CMD_CONFIRM_HISTORY_BLOCK_RESPONSE
-                byteArrayListOfInts(
-                    0x10, 0x23, 0x06, 0x00, 0x01, 0x16, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                    0x00, 0x00, 0x10, 0xb7, 0x99, 0xa9, 0x00, 0x00, 0x15, 0x63, 0xa5, 0x60, 0x3d, 0x75, 0xff, 0xfc
-                )
-            )
-
-            val expectedHistoryDeltaEvents = listOf(
-                ApplicationLayerIO.CMDHistoryEvent(
-                    DateTime(2021, 2, 9, 16, 54, 42),
-                    80649,
-                    ApplicationLayerIO.CMDHistoryEventDetail.QuickBolusRequested(15)
-                ),
-                ApplicationLayerIO.CMDHistoryEvent(
-                    DateTime(2021, 2, 9, 16, 54, 49),
-                    80651,
-                    ApplicationLayerIO.CMDHistoryEventDetail.QuickBolusInfused(15)
-                ),
-
-                ApplicationLayerIO.CMDHistoryEvent(
-                    DateTime(2021, 2, 9, 16, 57, 6),
-                    80653,
-                    ApplicationLayerIO.CMDHistoryEventDetail.StandardBolusRequested(29, true)
-                ),
-                ApplicationLayerIO.CMDHistoryEvent(
-                    DateTime(2021, 2, 9, 16, 57, 20),
-                    80655,
-                    ApplicationLayerIO.CMDHistoryEventDetail.StandardBolusInfused(29, true)
-                ),
-
-                ApplicationLayerIO.CMDHistoryEvent(
-                    DateTime(2021, 2, 9, 16, 57, 55),
-                    80657,
-                    ApplicationLayerIO.CMDHistoryEventDetail.QuickBolusRequested(5)
-                ),
-                ApplicationLayerIO.CMDHistoryEvent(
-                    DateTime(2021, 2, 9, 16, 57, 57),
-                    80659,
-                    ApplicationLayerIO.CMDHistoryEventDetail.QuickBolusInfused(5)
-                ),
-
-                ApplicationLayerIO.CMDHistoryEvent(
-                    DateTime(2021, 2, 9, 16, 58, 45),
-                    80661,
-                    ApplicationLayerIO.CMDHistoryEventDetail.StandardBolusRequested(18, true)
-                ),
-                ApplicationLayerIO.CMDHistoryEvent(
-                    DateTime(2021, 2, 9, 16, 58, 54),
-                    80663,
-                    ApplicationLayerIO.CMDHistoryEventDetail.StandardBolusInfused(18, true)
-                ),
-
-                ApplicationLayerIO.CMDHistoryEvent(
-                    DateTime(2021, 2, 9, 17, 0, 19),
-                    80666,
-                    ApplicationLayerIO.CMDHistoryEventDetail.ExtendedBolusStarted(177, 15)
-                ),
-                ApplicationLayerIO.CMDHistoryEvent(
-                    DateTime(2021, 2, 9, 17, 15, 18),
-                    80668,
-                    ApplicationLayerIO.CMDHistoryEventDetail.ExtendedBolusEnded(177, 15)
-                ),
-
-                ApplicationLayerIO.CMDHistoryEvent(
-                    DateTime(2021, 2, 9, 17, 21, 31),
-                    80670,
-                    ApplicationLayerIO.CMDHistoryEventDetail.MultiwaveBolusStarted(193, 37, 30)
-                ),
-                ApplicationLayerIO.CMDHistoryEvent(
-                    DateTime(2021, 2, 9, 17, 51, 8),
-                    80672,
-                    ApplicationLayerIO.CMDHistoryEventDetail.MultiwaveBolusEnded(193, 37, 30)
-                ),
-
-                ApplicationLayerIO.CMDHistoryEvent(
-                    DateTime(2021, 2, 9, 18, 1, 25),
-                    80675,
-                    ApplicationLayerIO.CMDHistoryEventDetail.NewDateTimeSet(DateTime(2021, 2, 9, 19, 1, 0))
-                ),
-
-                ApplicationLayerIO.CMDHistoryEvent(
-                    DateTime(2021, 2, 9, 19, 2, 5),
-                    80683,
-                    ApplicationLayerIO.CMDHistoryEventDetail.QuickBolusRequested(20)
-                ),
-                ApplicationLayerIO.CMDHistoryEvent(
-                    DateTime(2021, 2, 9, 19, 2, 15),
-                    80685,
-                    ApplicationLayerIO.CMDHistoryEventDetail.QuickBolusInfused(20)
-                )
-            )
-
-            testStates.feedInitialPackets()
-
-            pumpIO.connect(
-                backgroundIOScope = mainScope,
-                progressReporter = null,
-                initialMode = PumpIO.Mode.COMMAND,
-                runKeepAliveLoop = false
-            ).join()
-
-            historyBlockPacketData.forEach { testIO.feedIncomingData(it) }
-
-            val historyDelta = pumpIO.getCMDHistoryDelta(100)
-
-            pumpIO.disconnect()
-
-            assertEquals(expectedHistoryDeltaEvents.size, historyDelta.size)
-            for (events in expectedHistoryDeltaEvents.zip(historyDelta))
-                assertEquals(events.first, events.second)
-        }
-    }
+    } */
 }
