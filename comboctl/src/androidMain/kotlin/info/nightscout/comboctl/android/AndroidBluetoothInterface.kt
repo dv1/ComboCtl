@@ -524,7 +524,7 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
         logger(LogLevel.DEBUG) { "Discovery finished" }
 
         // If a device was found, foundNewPairedDevice is called,
-        // which implictly announces that discovery stopped.
+        // which implicitly announces that discovery stopped.
         if (!foundDevice) {
             // discoveryStoppedReason is set to a non-NULL value only
             // if stopDiscovery() is called. If the discovery timeout

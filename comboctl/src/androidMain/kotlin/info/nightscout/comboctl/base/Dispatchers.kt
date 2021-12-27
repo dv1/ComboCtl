@@ -29,7 +29,7 @@ internal actual class SingleThreadDispatcherManager {
 
         if (internalExecutor != null) {
             try {
-                // It is important to explicitely call this function before
+                // It is important to explicitly call this function before
                 // the application ends. Otherwise, the associated thread
                 // may not be terminated properly, especially if C++ JNI
                 // code is involved, and the JVM never quits.
