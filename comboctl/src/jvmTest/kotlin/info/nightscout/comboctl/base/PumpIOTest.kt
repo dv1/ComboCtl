@@ -279,7 +279,10 @@ class PumpIOTest {
             testStates.checkAndRemoveInitialSentPackets()
             testStates.checkLongRTButtonPressPacketSequence(ApplicationLayer.RTButton.UP)
 
-            // Next, test long DOWN button press.
+            // Next, test long DOWN button press. Use stopLongRTButtonPress()
+            // instead of waitForLongRTButtonPressToFinish() here to also
+            // test that function. Waiting for a while and calling it should
+            // amount to the same behavior as calling waitForLongRTButtonPressToFinish().
 
             testIO.resetSentPacketData()
             testIO.resetIncomingPacketDataChannel()
