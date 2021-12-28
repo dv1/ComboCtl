@@ -779,6 +779,8 @@ object TransportLayer {
 
                 logger(LogLevel.DEBUG) { "Transport layer IO stopped" }
             }
+
+            sequencedDispatcherManager.releaseDispatcher()
         }
 
         /** Returns true if IO is ongoing (due to a [startIO] call), false otherwise. */
