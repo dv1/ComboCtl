@@ -973,12 +973,16 @@ out right when they arrive.
 
 === Error codes in reliable application layer command payloads
 
-If an application layer packet arrives with the reliability bit set,
-then the first 2 bytes of its payload contain a 16-bit little
-endian unsigned integer that specifies an error code. The value
-0 means "no error". If the value is nonzero, this needs to be
-interpreted as a non-recoverable error, and the client must
-disconnect (by sending the `AL_CTRL_DISCONNECT` command etc).
+If an application layer packet is sent by the Combo with the
+reliability bit set, then the first 2 bytes of its payload contain
+a 16-bit little endian unsigned integer that specifies an error
+code. The value 0 means "no error". If the value is nonzero, this
+needs to be interpreted as a non-recoverable error, and the client
+must disconnect (by sending the `AL_CTRL_DISCONNECT` command etc).
+
+Application layer packets sent _from_ the client _to_ the Combo
+do not contain error codes - this strictly applies to packets that
+come from the Combo *only*.
 
 List of known error codes:
 
