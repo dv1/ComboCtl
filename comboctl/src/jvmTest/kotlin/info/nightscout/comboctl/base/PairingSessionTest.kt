@@ -2,9 +2,11 @@ package info.nightscout.comboctl.base
 
 import info.nightscout.comboctl.base.testUtils.TestPumpStateStore
 import info.nightscout.comboctl.base.testUtils.runBlockingWithWatchdog
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.fail
 
 class PairingSessionTest {
     enum class PacketDirection {
@@ -12,11 +14,34 @@ class PairingSessionTest {
         RECEIVE
     }
 
-    data class PairingTestSequenceEntry(val direction: PacketDirection, val packet: TransportLayer.Packet)
+    data class PairingTestSequenceEntry(val direction: PacketDirection, val packet: TransportLayer.Packet) {
+        override fun toString(): String {
+            return if (packet.command == TransportLayer.Command.DATA) {
+                try {
+                    // Use the ApplicationLayer.Packet constructor instead
+                    // of the toAppLayerPacket() function, since the latter
+                    // performs additional sanity checks. These checks are
+                    // unnecessary here - we just want to dump the packet
+                    // contents to a string.
+                    val appLayerPacket = ApplicationLayer.Packet(packet)
+                    "direction: $direction  app layer packet: $appLayerPacket"
+                } catch (ignored: Throwable) {
+                    "direction: $direction  tp layer packet: $packet"
+                }
+            } else
+                "direction: $direction  tp layer packet: $packet"
+        }
+    }
 
     private class PairingTestComboIO(val pairingTestSequence: List<PairingTestSequenceEntry>) : ComboIO {
         private var curSequenceIndex = 0
         private val barrier = Channel<Unit>(capacity = Channel.CONFLATED)
+
+        var expectedEndOfSequenceReached: Boolean = false
+            private set
+
+        var testErrorOccurred: Boolean = false
+            private set
 
         // The pairingTestSequence contains entries for when a packet
         // is expected to be sent and to be received in this simulated
@@ -38,8 +63,15 @@ class PairingSessionTest {
         // in the ability of Channel to suspend coroutines.
         private suspend fun getNextSequenceEntry(expectedPacketDirection: PacketDirection): PairingTestSequenceEntry {
             while (true) {
-                if (curSequenceIndex >= pairingTestSequence.size)
-                    throw ComboException("Test sequence ended")
+                // Suspend indefinitely if we reached the expected
+                // end of sequence. See send() below for details.
+                if (expectedEndOfSequenceReached)
+                    barrier.receive()
+
+                if (curSequenceIndex >= pairingTestSequence.size) {
+                    testErrorOccurred = true
+                    throw ComboException("End of test sequence unexpectedly reached")
+                }
 
                 val sequenceEntry = pairingTestSequence[curSequenceIndex]
                 if (sequenceEntry.direction != expectedPacketDirection) {
@@ -56,18 +88,57 @@ class PairingSessionTest {
         }
 
         override suspend fun send(dataToSend: List<Byte>) {
-            val sequenceEntry = getNextSequenceEntry(PacketDirection.SEND)
-            // Signal to the other, suspended coroutine that it can resume now.
-            barrier.trySend(Unit)
-            val expectedPacketData = sequenceEntry.packet.toByteList()
-            assertEquals(expectedPacketData, dataToSend)
+            try {
+                val sequenceEntry = getNextSequenceEntry(PacketDirection.SEND)
+                System.err.println("Next sequence entry: $sequenceEntry")
+
+                val expectedPacketData = sequenceEntry.packet.toByteList()
+                assertEquals(expectedPacketData, dataToSend)
+
+                // Check if this is the last packet in the sequence.
+                // That's CTRL_DISCONNECT. If it is, switch to a
+                // special mode that suspends receive() calls indefinitely.
+                // This is necessary because the packet receiver inside
+                // the transport layer IO class will keep trying to receive
+                // packets from the Combo even though our sequence here
+                // ended and thus has no more data that can be "received".
+                if (sequenceEntry.packet.command == TransportLayer.Command.DATA) {
+                    try {
+                        // Don't use toAppLayerPacket() here. Instead, use
+                        // the ApplicationLayer.Packet constructor directly.
+                        // This way we circumvent error code checks, which
+                        // are undesirable in this very case.
+                        val appLayerPacket = ApplicationLayer.Packet(sequenceEntry.packet)
+                        if (appLayerPacket.command == ApplicationLayer.Command.CTRL_DISCONNECT)
+                            expectedEndOfSequenceReached = true
+                    } catch (ignored: Throwable) {
+                    }
+                }
+
+                // Signal to the other, suspended coroutine that it can resume now.
+                barrier.trySend(Unit)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (t: Throwable) {
+                testErrorOccurred = true
+                throw t
+            }
         }
 
         override suspend fun receive(): List<Byte> {
-            val sequenceEntry = getNextSequenceEntry(PacketDirection.RECEIVE)
-            // Signal to the other, suspended coroutine that it can resume now.
-            barrier.trySend(Unit)
-            return sequenceEntry.packet.toByteList()
+            try {
+                val sequenceEntry = getNextSequenceEntry(PacketDirection.RECEIVE)
+                System.err.println("Next sequence entry: $sequenceEntry")
+
+                // Signal to the other, suspended coroutine that it can resume now.
+                barrier.trySend(Unit)
+                return sequenceEntry.packet.toByteList()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (t: Throwable) {
+                testErrorOccurred = true
+                throw t
+            }
         }
     }
 
@@ -376,11 +447,14 @@ class PairingSessionTest {
         val testBluetoothAddress = BluetoothAddress(byteArrayListOfInts(1, 2, 3, 4, 5, 6))
         val pumpIO = PumpIO(testPumpStateStore, testBluetoothAddress, testIO)
 
-        runBlockingWithWatchdog(6001) {
+        runBlockingWithWatchdog(6000) {
             pumpIO.performPairing(
                 testBtFriendlyName,
                 null
             ) { testPIN }
         }
+
+        if (testIO.testErrorOccurred)
+            fail("Failure in background coroutine")
     }
 }

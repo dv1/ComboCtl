@@ -341,9 +341,11 @@ class PumpIO(
                 transportLayerIO.setManualInvariantPumpData(newPumpData)
                 pumpStateStore.createPumpState(pumpAddress, newPumpData)
 
-                val firstTxNonce = Nonce(byteArrayListOfInts(
-                    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-                ))
+                val firstTxNonce = Nonce(
+                    byteArrayListOfInts(
+                        0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+                    )
+                )
                 pumpStateStore.setCurrentTxNonce(pumpAddress, firstTxNonce)
 
                 progressReporter?.setCurrentProgressStage(BasicProgressStage.ComboPairingFinishing)
@@ -405,7 +407,16 @@ class PumpIO(
                 )
 
                 // Pairing complete.
-                logger(LogLevel.DEBUG) { "Pairing finished successfully" }
+                logger(LogLevel.DEBUG) { "Pairing finished successfully - sending CTRL_DISCONNECT to Combo" }
+            } catch (e: CancellationException) {
+                logger(LogLevel.DEBUG) { "Pairing cancelled - sending CTRL_DISCONNECT to Combo" }
+                throw e
+            } catch (t: Throwable) {
+                logger(LogLevel.ERROR) {
+                    "Pairing aborted due to throwable - sending CTRL_DISCONNECT to Combo; " +
+                    "throwable details: ${t.stackTraceToString()}"
+                }
+                throw t
             } finally {
                 val disconnectPacketInfo = ApplicationLayer.createCTRLDisconnectPacket()
                 transportLayerIO.stop(

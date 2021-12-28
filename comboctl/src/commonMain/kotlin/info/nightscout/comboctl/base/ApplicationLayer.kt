@@ -826,6 +826,8 @@ object ApplicationLayer {
         // unclear why the payload should be 0x6003, and why
         // Ruffy sets this to 0x0003 instead. But since we know
         // that Ruffy works, we currently pick 0x0003.
+        // Also, this payload is actually an error code.
+        // Should it just be 0x0000 instead?
         command = Command.CTRL_DISCONNECT,
         payload = byteArrayListOfInts(0x03, 0x00)
     )
