@@ -685,7 +685,7 @@ class PumpIO(
      * @throws ComboIOException if IO with the pump fails.
      */
     suspend fun getCMDHistoryDelta(maxRequests: Int): List<ApplicationLayer.CMDHistoryEvent> {
-        require(maxRequests <= 10) { "Maximum allowed amount of requests are 10; caller specified $maxRequests" }
+        require(maxRequests >= 10) { "Maximum amount of requests must be at least 10; caller specified $maxRequests" }
         check(isConnected()) { "Cannot get history delta because the pump is not connected" }
         check(_currentModeFlow.value == Mode.COMMAND) { "Cannot get history delta while being in ${_currentModeFlow.value} mode" }
 
