@@ -25,7 +25,10 @@ class TestComboIO : ComboIO {
             val tpLayerPacket = dataToSend.toTransportLayerPacket()
             if (tpLayerPacket.command == TransportLayer.Command.DATA) {
                 try {
-                    val appLayerPacket = tpLayerPacket.toAppLayerPacket()
+                    // Not using toAppLayerPacket() here, since that one
+                    // performs error checks, which are only useful for
+                    // application layer packets that we _received_.
+                    val appLayerPacket = ApplicationLayer.Packet(tpLayerPacket)
                     if (appLayerPacket.command == ApplicationLayer.Command.RT_BUTTON_STATUS) {
                         feedIncomingData(
                             produceTpLayerPacket(

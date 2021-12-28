@@ -669,8 +669,8 @@ object ApplicationLayer {
      * whether the reliability bit of the DATA TL packet will be set or cleared.
      *
      * NOTE: Prefer using [toAppLayerPacket] instead of directly constructing
-     * an instance of this class. That extension function runs additional
-     * checks on the packet.
+     * an instance of this class on packets that were received from the Combo.
+     * That extension function runs additional checks on the packet.
      *
      * @property command The command of this packet. This is a combination of a
      *           service ID and a command ID, which together uniquely identify
