@@ -6,14 +6,16 @@ actual class PlatformLoggerBackend actual constructor() : LoggerBackend {
     actual override fun log(tag: String, level: LogLevel, throwable: Throwable?, message: String?) {
         val timestamp = getElapsedTimeInMs()
 
-        var str = "[${timestamp.toStringWithDecimal(3).padStart(10, ' ')}] [${level.str}] [$tag]"
+        val stackInfo = Throwable().stackTrace[1]
+        val className = stackInfo.className.substringAfterLast(".")
+        val methodName = stackInfo.methodName
+        val lineNumber = stackInfo.lineNumber
 
-        if (throwable != null)
-            str += " (" + throwable::class.qualifiedName + ": \"" + throwable.message + "\")"
+        val fullMessage = "[${timestamp.toStringWithDecimal(3).padStart(10, ' ')}] " +
+            "[${level.str}] [$tag] [$className.$methodName():$lineNumber]" +
+            (if (throwable != null) "  (${throwable::class.qualifiedName}: \"${throwable.message}\")" else "") +
+            (if (message != null) "  $message" else "")
 
-        if (message != null)
-            str += " $message"
-
-        System.err.println(str)
+        System.err.println(fullMessage)
     }
 }
