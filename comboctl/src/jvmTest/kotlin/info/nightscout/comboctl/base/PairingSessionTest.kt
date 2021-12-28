@@ -2,9 +2,9 @@ package info.nightscout.comboctl.base
 
 import info.nightscout.comboctl.base.testUtils.TestPumpStateStore
 import info.nightscout.comboctl.base.testUtils.runBlockingWithWatchdog
+import kotlinx.coroutines.channels.Channel
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlinx.coroutines.delay
 
 class PairingSessionTest {
     enum class PacketDirection {
@@ -16,25 +16,36 @@ class PairingSessionTest {
 
     private class PairingTestComboIO(val pairingTestSequence: List<PairingTestSequenceEntry>) : ComboIO {
         private var curSequenceIndex = 0
+        private val barrier = Channel<Unit>(capacity = Channel.CONFLATED)
 
+        // The pairingTestSequence contains entries for when a packet
+        // is expected to be sent and to be received in this simulated
+        // Combo<->Client communication. When the "sender" transmits
+        // packets, the "receiver" is supposed to wait. This is accomplished
+        // by letting getNextSequenceEntry() suspend its coroutine until
+        // _another_ getNextSequenceEntry() call advances the sequence
+        // so that the first call's expected packet direction matches.
+        // For example: coroutine A simulates the receiver, B the sender.
+        // A calls getNextSequenceEntry(). The next sequence entry has
+        // "SEND" as its packet direction, meaning that at this point, the
+        // sender is supposed to be active. Consequently, A is suspended
+        // by getNextSequenceEntry(). B calls getNextSequenceEntry() and
+        // advances the sequence until an entry is reached with packet
+        // direction "RECEIVE". This now suspends B. A is woken up by
+        // the barrier and resumes its work etc.
+        // The "barrier" is actually a Channel which "transmits" Unit
+        // values. We aren't actually interested in these "values", just
+        // in the ability of Channel to suspend coroutines.
         private suspend fun getNextSequenceEntry(expectedPacketDirection: PacketDirection): PairingTestSequenceEntry {
-            // Wait until another getNextSequenceEntry() call
-            // advanced the index to a point where we can
-            // get the data we want. The waiting is done
-            // by checking every 10 ms for the type of the
-            // current sequence entry.
-            // TODO: It would be better to have something like
-            // condition variables for coroutines instead of
-            // these delay(10) calls. Check if there is
-            // something like that.
-
             while (true) {
                 if (curSequenceIndex >= pairingTestSequence.size)
                     throw ComboException("Test sequence ended")
 
                 val sequenceEntry = pairingTestSequence[curSequenceIndex]
                 if (sequenceEntry.direction != expectedPacketDirection) {
-                    delay(10)
+                    // Wait until we get the signal from a send() or receive()
+                    // call that we can resume here.
+                    barrier.receive()
                     continue
                 }
 
@@ -46,12 +57,16 @@ class PairingSessionTest {
 
         override suspend fun send(dataToSend: List<Byte>) {
             val sequenceEntry = getNextSequenceEntry(PacketDirection.SEND)
+            // Signal to the other, suspended coroutine that it can resume now.
+            barrier.trySend(Unit)
             val expectedPacketData = sequenceEntry.packet.toByteList()
             assertEquals(expectedPacketData, dataToSend)
         }
 
         override suspend fun receive(): List<Byte> {
             val sequenceEntry = getNextSequenceEntry(PacketDirection.RECEIVE)
+            // Signal to the other, suspended coroutine that it can resume now.
+            barrier.trySend(Unit)
             return sequenceEntry.packet.toByteList()
         }
     }
