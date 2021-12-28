@@ -1114,11 +1114,7 @@ object TransportLayer {
                 // the nonce.
                 Command.REQUEST_REGULAR_CONNECTION,
                 Command.ACK_RESPONSE,
-                Command.DATA -> {
-                    val currentTxNonce = pumpStateStore.getCurrentTxNonce(pumpAddress).getIncrementedNonce()
-                    pumpStateStore.setCurrentTxNonce(pumpAddress, currentTxNonce)
-                    currentTxNonce
-                }
+                Command.DATA -> pumpStateStore.incrementTxNonce(pumpAddress)
 
                 else -> throw Error("This is not a valid outgoing packet")
             }

@@ -44,23 +44,35 @@ data class Nonce(private val nonceBytes: List<Byte>) : Iterable<Byte> {
      * Return an incremented copy of this nonce.
      *
      * This nonce's bytes will not be modified by this call.
+     *
+     * @param incrementAmount By how much the nonce is to be incremented.
+     *   Must be at least 1.
      */
-    fun getIncrementedNonce(): Nonce {
+    fun getIncrementedNonce(incrementAmount: Int = 1): Nonce {
+        require(incrementAmount >= 1)
+
         val outputNonceBytes = ArrayList<Byte>(NUM_NONCE_BYTES)
 
-        var carry = true
+        var carry = 0
+        var leftoverToIncrement = incrementAmount
 
         nonceBytes.forEach { nonceByte ->
-            if (carry) {
-                if (nonceByte == 0xFF.toByte()) {
-                    outputNonceBytes.add(0x00.toByte())
-                } else {
-                    outputNonceBytes.add((nonceByte + 1).toByte())
-                    carry = false
-                }
-            } else
-                outputNonceBytes.add(nonceByte)
+            val a = leftoverToIncrement and 255
+            val b = nonceByte.toPosInt()
+            val sum = a + b + carry
+            val outputByte = sum and 255
+
+            leftoverToIncrement = leftoverToIncrement ushr 8
+            carry = sum ushr 8
+
+            outputNonceBytes.add(outputByte.toByte())
+
+            if ((leftoverToIncrement == 0) && (carry == 0))
+                return@forEach
         }
+
+        for (i in outputNonceBytes.size until NUM_NONCE_BYTES)
+            outputNonceBytes.add(0x00.toByte())
 
         return Nonce(outputNonceBytes)
     }

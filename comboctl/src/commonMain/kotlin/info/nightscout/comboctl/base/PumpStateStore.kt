@@ -200,3 +200,19 @@ interface PumpStateStore {
      */
     fun setCurrentTxNonce(pumpAddress: BluetoothAddress, currentTxNonce: Nonce)
 }
+
+/*
+ * Increments the nonce of a pump state associated with the given address.
+ *
+ * @param pumpAddress Bluetooth address of the pump state.
+ * @param incrementAmount By how much the nonce is to be incremented.
+ *   Must be at least 1.
+ */
+fun PumpStateStore.incrementTxNonce(pumpAddress: BluetoothAddress, incrementAmount: Int = 1): Nonce {
+    require(incrementAmount >= 1)
+
+    val currentTxNonce = this.getCurrentTxNonce(pumpAddress)
+    val newTxNonce = currentTxNonce.getIncrementedNonce(incrementAmount)
+    this.setCurrentTxNonce(pumpAddress, newTxNonce)
+    return newTxNonce
+}
