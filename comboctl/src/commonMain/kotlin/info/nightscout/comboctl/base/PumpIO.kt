@@ -936,7 +936,7 @@ class PumpIO(
      * [stopLongRTButtonPress] is called. In both cases, a command is
      * sent to the Combo to signal that the user "released" the buttons.
      *
-     * If the keepGoing predicate is set, it is called before sending
+     * If the [keepGoing] predicate is set, it is called before sending
      * each confirmation command. This is particularly useful for
      * aborting the loop at just the right time. In the Combo, this
      * command triggers updates associated with the button(s) and the
