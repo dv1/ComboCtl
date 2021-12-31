@@ -1027,9 +1027,10 @@ class PumpIO(
      * @throws Exception Exceptions that were thrown in the keepGoing callback
      *   that was passed to [startLongRTButtonPress].
      */
-    suspend fun waitForLongRTButtonPressToFinish() =
+    suspend fun waitForLongRTButtonPressToFinish() {
         // currentLongRTPressJob is set to null automatically when the job finishes
         currentLongRTPressJob?.await()
+    }
 
     /**
      * Switches the Combo to a different mode.
