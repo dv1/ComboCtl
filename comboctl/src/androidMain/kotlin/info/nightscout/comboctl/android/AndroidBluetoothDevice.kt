@@ -28,10 +28,9 @@ private val logger = Logger.get("AndroidBluetoothDevice")
  * instantiates and returns this (as a [BluetoothDevice]).
  */
 class AndroidBluetoothDevice(
-    bluetoothInterface: BluetoothInterface,
     private val systemBluetoothAdapter: SystemBluetoothAdapter,
     override val address: BluetoothAddress
-) : BluetoothDevice(bluetoothInterface) {
+) : BluetoothDevice() {
     private var systemBluetoothSocket: SystemBluetoothSocket? = null
     private var inputStream: InputStream? = null
     private var outputStream: OutputStream? = null

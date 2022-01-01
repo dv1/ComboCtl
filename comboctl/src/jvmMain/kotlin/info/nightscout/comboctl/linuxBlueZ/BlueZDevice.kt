@@ -23,7 +23,7 @@ class BlueZDevice(
     private val bluezInterface: BlueZInterface,
     nativeDevicePtr: Long,
     override val address: BluetoothAddress
-) : BluetoothDevice(bluezInterface), AutoCloseable {
+) : BluetoothDevice(), AutoCloseable {
     init {
         // This calls the constructor of the native C++ class.
         initialize()

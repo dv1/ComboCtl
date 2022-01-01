@@ -6,9 +6,9 @@ package info.nightscout.comboctl.base
  * Subclasses implement blocking IO to allow for RFCOMM-based
  * IO with a Bluetooth device.
  *
- * Subclass instances are created by BluetoothInterface subclasses.
+ * Subclass instances are created by [BluetoothInterface] subclasses.
  */
-abstract class BluetoothDevice(private val bluetoothInterface: BluetoothInterface) : BlockingComboIO() {
+abstract class BluetoothDevice : BlockingComboIO() {
     /**
      * The device's Bluetooth address.
      */

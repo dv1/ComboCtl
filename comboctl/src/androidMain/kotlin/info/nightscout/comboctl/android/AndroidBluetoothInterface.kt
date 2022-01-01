@@ -240,7 +240,7 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
     }
 
     override fun getDevice(deviceAddress: BluetoothAddress): BluetoothDevice =
-        AndroidBluetoothDevice(this, bluetoothAdapter, deviceAddress)
+        AndroidBluetoothDevice(bluetoothAdapter, deviceAddress)
 
     override fun getAdapterFriendlyName() =
         bluetoothAdapter.name ?: throw BluetoothException("Could not get Bluetooth adapter friendly name")
