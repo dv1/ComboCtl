@@ -5,10 +5,9 @@ import info.nightscout.comboctl.base.Cipher
 import info.nightscout.comboctl.base.ComboIO
 import info.nightscout.comboctl.base.TransportLayer
 import info.nightscout.comboctl.base.byteArrayListOfInts
-import info.nightscout.comboctl.base.toAppLayerPacket
 import info.nightscout.comboctl.base.toTransportLayerPacket
-import kotlinx.coroutines.channels.Channel
 import kotlin.test.assertNotNull
+import kotlinx.coroutines.channels.Channel
 
 class TestComboIO : ComboIO {
     val sentPacketData = newTestPacketSequence()
