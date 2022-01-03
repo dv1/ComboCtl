@@ -1,5 +1,7 @@
 package info.nightscout.comboctl.base
 
+import kotlinx.datetime.LocalDateTime
+
 private val logger = Logger.get("ApplicationLayer")
 
 /**
@@ -396,7 +398,7 @@ object ApplicationLayer {
             val immediateBolusAmount: Int,
             val totalDurationMinutes: Int
         ) : CMDHistoryEventDetail()
-        data class NewDateTimeSet(val dateTime: DateTime) : CMDHistoryEventDetail()
+        data class NewDateTimeSet(val dateTime: LocalDateTime) : CMDHistoryEventDetail()
     }
 
     /**
@@ -410,12 +412,12 @@ object ApplicationLayer {
      * understood is that these are the values of a unique internal event
      * counter at the time the event occurred, making this a de-facto ID.
      *
-     * @property timestamp Timestamp of when the event occurred, in local time.
+     * @property timestamp Timestamp of when the event occurred.
      * @property eventCounter Counter value for this event.
      * @property detail Event specific details (see [CMDHistoryEventDetail]).
      */
     data class CMDHistoryEvent(
-        val timestamp: DateTime,
+        val timestamp: LocalDateTime,
         val eventCounter: Long,
         val detail: CMDHistoryEventDetail
     ) {
@@ -1067,7 +1069,7 @@ object ApplicationLayer {
      * @return The packet's parsed payload (the pump's current datetime).
      * @throws InvalidPayloadException if the payload size is not the expected size.
      */
-    fun parseCMDReadDateTimeResponsePacket(packet: Packet): DateTime {
+    fun parseCMDReadDateTimeResponsePacket(packet: Packet): LocalDateTime {
         logger(LogLevel.DEBUG) { "Parsing CMD_READ_DATE_TIME_RESPONSE packet" }
 
         // Payload size sanity check.
@@ -1080,12 +1082,12 @@ object ApplicationLayer {
 
         val payload = packet.payload
 
-        val dateTime = DateTime(
+        val dateTime = LocalDateTime(
             second = payload[8].toPosInt(),
             minute = payload[7].toPosInt(),
             hour = payload[6].toPosInt(),
-            day = payload[5].toPosInt(),
-            month = payload[4].toPosInt(),
+            dayOfMonth = payload[5].toPosInt(),
+            monthNumber = payload[4].toPosInt(),
             year = (payload[2].toPosInt() shl 0) or (payload[3].toPosInt() shl 8)
         )
 
@@ -1214,15 +1216,15 @@ object ApplicationLayer {
             // byte 1: bits 0..3 : upper 4 bits of the minutes     bits 4..7 : lower 4 bits of the hours
             // byte 2: bit 0 : highest bit of the hours            bits 1..5 : days                            bits 6..7 : lower 2 bits of the months
             // byte 3: bits 0..1 : upper 2 bits of the months      bits 2..7 : years
-            val timestamp = DateTime(
+            val timestamp = LocalDateTime(
                 second = payload[payloadOffset + 0].toPosInt() and 0b00111111,
                 minute = ((payload[payloadOffset + 0].toPosInt() and 0b11000000) ushr 6) or
                         ((payload[payloadOffset + 1].toPosInt() and 0b00001111) shl 2),
                 hour = ((payload[payloadOffset + 1].toPosInt() and 0b11110000) ushr 4) or
                         ((payload[payloadOffset + 2].toPosInt() and 0b00000001) shl 4),
-                day = (payload[payloadOffset + 2].toPosInt() and 0b00111110) ushr 1,
-                month = ((payload[payloadOffset + 2].toPosInt() and 0b11000000) ushr 6) or
-                        ((payload[payloadOffset + 3].toPosInt() and 0b00000011) shl 2),
+                dayOfMonth = (payload[payloadOffset + 2].toPosInt() and 0b00111110) ushr 1,
+                monthNumber = ((payload[payloadOffset + 2].toPosInt() and 0b11000000) ushr 6) or
+                              ((payload[payloadOffset + 3].toPosInt() and 0b00000011) shl 2),
                 year = ((payload[payloadOffset + 3].toPosInt() and 0b11111100) ushr 2) + 2000
             )
 
@@ -1399,15 +1401,15 @@ object ApplicationLayer {
                     // byte 2: bit 0 : highest bit of the hours            bits 1..5 : days                            bits 6..7 : lower 2 bits of the months
                     // byte 3: bits 0..1 : upper 2 bits of the months      bits 2..7 : years
 
-                    val newDateTime = DateTime(
+                    val newDateTime = LocalDateTime(
                         second = detailBytes[0].toPosInt() and 0b00111111,
                         minute = ((detailBytes[0].toPosInt() and 0b11000000) ushr 6) or
                                 ((detailBytes[1].toPosInt() and 0b00001111) shl 2),
                         hour = ((detailBytes[1].toPosInt() and 0b11110000) ushr 4) or
                                 ((detailBytes[2].toPosInt() and 0b00000001) shl 4),
-                        day = (detailBytes[2].toPosInt() and 0b00111110) ushr 1,
-                        month = ((detailBytes[2].toPosInt() and 0b11000000) ushr 6) or
-                                ((detailBytes[3].toPosInt() and 0b00000011) shl 2),
+                        dayOfMonth = (detailBytes[2].toPosInt() and 0b00111110) ushr 1,
+                        monthNumber = ((detailBytes[2].toPosInt() and 0b11000000) ushr 6) or
+                                      ((detailBytes[3].toPosInt() and 0b00000011) shl 2),
                         year = ((detailBytes[3].toPosInt() and 0b11111100) ushr 2) + 2000
                     )
 

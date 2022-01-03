@@ -1,6 +1,5 @@
 package info.nightscout.comboctl.main
 
-import info.nightscout.comboctl.base.DateTime
 import info.nightscout.comboctl.base.LogLevel
 import info.nightscout.comboctl.base.Logger
 import info.nightscout.comboctl.base.findShortestPath
@@ -23,6 +22,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+import kotlinx.datetime.LocalDateTime
 import org.junit.jupiter.api.BeforeAll
 import kotlin.test.assertIs
 
@@ -167,7 +167,7 @@ class RTNavigationTest {
 
         val rtNavigationContext = TestRTNavigationContext(listOf(
             ParsedScreen.MainScreen(MainScreenContent.Normal(
-                currentTime = DateTime.fromDate(year = 2020, month = 10, day = 4),
+                currentTime = LocalDateTime(year = 2020, monthNumber = 10, dayOfMonth = 4, hour = 0, minute = 0),
                 activeBasalRateNumber = 1,
                 currentBasalRateFactor = 300,
                 batteryState = BatteryState.FULL_BATTERY
@@ -191,7 +191,7 @@ class RTNavigationTest {
 
         val rtNavigationContext = TestRTNavigationContext(listOf(
             ParsedScreen.MainScreen(MainScreenContent.Normal(
-                currentTime = DateTime.fromDate(year = 2020, month = 10, day = 4),
+                currentTime = LocalDateTime(year = 2020, monthNumber = 10, dayOfMonth = 4, hour = 0, minute = 0),
                 activeBasalRateNumber = 1,
                 currentBasalRateFactor = 300,
                 batteryState = BatteryState.FULL_BATTERY
@@ -225,7 +225,7 @@ class RTNavigationTest {
 
         val rtNavigationContext = TestRTNavigationContext(listOf(
             ParsedScreen.MainScreen(MainScreenContent.Normal(
-                currentTime = DateTime.fromDate(year = 2020, month = 10, day = 4),
+                currentTime = LocalDateTime(year = 2020, monthNumber = 10, dayOfMonth = 4, hour = 0, minute = 0),
                 activeBasalRateNumber = 1,
                 currentBasalRateFactor = 300,
                 batteryState = BatteryState.FULL_BATTERY
@@ -256,7 +256,7 @@ class RTNavigationTest {
 
         val rtNavigationContext = TestRTNavigationContext(listOf(
             ParsedScreen.MainScreen(MainScreenContent.Normal(
-                currentTime = DateTime.fromDate(year = 2020, month = 10, day = 4),
+                currentTime = LocalDateTime(year = 2020, monthNumber = 10, dayOfMonth = 4, hour = 0, minute = 0),
                 activeBasalRateNumber = 1,
                 currentBasalRateFactor = 300,
                 batteryState = BatteryState.FULL_BATTERY

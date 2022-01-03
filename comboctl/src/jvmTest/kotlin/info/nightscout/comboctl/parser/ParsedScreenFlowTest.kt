@@ -1,8 +1,8 @@
 package info.nightscout.comboctl.parser
 
-import info.nightscout.comboctl.base.DateTime
 import info.nightscout.comboctl.base.DisplayFrame
 import info.nightscout.comboctl.base.NUM_DISPLAY_FRAME_PIXELS
+import info.nightscout.comboctl.base.timeWithoutDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.coroutines.flow.asFlow
@@ -77,7 +77,7 @@ class ParsedScreenFlowTest {
         assertEquals(
             ParsedScreen.MainScreen(
                 MainScreenContent.Normal(
-                    currentTime = DateTime.fromTime(hour = 10, minute = 20),
+                    currentTime = timeWithoutDate(hour = 10, minute = 20),
                     activeBasalRateNumber = 1,
                     currentBasalRateFactor = 200,
                     batteryState = BatteryState.FULL_BATTERY

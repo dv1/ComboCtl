@@ -16,6 +16,7 @@ kotlin {
     sourceSets {
         val commonMain by getting {
             dependencies {
+                implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.3.1")
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.5.2")
                 // Need to use project.dependencies.platform() instead of platform()
                 // due to this bug: https://youtrack.jetbrains.com/issue/KT-40489

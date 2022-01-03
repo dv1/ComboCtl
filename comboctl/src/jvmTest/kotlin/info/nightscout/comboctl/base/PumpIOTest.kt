@@ -11,6 +11,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlinx.coroutines.delay
+import kotlinx.datetime.LocalDateTime
 
 class PumpIOTest {
     // Common test code.
@@ -575,84 +576,86 @@ class PumpIOTest {
 
             val expectedHistoryDeltaEvents = listOf(
                 ApplicationLayer.CMDHistoryEvent(
-                    DateTime(2021, 2, 9, 16, 54, 42),
+                    LocalDateTime(year = 2021, monthNumber = 2, dayOfMonth = 9, hour = 16, minute = 54, second = 42),
                     80649,
                     ApplicationLayer.CMDHistoryEventDetail.QuickBolusRequested(15)
                 ),
                 ApplicationLayer.CMDHistoryEvent(
-                    DateTime(2021, 2, 9, 16, 54, 49),
+                    LocalDateTime(year = 2021, monthNumber = 2, dayOfMonth = 9, hour = 16, minute = 54, second = 49),
                     80651,
                     ApplicationLayer.CMDHistoryEventDetail.QuickBolusInfused(15)
                 ),
 
                 ApplicationLayer.CMDHistoryEvent(
-                    DateTime(2021, 2, 9, 16, 57, 6),
+                    LocalDateTime(year = 2021, monthNumber = 2, dayOfMonth = 9, hour = 16, minute = 57, second = 6),
                     80653,
                     ApplicationLayer.CMDHistoryEventDetail.StandardBolusRequested(29, true)
                 ),
                 ApplicationLayer.CMDHistoryEvent(
-                    DateTime(2021, 2, 9, 16, 57, 20),
+                    LocalDateTime(year = 2021, monthNumber = 2, dayOfMonth = 9, hour = 16, minute = 57, second = 20),
                     80655,
                     ApplicationLayer.CMDHistoryEventDetail.StandardBolusInfused(29, true)
                 ),
 
                 ApplicationLayer.CMDHistoryEvent(
-                    DateTime(2021, 2, 9, 16, 57, 55),
+                    LocalDateTime(year = 2021, monthNumber = 2, dayOfMonth = 9, hour = 16, minute = 57, second = 55),
                     80657,
                     ApplicationLayer.CMDHistoryEventDetail.QuickBolusRequested(5)
                 ),
                 ApplicationLayer.CMDHistoryEvent(
-                    DateTime(2021, 2, 9, 16, 57, 57),
+                    LocalDateTime(year = 2021, monthNumber = 2, dayOfMonth = 9, hour = 16, minute = 57, second = 57),
                     80659,
                     ApplicationLayer.CMDHistoryEventDetail.QuickBolusInfused(5)
                 ),
 
                 ApplicationLayer.CMDHistoryEvent(
-                    DateTime(2021, 2, 9, 16, 58, 45),
+                    LocalDateTime(year = 2021, monthNumber = 2, dayOfMonth = 9, hour = 16, minute = 58, second = 45),
                     80661,
                     ApplicationLayer.CMDHistoryEventDetail.StandardBolusRequested(18, true)
                 ),
                 ApplicationLayer.CMDHistoryEvent(
-                    DateTime(2021, 2, 9, 16, 58, 54),
+                    LocalDateTime(year = 2021, monthNumber = 2, dayOfMonth = 9, hour = 16, minute = 58, second = 54),
                     80663,
                     ApplicationLayer.CMDHistoryEventDetail.StandardBolusInfused(18, true)
                 ),
 
                 ApplicationLayer.CMDHistoryEvent(
-                    DateTime(2021, 2, 9, 17, 0, 19),
+                    LocalDateTime(year = 2021, monthNumber = 2, dayOfMonth = 9, hour = 17, minute = 0, second = 19),
                     80666,
                     ApplicationLayer.CMDHistoryEventDetail.ExtendedBolusStarted(177, 15)
                 ),
                 ApplicationLayer.CMDHistoryEvent(
-                    DateTime(2021, 2, 9, 17, 15, 18),
+                    LocalDateTime(year = 2021, monthNumber = 2, dayOfMonth = 9, hour = 17, minute = 15, second = 18),
                     80668,
                     ApplicationLayer.CMDHistoryEventDetail.ExtendedBolusEnded(177, 15)
                 ),
 
                 ApplicationLayer.CMDHistoryEvent(
-                    DateTime(2021, 2, 9, 17, 21, 31),
+                    LocalDateTime(year = 2021, monthNumber = 2, dayOfMonth = 9, hour = 17, minute = 21, second = 31),
                     80670,
                     ApplicationLayer.CMDHistoryEventDetail.MultiwaveBolusStarted(193, 37, 30)
                 ),
                 ApplicationLayer.CMDHistoryEvent(
-                    DateTime(2021, 2, 9, 17, 51, 8),
+                    LocalDateTime(year = 2021, monthNumber = 2, dayOfMonth = 9, hour = 17, minute = 51, second = 8),
                     80672,
                     ApplicationLayer.CMDHistoryEventDetail.MultiwaveBolusEnded(193, 37, 30)
                 ),
 
                 ApplicationLayer.CMDHistoryEvent(
-                    DateTime(2021, 2, 9, 18, 1, 25),
+                    LocalDateTime(year = 2021, monthNumber = 2, dayOfMonth = 9, hour = 18, minute = 1, second = 25),
                     80675,
-                    ApplicationLayer.CMDHistoryEventDetail.NewDateTimeSet(DateTime(2021, 2, 9, 19, 1, 0))
+                    ApplicationLayer.CMDHistoryEventDetail.NewDateTimeSet(
+                        LocalDateTime(year = 2021, monthNumber = 2, dayOfMonth = 9, hour = 19, minute = 1, second = 0)
+                    )
                 ),
 
                 ApplicationLayer.CMDHistoryEvent(
-                    DateTime(2021, 2, 9, 19, 2, 5),
+                    LocalDateTime(year = 2021, monthNumber = 2, dayOfMonth = 9, hour = 19, minute = 2, second = 5),
                     80683,
                     ApplicationLayer.CMDHistoryEventDetail.QuickBolusRequested(20)
                 ),
                 ApplicationLayer.CMDHistoryEvent(
-                    DateTime(2021, 2, 9, 19, 2, 15),
+                    LocalDateTime(year = 2021, monthNumber = 2, dayOfMonth = 9, hour = 19, minute = 2, second = 15),
                     80685,
                     ApplicationLayer.CMDHistoryEventDetail.QuickBolusInfused(20)
                 )

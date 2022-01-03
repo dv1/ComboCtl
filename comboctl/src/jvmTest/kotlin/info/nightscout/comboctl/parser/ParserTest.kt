@@ -1,11 +1,13 @@
 package info.nightscout.comboctl.parser
 
-import info.nightscout.comboctl.base.DateTime
 import info.nightscout.comboctl.base.DisplayFrame
+import info.nightscout.comboctl.base.timeWithoutDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.fail
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.LocalDateTime
 
 class ParserTest {
     class TestContext(displayFrame: DisplayFrame, tokenOffset: Int, skipTitleString: Boolean = false, parseTopLeftTime: Boolean = false) {
@@ -16,7 +18,7 @@ class ParserTest {
             if (skipTitleString)
                 StringParser().parse(parseContext)
             if (parseTopLeftTime)
-                parseContext.topLeftTime = (TimeParser().parse(parseContext) as ParseResult.Value<*>).value as DateTime
+                parseContext.topLeftTime = (TimeParser().parse(parseContext) as ParseResult.Value<*>).value as LocalDateTime
         }
     }
 
@@ -80,7 +82,7 @@ class ParserTest {
         val testContext = TestContext(testUSDateFormatScreen, 20)
         val result = DateParser().parse(testContext.parseContext)
         assertEquals(ParseResult.Value::class, result::class)
-        assertEquals(DateTime.fromDate(year = 2011, month = 2, day = 3), (result as ParseResult.Value<*>).value as DateTime)
+        assertEquals(LocalDate(year = 2011, monthNumber = 2, dayOfMonth = 3), (result as ParseResult.Value<*>).value as LocalDate)
     }
 
     @Test
@@ -88,7 +90,7 @@ class ParserTest {
         val testContext = TestContext(testEUDateFormatScreen, 20)
         val result = DateParser().parse(testContext.parseContext)
         assertEquals(ParseResult.Value::class, result::class)
-        assertEquals(DateTime.fromDate(year = 2011, month = 2, day = 3), (result as ParseResult.Value<*>).value as DateTime)
+        assertEquals(LocalDate(year = 2011, monthNumber = 2, dayOfMonth = 3), (result as ParseResult.Value<*>).value as LocalDate)
     }
 
     @Test
@@ -96,7 +98,7 @@ class ParserTest {
         val testContext = TestContext(testTimeAndDateSettingsHour12hFormatScreen, 8)
         val result = TimeParser().parse(testContext.parseContext)
         assertEquals(ParseResult.Value::class, result::class)
-        assertEquals(DateTime.fromTime(hour = 20, minute = 34), (result as ParseResult.Value<*>).value as DateTime)
+        assertEquals(timeWithoutDate(hour = 20, minute = 34), (result as ParseResult.Value<*>).value as LocalDateTime)
     }
 
     @Test
@@ -104,7 +106,7 @@ class ParserTest {
         val testContext = TestContext(testTimeAndDateSettingsHour24hFormatScreen, 9)
         val result = TimeParser().parse(testContext.parseContext)
         assertEquals(ParseResult.Value::class, result::class)
-        assertEquals(DateTime.fromTime(hour = 10, minute = 22), (result as ParseResult.Value<*>).value as DateTime)
+        assertEquals(timeWithoutDate(hour = 10, minute = 22), (result as ParseResult.Value<*>).value as LocalDateTime)
     }
 
     @Test
@@ -169,7 +171,7 @@ class ParserTest {
         assertEquals(ParseResult.Sequence::class, result::class)
         val sequence = result as ParseResult.Sequence
         assertEquals(3, sequence.values.size)
-        assertEquals(DateTime.fromTime(hour = 10, minute = 20), sequence.valueAt(0))
+        assertEquals(timeWithoutDate(hour = 10, minute = 20), sequence.valueAt(0))
         assertEquals(Glyph.LargeSymbol(LargeSymbol.BASAL), sequence.valueAt(1))
         assertEquals(200, sequence.valueAt(2))
     }
@@ -191,7 +193,7 @@ class ParserTest {
         assertEquals(3, sequence.values.size)
         assertEquals("STUNDE", result.valueAt<String>(0))
         assertEquals(10, result.valueAt<Int>(1))
-        assertEquals(DateTime.fromTime(hour = 10, minute = 22), result.valueAt<DateTime>(2))
+        assertEquals(timeWithoutDate(hour = 10, minute = 22), result.valueAt<LocalDateTime>(2))
     }
 
     @Test
@@ -218,7 +220,7 @@ class ParserTest {
         assertEquals("STUNDE", sequence.valueAt(0))
         assertEquals(10, sequence.valueAt(1))
         assertEquals(null, result.valueAtOrNull<String>(2))
-        assertEquals(DateTime.fromTime(hour = 10, minute = 22), sequence.valueAt(3))
+        assertEquals(timeWithoutDate(hour = 10, minute = 22), sequence.valueAt(3))
     }
 
     @Test
@@ -245,7 +247,7 @@ class ParserTest {
         assertEquals("HOUR", sequence.valueAt(0))
         assertEquals(8, sequence.valueAt(1))
         assertEquals("PM", sequence.valueAtOrNull(2))
-        assertEquals(DateTime.fromTime(hour = 20, minute = 34), sequence.valueAt(3))
+        assertEquals(timeWithoutDate(hour = 20, minute = 34), sequence.valueAt(3))
     }
 
     // Tests for screen parsing
@@ -344,10 +346,10 @@ class ParserTest {
         val screen = (result as ParseResult.Value<*>).value as ParsedScreen.MainScreen
         assertEquals(
             MainScreenContent.Stopped(
-                currentDateTime = DateTime(
+                currentDateTime = LocalDateTime(
                     year = 0,
-                    month = 4,
-                    day = 21,
+                    monthNumber = 4,
+                    dayOfMonth = 21,
                     hour = testContext.parseContext.topLeftTime!!.hour,
                     minute = testContext.parseContext.topLeftTime!!.minute,
                     second = 0
@@ -367,10 +369,10 @@ class ParserTest {
         val screen = (result as ParseResult.Value<*>).value as ParsedScreen.MainScreen
         assertEquals(
             MainScreenContent.Stopped(
-                currentDateTime = DateTime(
+                currentDateTime = LocalDateTime(
                     year = 0,
-                    month = 4,
-                    day = 21,
+                    monthNumber = 4,
+                    dayOfMonth = 21,
                     hour = testContext.parseContext.topLeftTime!!.hour,
                     minute = testContext.parseContext.topLeftTime!!.minute,
                     second = 0
@@ -390,10 +392,10 @@ class ParserTest {
         val screen = (result as ParseResult.Value<*>).value as ParsedScreen.MainScreen
         assertEquals(
             MainScreenContent.Stopped(
-                currentDateTime = DateTime(
+                currentDateTime = LocalDateTime(
                     year = 0,
-                    month = 2,
-                    day = 1,
+                    monthNumber = 2,
+                    dayOfMonth = 1,
                     hour = testContext.parseContext.topLeftTime!!.hour,
                     minute = testContext.parseContext.topLeftTime!!.minute,
                     second = 0
@@ -431,10 +433,10 @@ class ParserTest {
         val screen = (result as ParseResult.Value<*>).value as ParsedScreen.MainScreen
         assertEquals(
             MainScreenContent.Stopped(
-                currentDateTime = DateTime(
+                currentDateTime = LocalDateTime(
                     year = 0,
-                    month = 1,
-                    day = 1,
+                    monthNumber = 1,
+                    dayOfMonth = 1,
                     hour = testContext.parseContext.topLeftTime!!.hour,
                     minute = testContext.parseContext.topLeftTime!!.minute,
                     second = 0
@@ -518,27 +520,51 @@ class ParserTest {
         val testScreens = listOf(
             Pair(
                 testFrameBasalRateFactorSettingNoFactorScreen,
-                ParsedScreen.BasalRateFactorSettingScreen(DateTime.fromTime(hour = 2), DateTime.fromTime(hour = 3), null, 1)
+                ParsedScreen.BasalRateFactorSettingScreen(
+                    timeWithoutDate(hour = 2, minute = 0),
+                    timeWithoutDate(hour = 3, minute = 0),
+                    null, 1
+                )
             ),
             Pair(
                 testFrameBasalRateFactorSettingScreen0,
-                ParsedScreen.BasalRateFactorSettingScreen(DateTime.fromTime(hour = 2), DateTime.fromTime(hour = 3), 120, 1)
+                ParsedScreen.BasalRateFactorSettingScreen(
+                    timeWithoutDate(hour = 2, minute = 0),
+                    timeWithoutDate(hour = 3, minute = 0),
+                    120, 1
+                )
             ),
             Pair(
                 testFrameBasalRateFactorSettingScreen1,
-                ParsedScreen.BasalRateFactorSettingScreen(DateTime.fromTime(hour = 2), DateTime.fromTime(hour = 3), 10000, 2)
+                ParsedScreen.BasalRateFactorSettingScreen(
+                    timeWithoutDate(hour = 2, minute = 0),
+                    timeWithoutDate(hour = 3, minute = 0),
+                    10000, 2
+                )
             ),
             Pair(
                 testFrameBasalRateFactorSettingScreenAM,
-                ParsedScreen.BasalRateFactorSettingScreen(DateTime.fromTime(hour = 0), DateTime.fromTime(hour = 1), 50, 1)
+                ParsedScreen.BasalRateFactorSettingScreen(
+                    timeWithoutDate(hour = 0, minute = 0),
+                    timeWithoutDate(hour = 1, minute = 0),
+                    50, 1
+                )
             ),
             Pair(
                 testFrameBasalRateFactorSettingScreenAMPM,
-                ParsedScreen.BasalRateFactorSettingScreen(DateTime.fromTime(hour = 11), DateTime.fromTime(hour = 12), 0, 3)
+                ParsedScreen.BasalRateFactorSettingScreen(
+                    timeWithoutDate(hour = 11, minute = 0),
+                    timeWithoutDate(hour = 12, minute = 0),
+                    0, 3
+                )
             ),
             Pair(
                 testFrameBasalRateFactorSettingScreenPMAM,
-                ParsedScreen.BasalRateFactorSettingScreen(DateTime.fromTime(hour = 23), DateTime.fromTime(hour = 0), 0, 3)
+                ParsedScreen.BasalRateFactorSettingScreen(
+                    timeWithoutDate(hour = 23, minute = 0),
+                    timeWithoutDate(hour = 0, minute = 0),
+                    0, 3
+                )
             )
         )
 
@@ -829,560 +855,620 @@ class ParserTest {
             Pair(
                 testMyDataBolusDataEnglishScreen,
                 ParsedScreen.MyDataBolusDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 1, day = 8, hour = 9, minute = 57, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 1, dayOfMonth = 8, hour = 9, minute = 57, second = 0),
                     bolusAmount = 1000, bolusType = MyDataBolusType.STANDARD, durationInMinutes = null
                 )
             ),
             Pair(
                 testMyDataErrorDataEnglishScreen,
                 ParsedScreen.MyDataErrorDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 1, day = 28, hour = 11, minute = 0, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 1, dayOfMonth = 28, hour = 11, minute = 0, second = 0),
                     alert = AlertScreenContent.Warning(6)
                 )
             ),
             Pair(
                 testMyDataDailyTotalsEnglishScreen,
                 ParsedScreen.MyDataDailyTotalsScreen(
-                    index = 1, totalNumEntries = 30, date = DateTime.fromDate(day = 30, month = 1),
+                    index = 1, totalNumEntries = 30, date = LocalDate(year = 0, dayOfMonth = 30, monthNumber = 1),
                     totalDailyAmount = 26900
                 )
             ),
             Pair(
                 testMyDataTbrDataEnglishScreen,
                 ParsedScreen.MyDataTbrDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 1, day = 28, hour = 11, minute = 0, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 1, dayOfMonth = 28, hour = 11, minute = 0, second = 0),
                     percentage = 110, durationInMinutes = 0
                 )
             ),
             Pair(
                 testMyDataBolusDataSpanishScreen,
                 ParsedScreen.MyDataBolusDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 1, day = 8, hour = 9, minute = 57, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 1, dayOfMonth = 8, hour = 9, minute = 57, second = 0),
                     bolusAmount = 1000, bolusType = MyDataBolusType.STANDARD, durationInMinutes = null
                 )
             ),
             Pair(
                 testMyDataErrorDataSpanishScreen,
                 ParsedScreen.MyDataErrorDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 1, day = 28, hour = 11, minute = 0, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 1, dayOfMonth = 28, hour = 11, minute = 0, second = 0),
                     alert = AlertScreenContent.Warning(6)
                 )
             ),
             Pair(
                 testMyDataDailyTotalsSpanishScreen,
                 ParsedScreen.MyDataDailyTotalsScreen(
-                    index = 1, totalNumEntries = 30, date = DateTime.fromDate(day = 30, month = 1),
+                    index = 1, totalNumEntries = 30, date = LocalDate(year = 0, dayOfMonth = 30, monthNumber = 1),
                     totalDailyAmount = 26900
                 )
             ),
             Pair(
                 testMyDataTbrDataSpanishScreen,
                 ParsedScreen.MyDataTbrDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 1, day = 28, hour = 11, minute = 0, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 1, dayOfMonth = 28, hour = 11, minute = 0, second = 0),
                     percentage = 110, durationInMinutes = 0
                 )
             ),
             Pair(
                 testMyDataBolusDataFrenchScreen,
                 ParsedScreen.MyDataBolusDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 5, day = 10, hour = 15, minute = 21, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 5, dayOfMonth = 10, hour = 15, minute = 21, second = 0),
                     bolusAmount = 4000, bolusType = MyDataBolusType.EXTENDED, durationInMinutes = 5
                 )
             ),
             Pair(
                 testMyDataErrorDataFrenchScreen,
                 ParsedScreen.MyDataErrorDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 5, day = 11, hour = 21, minute = 56, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 5, dayOfMonth = 11, hour = 21, minute = 56, second = 0),
                     alert = AlertScreenContent.Warning(7)
                 )
             ),
             Pair(
                 testMyDataDailyTotalsFrenchScreen,
                 ParsedScreen.MyDataDailyTotalsScreen(
-                    index = 1, totalNumEntries = 30, date = DateTime.fromDate(day = 12, month = 5),
+                    index = 1, totalNumEntries = 30, date = LocalDate(year = 0, dayOfMonth = 12, monthNumber = 5),
                     totalDailyAmount = 7600
                 )
             ),
             Pair(
                 testMyDataTbrDataFrenchScreen,
                 ParsedScreen.MyDataTbrDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 5, day = 11, hour = 21, minute = 56, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 5, dayOfMonth = 11, hour = 21, minute = 56, second = 0),
                     percentage = 110, durationInMinutes = 60
                 )
             ),
             Pair(
                 testMyDataBolusDataItalianScreen,
                 ParsedScreen.MyDataBolusDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 5, day = 12, hour = 16, minute = 30, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 5, dayOfMonth = 12, hour = 16, minute = 30, second = 0),
                     bolusAmount = 2700, bolusType = MyDataBolusType.MULTI_WAVE, durationInMinutes = 13
                 )
             ),
             Pair(
                 testMyDataErrorDataItalianScreen,
                 ParsedScreen.MyDataErrorDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 5, day = 11, hour = 21, minute = 56, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 5, dayOfMonth = 11, hour = 21, minute = 56, second = 0),
                     alert = AlertScreenContent.Warning(7)
                 )
             ),
             Pair(
                 testMyDataDailyTotalsItalianScreen,
                 ParsedScreen.MyDataDailyTotalsScreen(
-                    index = 1, totalNumEntries = 30, date = DateTime.fromDate(day = 12, month = 5),
+                    index = 1, totalNumEntries = 30, date = LocalDate(year = 0, dayOfMonth = 12, monthNumber = 5),
                     totalDailyAmount = 11200
                 )
             ),
             Pair(
                 testMyDataTbrDataItalianScreen,
                 ParsedScreen.MyDataTbrDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 5, day = 11, hour = 21, minute = 56, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 5, dayOfMonth = 11, hour = 21, minute = 56, second = 0),
                     percentage = 110, durationInMinutes = 60
                 )
             ),
             Pair(
                 testMyDataBolusDataRussianScreen,
                 ParsedScreen.MyDataBolusDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 5, day = 12, hour = 16, minute = 30, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 5, dayOfMonth = 12, hour = 16, minute = 30, second = 0),
                     bolusAmount = 2700, bolusType = MyDataBolusType.MULTI_WAVE, durationInMinutes = 13
                 )
             ),
             Pair(
                 testMyDataErrorDataRussianScreen,
                 ParsedScreen.MyDataErrorDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 5, day = 11, hour = 21, minute = 56, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 5, dayOfMonth = 11, hour = 21, minute = 56, second = 0),
                     alert = AlertScreenContent.Warning(7)
                 )
             ),
             Pair(
                 testMyDataDailyTotalsRussianScreen,
                 ParsedScreen.MyDataDailyTotalsScreen(
-                    index = 1, totalNumEntries = 30, date = DateTime.fromDate(day = 12, month = 5),
+                    index = 1, totalNumEntries = 30, date = LocalDate(year = 0, dayOfMonth = 12, monthNumber = 5),
                     totalDailyAmount = 12900
                 )
             ),
             Pair(
                 testMyDataTbrDataRussianScreen,
                 ParsedScreen.MyDataTbrDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 5, day = 11, hour = 21, minute = 56, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 5, dayOfMonth = 11, hour = 21, minute = 56, second = 0),
                     percentage = 110, durationInMinutes = 60
                 )
             ),
             Pair(
                 testMyDataBolusDataTurkishScreen,
                 ParsedScreen.MyDataBolusDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 5, day = 12, hour = 16, minute = 30, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 5, dayOfMonth = 12, hour = 16, minute = 30, second = 0),
                     bolusAmount = 2700, bolusType = MyDataBolusType.MULTI_WAVE, durationInMinutes = 13
                 )
             ),
             Pair(
                 testMyDataErrorDataTurkishScreen,
                 ParsedScreen.MyDataErrorDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 5, day = 11, hour = 21, minute = 56, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 5, dayOfMonth = 11, hour = 21, minute = 56, second = 0),
                     alert = AlertScreenContent.Warning(7)
                 )
             ),
             Pair(
                 testMyDataDailyTotalsTurkishScreen,
                 ParsedScreen.MyDataDailyTotalsScreen(
-                    index = 1, totalNumEntries = 30, date = DateTime.fromDate(day = 12, month = 5),
+                    index = 1, totalNumEntries = 30, date = LocalDate(year = 0, dayOfMonth = 12, monthNumber = 5),
                     totalDailyAmount = 12900
                 )
             ),
             Pair(
                 testMyDataTbrDataTurkishScreen,
                 ParsedScreen.MyDataTbrDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 5, day = 11, hour = 21, minute = 56, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 5, dayOfMonth = 11, hour = 21, minute = 56, second = 0),
                     percentage = 110, durationInMinutes = 60
                 )
             ),
             Pair(
                 testMyDataBolusDataPolishScreen,
                 ParsedScreen.MyDataBolusDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 5, day = 12, hour = 16, minute = 30, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 5, dayOfMonth = 12, hour = 16, minute = 30, second = 0),
                     bolusAmount = 2700, bolusType = MyDataBolusType.MULTI_WAVE, durationInMinutes = 13
                 )
             ),
             Pair(
                 testMyDataErrorDataPolishScreen,
                 ParsedScreen.MyDataErrorDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 5, day = 11, hour = 21, minute = 56, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 5, dayOfMonth = 11, hour = 21, minute = 56, second = 0),
                     alert = AlertScreenContent.Warning(7)
                 )
             ),
             Pair(
                 testMyDataDailyTotalsPolishScreen,
                 ParsedScreen.MyDataDailyTotalsScreen(
-                    index = 1, totalNumEntries = 30, date = DateTime.fromDate(day = 12, month = 5),
+                    index = 1, totalNumEntries = 30, date = LocalDate(year = 0, dayOfMonth = 12, monthNumber = 5),
                     totalDailyAmount = 12900
                 )
             ),
             Pair(
                 testMyDataTbrDataPolishScreen,
                 ParsedScreen.MyDataTbrDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 5, day = 11, hour = 21, minute = 56, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 5, dayOfMonth = 11, hour = 21, minute = 56, second = 0),
                     percentage = 110, durationInMinutes = 60
                 )
             ),
             Pair(
                 testMyDataBolusDataCzechScreen,
                 ParsedScreen.MyDataBolusDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 5, day = 12, hour = 16, minute = 30, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 5, dayOfMonth = 12, hour = 16, minute = 30, second = 0),
                     bolusAmount = 2700, bolusType = MyDataBolusType.MULTI_WAVE, durationInMinutes = 13
                 )
             ),
             Pair(
                 testMyDataErrorDataCzechScreen,
                 ParsedScreen.MyDataErrorDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 5, day = 11, hour = 21, minute = 56, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 5, dayOfMonth = 11, hour = 21, minute = 56, second = 0),
                     alert = AlertScreenContent.Warning(7)
                 )
             ),
             Pair(
                 testMyDataDailyTotalsCzechScreen,
                 ParsedScreen.MyDataDailyTotalsScreen(
-                    index = 1, totalNumEntries = 30, date = DateTime.fromDate(day = 12, month = 5),
+                    index = 1, totalNumEntries = 30, date = LocalDate(year = 0, dayOfMonth = 12, monthNumber = 5),
                     totalDailyAmount = 13900
                 )
             ),
             Pair(
                 testMyDataTbrDataCzechScreen,
                 ParsedScreen.MyDataTbrDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 5, day = 11, hour = 21, minute = 56, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 5, dayOfMonth = 11, hour = 21, minute = 56, second = 0),
                     percentage = 110, durationInMinutes = 60
                 )
             ),
             Pair(
                 testMyDataBolusDataHungarianScreen,
                 ParsedScreen.MyDataBolusDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 5, day = 12, hour = 16, minute = 30, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 5, dayOfMonth = 12, hour = 16, minute = 30, second = 0),
                     bolusAmount = 2700, bolusType = MyDataBolusType.MULTI_WAVE, durationInMinutes = 13
                 )
             ),
             Pair(
                 testMyDataErrorDataHungarianScreen,
                 ParsedScreen.MyDataErrorDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 5, day = 11, hour = 21, minute = 56, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 5, dayOfMonth = 11, hour = 21, minute = 56, second = 0),
                     alert = AlertScreenContent.Warning(7)
                 )
             ),
             Pair(
                 testMyDataDailyTotalsHungarianScreen,
                 ParsedScreen.MyDataDailyTotalsScreen(
-                    index = 1, totalNumEntries = 30, date = DateTime.fromDate(day = 12, month = 5),
+                    index = 1, totalNumEntries = 30, date = LocalDate(year = 0, dayOfMonth = 12, monthNumber = 5),
                     totalDailyAmount = 13900
                 )
             ),
             Pair(
                 testMyDataTbrDataHungarianScreen,
                 ParsedScreen.MyDataTbrDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 5, day = 11, hour = 21, minute = 56, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 5, dayOfMonth = 11, hour = 21, minute = 56, second = 0),
                     percentage = 110, durationInMinutes = 60
                 )
             ),
             Pair(
                 testMyDataBolusDataSlovakScreen,
                 ParsedScreen.MyDataBolusDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 5, day = 12, hour = 16, minute = 30, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 5, dayOfMonth = 12, hour = 16, minute = 30, second = 0),
                     bolusAmount = 2700, bolusType = MyDataBolusType.MULTI_WAVE, durationInMinutes = 13
                 )
             ),
             Pair(
                 testMyDataErrorDataSlovakScreen,
                 ParsedScreen.MyDataErrorDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 5, day = 11, hour = 21, minute = 56, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 5, dayOfMonth = 11, hour = 21, minute = 56, second = 0),
                     alert = AlertScreenContent.Warning(7)
                 )
             ),
             Pair(
                 testMyDataDailyTotalsSlovakScreen,
                 ParsedScreen.MyDataDailyTotalsScreen(
-                    index = 1, totalNumEntries = 30, date = DateTime.fromDate(day = 12, month = 5),
+                    index = 1, totalNumEntries = 30, date = LocalDate(year = 0, dayOfMonth = 12, monthNumber = 5),
                     totalDailyAmount = 13900
                 )
             ),
             Pair(
                 testMyDataTbrDataSlovakScreen,
                 ParsedScreen.MyDataTbrDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 5, day = 11, hour = 21, minute = 56, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 5, dayOfMonth = 11, hour = 21, minute = 56, second = 0),
                     percentage = 110, durationInMinutes = 60
                 )
             ),
             Pair(
                 testMyDataBolusDataRomanianScreen,
                 ParsedScreen.MyDataBolusDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 5, day = 12, hour = 16, minute = 30, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 5, dayOfMonth = 12, hour = 16, minute = 30, second = 0),
                     bolusAmount = 2700, bolusType = MyDataBolusType.MULTI_WAVE, durationInMinutes = 13
                 )
             ),
             Pair(
                 testMyDataErrorDataRomanianScreen,
                 ParsedScreen.MyDataErrorDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 5, day = 11, hour = 21, minute = 56, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 5, dayOfMonth = 11, hour = 21, minute = 56, second = 0),
                     alert = AlertScreenContent.Warning(7)
                 )
             ),
             Pair(
                 testMyDataDailyTotalsRomanianScreen,
                 ParsedScreen.MyDataDailyTotalsScreen(
-                    index = 1, totalNumEntries = 30, date = DateTime.fromDate(day = 12, month = 5),
+                    index = 1, totalNumEntries = 30, date = LocalDate(year = 0, dayOfMonth = 12, monthNumber = 5),
                     totalDailyAmount = 13900
                 )
             ),
             Pair(
                 testMyDataTbrDataRomanianScreen,
                 ParsedScreen.MyDataTbrDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 5, day = 11, hour = 21, minute = 56, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 5, dayOfMonth = 11, hour = 21, minute = 56, second = 0),
                     percentage = 110, durationInMinutes = 60
                 )
             ),
             Pair(
                 testMyDataBolusDataCroatianScreen,
                 ParsedScreen.MyDataBolusDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 5, day = 12, hour = 16, minute = 30, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 5, dayOfMonth = 12, hour = 16, minute = 30, second = 0),
                     bolusAmount = 2700, bolusType = MyDataBolusType.MULTI_WAVE, durationInMinutes = 13
                 )
             ),
             Pair(
                 testMyDataErrorDataCroatianScreen,
                 ParsedScreen.MyDataErrorDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 2, day = 1, hour = 1, minute = 6, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 2, dayOfMonth = 1, hour = 1, minute = 6, second = 0),
                     alert = AlertScreenContent.Warning(1)
                 )
             ),
             Pair(
                 testMyDataDailyTotalsCroatianScreen,
                 ParsedScreen.MyDataDailyTotalsScreen(
-                    index = 1, totalNumEntries = 30, date = DateTime.fromDate(day = 10, month = 2),
+                    index = 1, totalNumEntries = 30, date = LocalDate(year = 0, dayOfMonth = 10, monthNumber = 2),
                     totalDailyAmount = 5800
                 )
             ),
             Pair(
                 testMyDataTbrDataCroatianScreen,
                 ParsedScreen.MyDataTbrDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 6, day = 11, hour = 17, minute = 25, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 6, dayOfMonth = 11, hour = 17, minute = 25, second = 0),
                     percentage = 240, durationInMinutes = 60
                 )
             ),
             Pair(
                 testMyDataBolusDataDutchScreen,
                 ParsedScreen.MyDataBolusDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 5, day = 12, hour = 16, minute = 30, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 5, dayOfMonth = 12, hour = 16, minute = 30, second = 0),
                     bolusAmount = 2700, bolusType = MyDataBolusType.MULTI_WAVE, durationInMinutes = 13
                 )
             ),
             Pair(
                 testMyDataErrorDataDutchScreen,
                 ParsedScreen.MyDataErrorDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 2, day = 1, hour = 1, minute = 6, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 2, dayOfMonth = 1, hour = 1, minute = 6, second = 0),
                     alert = AlertScreenContent.Warning(1)
                 )
             ),
             Pair(
                 testMyDataDailyTotalsDutchScreen,
                 ParsedScreen.MyDataDailyTotalsScreen(
-                    index = 1, totalNumEntries = 30, date = DateTime.fromDate(day = 10, month = 2),
+                    index = 1, totalNumEntries = 30, date = LocalDate(year = 0, dayOfMonth = 10, monthNumber = 2),
                     totalDailyAmount = 5800
                 )
             ),
             Pair(
                 testMyDataTbrDataDutchScreen,
                 ParsedScreen.MyDataTbrDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 6, day = 11, hour = 17, minute = 25, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 6, dayOfMonth = 11, hour = 17, minute = 25, second = 0),
                     percentage = 240, durationInMinutes = 60
                 )
             ),
             Pair(
                 testMyDataBolusDataGreekScreen,
                 ParsedScreen.MyDataBolusDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 5, day = 12, hour = 16, minute = 30, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 5, dayOfMonth = 12, hour = 16, minute = 30, second = 0),
                     bolusAmount = 2700, bolusType = MyDataBolusType.MULTI_WAVE, durationInMinutes = 13
                 )
             ),
             Pair(
                 testMyDataErrorDataGreekScreen,
                 ParsedScreen.MyDataErrorDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 2, day = 1, hour = 1, minute = 6, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 2, dayOfMonth = 1, hour = 1, minute = 6, second = 0),
                     alert = AlertScreenContent.Warning(1)
                 )
             ),
             Pair(
                 testMyDataDailyTotalsGreekScreen,
                 ParsedScreen.MyDataDailyTotalsScreen(
-                    index = 1, totalNumEntries = 30, date = DateTime.fromDate(day = 10, month = 2),
+                    index = 1, totalNumEntries = 30, date = LocalDate(year = 0, dayOfMonth = 10, monthNumber = 2),
                     totalDailyAmount = 5800
                 )
             ),
             Pair(
                 testMyDataTbrDataGreekScreen,
                 ParsedScreen.MyDataTbrDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 6, day = 11, hour = 17, minute = 25, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 6, dayOfMonth = 11, hour = 17, minute = 25, second = 0),
                     percentage = 240, durationInMinutes = 60
                 )
             ),
             Pair(
                 testMyDataBolusDataFinnishScreen,
                 ParsedScreen.MyDataBolusDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 5, day = 12, hour = 16, minute = 30, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 5, dayOfMonth = 12, hour = 16, minute = 30, second = 0),
                     bolusAmount = 2700, bolusType = MyDataBolusType.MULTI_WAVE, durationInMinutes = 13
                 )
             ),
             Pair(
                 testMyDataErrorDataFinnishScreen,
                 ParsedScreen.MyDataErrorDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 2, day = 1, hour = 1, minute = 6, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 2, dayOfMonth = 1, hour = 1, minute = 6, second = 0),
                     alert = AlertScreenContent.Warning(1)
                 )
             ),
             Pair(
                 testMyDataDailyTotalsFinnishScreen,
                 ParsedScreen.MyDataDailyTotalsScreen(
-                    index = 1, totalNumEntries = 30, date = DateTime.fromDate(day = 10, month = 2),
+                    index = 1, totalNumEntries = 30, date = LocalDate(year = 0, dayOfMonth = 10, monthNumber = 2),
                     totalDailyAmount = 5900
                 )
             ),
             Pair(
                 testMyDataTbrDataFinnishScreen,
                 ParsedScreen.MyDataTbrDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 6, day = 11, hour = 17, minute = 25, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 6, dayOfMonth = 11, hour = 17, minute = 25, second = 0),
                     percentage = 240, durationInMinutes = 60
                 )
             ),
             Pair(
                 testMyDataBolusDataNorwegianScreen,
                 ParsedScreen.MyDataBolusDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 5, day = 12, hour = 16, minute = 30, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 5, dayOfMonth = 12, hour = 16, minute = 30, second = 0),
                     bolusAmount = 2700, bolusType = MyDataBolusType.MULTI_WAVE, durationInMinutes = 13
                 )
             ),
             Pair(
                 testMyDataErrorDataNorwegianScreen,
                 ParsedScreen.MyDataErrorDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 2, day = 1, hour = 1, minute = 6, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 2, dayOfMonth = 1, hour = 1, minute = 6, second = 0),
                     alert = AlertScreenContent.Warning(1)
                 )
             ),
             Pair(
                 testMyDataDailyTotalsNorwegianScreen,
                 ParsedScreen.MyDataDailyTotalsScreen(
-                    index = 1, totalNumEntries = 30, date = DateTime.fromDate(day = 10, month = 2),
+                    index = 1, totalNumEntries = 30, date = LocalDate(year = 0, dayOfMonth = 10, monthNumber = 2),
                     totalDailyAmount = 5900
                 )
             ),
             Pair(
                 testMyDataTbrDataNorwegianScreen,
                 ParsedScreen.MyDataTbrDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 6, day = 11, hour = 17, minute = 25, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 6, dayOfMonth = 11, hour = 17, minute = 25, second = 0),
                     percentage = 240, durationInMinutes = 60
                 )
             ),
             Pair(
                 testMyDataBolusDataPortugueseScreen,
                 ParsedScreen.MyDataBolusDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 5, day = 12, hour = 16, minute = 30, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 5, dayOfMonth = 12, hour = 16, minute = 30, second = 0),
                     bolusAmount = 2700, bolusType = MyDataBolusType.MULTI_WAVE, durationInMinutes = 13
                 )
             ),
             Pair(
                 testMyDataErrorDataPortugueseScreen,
                 ParsedScreen.MyDataErrorDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 2, day = 1, hour = 1, minute = 6, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 2, dayOfMonth = 1, hour = 1, minute = 6, second = 0),
                     alert = AlertScreenContent.Warning(1)
                 )
             ),
             Pair(
                 testMyDataDailyTotalsPortugueseScreen,
                 ParsedScreen.MyDataDailyTotalsScreen(
-                    index = 1, totalNumEntries = 30, date = DateTime.fromDate(day = 10, month = 2),
+                    index = 1, totalNumEntries = 30, date = LocalDate(year = 0, dayOfMonth = 10, monthNumber = 2),
                     totalDailyAmount = 5900
                 )
             ),
             Pair(
                 testMyDataTbrDataPortugueseScreen,
                 ParsedScreen.MyDataTbrDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 6, day = 11, hour = 17, minute = 25, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 6, dayOfMonth = 11, hour = 17, minute = 25, second = 0),
                     percentage = 240, durationInMinutes = 60
                 )
             ),
             Pair(
                 testMyDataBolusDataSwedishScreen,
                 ParsedScreen.MyDataBolusDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 5, day = 12, hour = 16, minute = 30, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 5, dayOfMonth = 12, hour = 16, minute = 30, second = 0),
                     bolusAmount = 2700, bolusType = MyDataBolusType.MULTI_WAVE, durationInMinutes = 13
                 )
             ),
             Pair(
                 testMyDataErrorDataSwedishScreen,
                 ParsedScreen.MyDataErrorDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 2, day = 1, hour = 1, minute = 6, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 2, dayOfMonth = 1, hour = 1, minute = 6, second = 0),
                     alert = AlertScreenContent.Warning(1)
                 )
             ),
             Pair(
                 testMyDataDailyTotalsSwedishScreen,
                 ParsedScreen.MyDataDailyTotalsScreen(
-                    index = 1, totalNumEntries = 30, date = DateTime.fromDate(day = 10, month = 2),
+                    index = 1, totalNumEntries = 30, date = LocalDate(year = 0, dayOfMonth = 10, monthNumber = 2),
                     totalDailyAmount = 5900
                 )
             ),
             Pair(
                 testMyDataTbrDataSwedishScreen,
                 ParsedScreen.MyDataTbrDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 6, day = 11, hour = 17, minute = 25, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 6, dayOfMonth = 11, hour = 17, minute = 25, second = 0),
                     percentage = 240, durationInMinutes = 60
                 )
             ),
             Pair(
                 testMyDataBolusDataDanishScreen,
                 ParsedScreen.MyDataBolusDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 5, day = 12, hour = 16, minute = 30, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 5, dayOfMonth = 12, hour = 16, minute = 30, second = 0),
                     bolusAmount = 2700, bolusType = MyDataBolusType.MULTI_WAVE, durationInMinutes = 13
                 )
             ),
             Pair(
                 testMyDataErrorDataDanishScreen,
                 ParsedScreen.MyDataErrorDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 2, day = 1, hour = 1, minute = 6, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 2, dayOfMonth = 1, hour = 1, minute = 6, second = 0),
                     alert = AlertScreenContent.Warning(1)
                 )
             ),
             Pair(
                 testMyDataDailyTotalsDanishScreen,
                 ParsedScreen.MyDataDailyTotalsScreen(
-                    index = 1, totalNumEntries = 30, date = DateTime.fromDate(day = 10, month = 2),
+                    index = 1, totalNumEntries = 30, date = LocalDate(year = 0, dayOfMonth = 10, monthNumber = 2),
                     totalDailyAmount = 5900
                 )
             ),
             Pair(
                 testMyDataTbrDataDanishScreen,
                 ParsedScreen.MyDataTbrDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 6, day = 11, hour = 17, minute = 25, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 6, dayOfMonth = 11, hour = 17, minute = 25, second = 0),
                     percentage = 240, durationInMinutes = 60
                 )
             ),
             Pair(
                 testMyDataBolusDataGermanScreen,
                 ParsedScreen.MyDataBolusDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 1, day = 8, hour = 9, minute = 57, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 1, dayOfMonth = 8, hour = 9, minute = 57, second = 0),
                     bolusAmount = 1000, bolusType = MyDataBolusType.STANDARD, durationInMinutes = null
                 )
             ),
             Pair(
                 testMyDataErrorDataGermanScreen,
                 ParsedScreen.MyDataErrorDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 1, day = 28, hour = 11, minute = 0, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 1, dayOfMonth = 28, hour = 11, minute = 0, second = 0),
                     alert = AlertScreenContent.Warning(6)
                 )
             ),
             Pair(
                 testMyDataDailyTotalsGermanScreen,
                 ParsedScreen.MyDataDailyTotalsScreen(
-                    index = 1, totalNumEntries = 30, date = DateTime.fromDate(day = 30, month = 1),
+                    index = 1, totalNumEntries = 30, date = LocalDate(year = 0, dayOfMonth = 30, monthNumber = 1),
                     totalDailyAmount = 26900
                 )
             ),
             Pair(
                 testMyDataTbrDataGermanScreen,
                 ParsedScreen.MyDataTbrDataScreen(
-                    index = 1, totalNumEntries = 30, timestamp = DateTime(year = 0, month = 1, day = 28, hour = 11, minute = 0, second = 0),
+                    index = 1, totalNumEntries = 30,
+                    timestamp = LocalDateTime(year = 0, monthNumber = 1, dayOfMonth = 28, hour = 11, minute = 0, second = 0),
                     percentage = 110, durationInMinutes = 0
                 )
             )
@@ -1395,13 +1481,11 @@ class ParserTest {
             val titleId = knownScreenTitles[titleString]
             assertNotNull(titleId)
 
-            lateinit var result: ParseResult
-
-            when (titleId) {
-                TitleID.BOLUS_DATA -> result = MyDataBolusDataScreenParser().parse(testContext.parseContext)
-                TitleID.ERROR_DATA -> result = MyDataErrorDataScreenParser().parse(testContext.parseContext)
-                TitleID.DAILY_TOTALS -> result = MyDataDailyTotalsScreenParser().parse(testContext.parseContext)
-                TitleID.TBR_DATA -> result = MyDataTbrDataScreenParser().parse(testContext.parseContext)
+            val result: ParseResult = when (titleId) {
+                TitleID.BOLUS_DATA -> MyDataBolusDataScreenParser().parse(testContext.parseContext)
+                TitleID.ERROR_DATA -> MyDataErrorDataScreenParser().parse(testContext.parseContext)
+                TitleID.DAILY_TOTALS -> MyDataDailyTotalsScreenParser().parse(testContext.parseContext)
+                TitleID.TBR_DATA -> MyDataTbrDataScreenParser().parse(testContext.parseContext)
                 else -> {
                     fail("Unknown title string \"$titleString\"")
                 }

@@ -2,43 +2,21 @@ package info.nightscout.comboctl.base
 
 import kotlin.math.max
 import kotlin.math.min
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.atTime
 
-/**
- * Simple data class for storing date and local time.
- *
- * This is also used for just storing dates with the [DateTime.fromDate]
- * function. The time fields (hour/minute/second) are set to 0 when storing
- * dates only. The same applies to [DateTime.fromTime], except that the
- * date fields (year/month/day) are then set to 0 instead.
- *
- * Hours are always stored in the 24-hour format.
- */
-data class DateTime(
-    val year: Int,
-    val month: Int,
-    val day: Int,
-    val hour: Int,
-    val minute: Int,
-    val second: Int
-) {
-    override fun toString() =
-        "${year.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')} " +
-        "${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}:${second.toString().padStart(2, '0')}"
+// Utility function for cases when only the time and no date is known.
+// monthNumber and dayOfMonth are set to 1 instead of 0 since 0 is
+// outside of the valid range of these fields.
+internal fun timeWithoutDate(hour: Int = 0, minute: Int = 0, second: Int = 0) =
+    LocalDateTime(
+        year = 0, monthNumber = 1, dayOfMonth = 1,
+        hour = hour, minute = minute, second = second, nanosecond = 0
+    )
 
-    companion object {
-        fun fromDate(year: Int = 0, month: Int = 0, day: Int = 0) =
-            DateTime(year = year, month = month, day = day, hour = 0, minute = 0, second = 0)
-
-        fun fromTime(hour: Int = 0, minute: Int = 0, second: Int = 0) =
-            DateTime(year = 0, month = 0, day = 0, hour = hour, minute = minute, second = second)
-
-        fun combineDateTimes(timeFrom: DateTime, dateFrom: DateTime) =
-            DateTime(
-                year = dateFrom.year, month = dateFrom.month, day = dateFrom.day,
-                hour = timeFrom.hour, minute = timeFrom.minute, second = timeFrom.second
-            )
-    }
-}
+internal fun combinedDateTime(date: LocalDate, time: LocalDateTime) =
+    date.atTime(hour = time.hour, minute = time.minute, second = time.second, nanosecond = time.nanosecond)
 
 /**
  * Produces a ByteArray out of a sequence of integers.

@@ -1,8 +1,12 @@
 package info.nightscout.comboctl.parser
 
-import info.nightscout.comboctl.base.DateTime
 import info.nightscout.comboctl.base.DisplayFrame
+import info.nightscout.comboctl.base.combinedDateTime
+import info.nightscout.comboctl.base.timeWithoutDate
 import kotlin.reflect.KClassifier
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.atTime
 
 /*****************************************
  *** Screen and screen content classes ***
@@ -40,19 +44,19 @@ private fun batteryStateFromSymbol(symbol: SmallSymbol?): BatteryState =
  */
 sealed class MainScreenContent {
     data class Normal(
-        val currentTime: DateTime,
+        val currentTime: LocalDateTime,
         val activeBasalRateNumber: Int,
         val currentBasalRateFactor: Int,
         val batteryState: BatteryState
     ) : MainScreenContent()
 
     data class Stopped(
-        val currentDateTime: DateTime,
+        val currentDateTime: LocalDateTime,
         val batteryState: BatteryState
     ) : MainScreenContent()
 
     data class Tbr(
-        val currentTime: DateTime,
+        val currentTime: LocalDateTime,
         val remainingTbrDurationInMinutes: Int,
         val tbrPercentage: Int,
         val activeBasalRateNumber: Int,
@@ -113,8 +117,8 @@ sealed class ParsedScreen {
 
     data class BasalRateTotalScreen(val totalNumUnits: Int, val basalRateNumber: Int) : ParsedScreen()
     data class BasalRateFactorSettingScreen(
-        val beginTime: DateTime,
-        val endTime: DateTime,
+        val beginTime: LocalDateTime,
+        val endTime: LocalDateTime,
         val numUnits: Int?,
         val basalRateNumber: Int
     ) : ParsedScreen()
@@ -133,7 +137,7 @@ sealed class ParsedScreen {
     data class MyDataBolusDataScreen(
         val index: Int,
         val totalNumEntries: Int,
-        val timestamp: DateTime,
+        val timestamp: LocalDateTime,
         val bolusAmount: Int,
         val bolusType: MyDataBolusType,
         val durationInMinutes: Int?
@@ -141,19 +145,19 @@ sealed class ParsedScreen {
     data class MyDataErrorDataScreen(
         val index: Int,
         val totalNumEntries: Int,
-        val timestamp: DateTime,
+        val timestamp: LocalDateTime,
         val alert: AlertScreenContent
     ) : ParsedScreen()
     data class MyDataDailyTotalsScreen(
         val index: Int,
         val totalNumEntries: Int,
-        val date: DateTime,
+        val date: LocalDate,
         val totalDailyAmount: Int
     ) : ParsedScreen()
     data class MyDataTbrDataScreen(
         val index: Int,
         val totalNumEntries: Int,
-        val timestamp: DateTime,
+        val timestamp: LocalDateTime,
         val percentage: Int,
         val durationInMinutes: Int
     ) : ParsedScreen()
@@ -177,7 +181,7 @@ private fun amPmTo24Hour(hour: Int, amPm: String) =
 class ParseContext(
     val tokens: List<Token>,
     var currentIndex: Int,
-    var topLeftTime: DateTime? = null
+    var topLeftTime: LocalDateTime? = null
 ) {
     fun hasMoreTokens() = (currentIndex < tokens.size)
 
@@ -612,7 +616,7 @@ class DateParser : Parser() {
             year = regexGroups[5]!!.value.toInt(radix = 10) + 2000 // Combo years always start at the year 2000
         }
 
-        return ParseResult.Value(DateTime.fromDate(year = year, month = month, day = day))
+        return ParseResult.Value(LocalDate(year = year, monthNumber = month, dayOfMonth = day))
     }
 }
 
@@ -721,7 +725,7 @@ class TimeParser : Parser() {
         } else
             return ParseResult.Failed
 
-        return ParseResult.Value(DateTime.fromTime(hour = hour, minute = minute))
+        return ParseResult.Value(timeWithoutDate(hour = hour, minute = minute))
     }
 }
 
@@ -978,7 +982,7 @@ class TopLeftClockScreenParser : Parser() {
 
         parseResult as ParseResult.Sequence
 
-        parseContext.topLeftTime = parseResult.valueAtOrNull<DateTime>(0)
+        parseContext.topLeftTime = parseResult.valueAtOrNull<LocalDateTime>(0)
 
         return FirstSuccessParser(
             listOf(
@@ -1119,7 +1123,7 @@ class TemporaryBasalRateDurationScreenParser : Parser() {
             return ParseResult.Failed
 
         parseResult as ParseResult.Sequence
-        val durationParseResult = parseResult.valueAtOrNull<DateTime>(0)
+        val durationParseResult = parseResult.valueAtOrNull<LocalDateTime>(0)
 
         return ParseResult.Value(
             ParsedScreen.TemporaryBasalRateDurationScreen(
@@ -1207,7 +1211,7 @@ class TbrMainScreenParser : Parser() {
             if (parseResult.size >= 5) parseResult.valueAt<Glyph.SmallSymbol>(4).symbol else null
         )
 
-        val remainingTbrDuration = parseResult.valueAt<DateTime>(0)
+        val remainingTbrDuration = parseResult.valueAt<LocalDateTime>(0)
 
         return ParseResult.Value(
             ParsedScreen.MainScreen(
@@ -1245,7 +1249,7 @@ class StoppedMainScreenParser : Parser() {
         if (parseResult.size < 1)
             return ParseResult.Failed
 
-        val currentDate = parseResult.valueAt<DateTime>(0)
+        val currentDate = parseResult.valueAt<LocalDate>(0)
 
         val batteryState = batteryStateFromSymbol(
             if (parseResult.size >= 2) parseResult.valueAt<Glyph.SmallSymbol>(1).symbol else null
@@ -1254,13 +1258,11 @@ class StoppedMainScreenParser : Parser() {
         return ParseResult.Value(
             ParsedScreen.MainScreen(
                 MainScreenContent.Stopped(
-                    currentDateTime = DateTime(
-                        year = currentDate.year,
-                        month = currentDate.month,
-                        day = currentDate.day,
+                    currentDateTime = currentDate.atTime(
                         hour = parseContext.topLeftTime!!.hour,
                         minute = parseContext.topLeftTime!!.minute,
-                        second = 0
+                        second = 0,
+                        nanosecond = 0
                     ),
                     batteryState = batteryState
                 )
@@ -1289,7 +1291,7 @@ class BasalRateFactorSettingScreenParser : Parser() {
 
         parseResult as ParseResult.Sequence
         val beginTime = parseContext.topLeftTime!!
-        val endTime = parseResult.valueAt<DateTime>(0)
+        val endTime = parseResult.valueAt<LocalDateTime>(0)
         val numUnits = parseResult.valueAtOrNull<Int>(1)
         val basalRateNumber = parseResult.valueAt<Int>(2)
 
@@ -1382,8 +1384,11 @@ class MyDataBolusDataScreenParser : Parser() {
         val bolusAmount = parseResult.valueAt<Int>(1)
         val index = parseResult.valueAt<Int>(2)
         val totalNumEntries = parseResult.valueAt<Int>(3)
-        val duration = parseResult.valueAtOrNull<DateTime>(4)
-        val timestamp = DateTime.combineDateTimes(parseResult.valueAt<DateTime>(5), parseResult.valueAt<DateTime>(6))
+        val duration = parseResult.valueAtOrNull<LocalDateTime>(4)
+        val timestamp = combinedDateTime(
+            date = parseResult.valueAt<LocalDate>(6),
+            time = parseResult.valueAt<LocalDateTime>(5)
+        )
 
         return ParseResult.Value(
             ParsedScreen.MyDataBolusDataScreen(
@@ -1426,7 +1431,10 @@ class MyDataErrorDataScreenParser : Parser() {
         val index = parseResult.valueAt<Int>(3)
         val totalNumEntries = parseResult.valueAt<Int>(4)
         // skipping value #5 (the alert description)
-        val timestamp = DateTime.combineDateTimes(parseResult.valueAt<DateTime>(6), parseResult.valueAt<DateTime>(7))
+        val timestamp = combinedDateTime(
+            date = parseResult.valueAt<LocalDate>(7),
+            time = parseResult.valueAt<LocalDateTime>(6)
+        )
 
         return ParseResult.Value(
             ParsedScreen.MyDataErrorDataScreen(
@@ -1461,7 +1469,7 @@ class MyDataDailyTotalsScreenParser : Parser() {
         val index = parseResult.valueAt<Int>(0)
         val totalNumEntries = parseResult.valueAt<Int>(1)
         val totalDailyAmount = parseResult.valueAt<Int>(2)
-        val date = parseResult.valueAt<DateTime>(3)
+        val date = parseResult.valueAt<LocalDate>(3)
 
         return ParseResult.Value(
             ParsedScreen.MyDataDailyTotalsScreen(
@@ -1500,8 +1508,11 @@ class MyDataTbrDataScreenParser : Parser() {
         val percentage = parseResult.valueAt<Int>(1)
         val index = parseResult.valueAt<Int>(2)
         val totalNumEntries = parseResult.valueAt<Int>(3)
-        val duration = parseResult.valueAt<DateTime>(4)
-        val timestamp = DateTime.combineDateTimes(parseResult.valueAt<DateTime>(5), parseResult.valueAt<DateTime>(6))
+        val duration = parseResult.valueAt<LocalDateTime>(4)
+        val timestamp = combinedDateTime(
+            date = parseResult.valueAt<LocalDate>(6),
+            time = parseResult.valueAt<LocalDateTime>(5)
+        )
 
         return ParseResult.Value(
             ParsedScreen.MyDataTbrDataScreen(

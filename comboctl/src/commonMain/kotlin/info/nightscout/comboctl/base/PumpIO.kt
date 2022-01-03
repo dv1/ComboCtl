@@ -21,6 +21,7 @@ import kotlinx.coroutines.plus
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.datetime.LocalDateTime
 
 private val logger = Logger.get("PumpIO")
 
@@ -791,7 +792,7 @@ class PumpIO(
      *   of a packet's payload does not match the expected size.
      * @throws ComboIOException if IO with the pump fails.
      */
-    suspend fun readCMDDateTime(): DateTime = runPumpIOCall("get current pump datetime", Mode.COMMAND) {
+    suspend fun readCMDDateTime(): LocalDateTime = runPumpIOCall("get current pump datetime", Mode.COMMAND) {
         val packet = sendPacketWithResponse(
             ApplicationLayer.createCMDReadDateTimePacket(),
             ApplicationLayer.Command.CMD_READ_DATE_TIME_RESPONSE
