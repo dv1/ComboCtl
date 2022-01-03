@@ -10,21 +10,21 @@ import info.nightscout.comboctl.parser.MainScreenContent
 import info.nightscout.comboctl.parser.ParsedScreen
 import info.nightscout.comboctl.parser.Quickinfo
 import info.nightscout.comboctl.parser.ReservoirState
+import kotlin.test.Test
+import kotlin.test.assertIs
+import kotlin.test.assertTrue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlin.test.Test
-import kotlin.test.assertTrue
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalDateTime
 import org.junit.jupiter.api.BeforeAll
-import kotlin.test.assertIs
 
 class RTNavigationTest {
     /* RTNavigationContext implementation for testing out RTNavigation functionality.
@@ -289,7 +289,7 @@ class RTNavigationTest {
                 ParsedScreen.BasalRate1ProgrammingMenuScreen,
                 ParsedScreen.BasalRate2ProgrammingMenuScreen,
                 ParsedScreen.BasalRate3ProgrammingMenuScreen,
-                ParsedScreen.BasalRate4ProgrammingMenuScreen,
+                ParsedScreen.BasalRate4ProgrammingMenuScreen
             ),
             automaticallyAdvanceScreens = true
         )
