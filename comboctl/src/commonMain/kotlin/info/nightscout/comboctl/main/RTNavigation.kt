@@ -615,6 +615,7 @@ suspend fun adjustQuantityOnScreen(
  *
  * @param rtNavigationContext Context to use for navigating.
  * @param targetScreenType Type of the target screen.
+ * @return The target screen.
  * @throws CouldNotFindRTScreenException if the screen was not seen even after
  *   this function observed [RTNavigationContext.maxNumCycleAttempts]
  *   screens coming in, or if no path from the current screen to
@@ -628,7 +629,7 @@ suspend fun adjustQuantityOnScreen(
 suspend fun navigateToRTScreen(
     rtNavigationContext: RTNavigationContext,
     targetScreenType: KClassifier
-) {
+): ParsedScreen {
     logger(LogLevel.DEBUG) { "About to navigate to RT screen of type $targetScreenType" }
 
     // Get the current screen so we know the starting point. If it is an
@@ -692,7 +693,7 @@ suspend fun navigateToRTScreen(
     var cycleCount = 0
     val pathIt = path.iterator()
     var nextPathItem = pathIt.next()
-    rtNavigationContext.getParsedScreenFlow()
+    return rtNavigationContext.getParsedScreenFlow()
         .first { parsedScreen ->
             if (cycleCount >= rtNavigationContext.maxNumCycleAttempts)
                 throw CouldNotFindRTScreenException(targetScreenType)
