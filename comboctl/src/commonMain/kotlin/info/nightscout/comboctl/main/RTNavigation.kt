@@ -668,7 +668,6 @@ suspend fun navigateToRTScreen(
 
     // Figure out the shortest path.
     var path = try {
-        // findRTNavigationPath(currentParsedScreen::class, targetScreenType)
         rtNavigationGraph.findShortestPath(currentParsedScreen::class, targetScreenType)
     } catch (e: IllegalArgumentException) {
         // Happens when currentParsedScreen::class is not found in the navigation tree.

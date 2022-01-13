@@ -678,11 +678,11 @@ object TransportLayer {
          *
          * To receive packets in the background from the Combo, this starts
          * an internal coroutine that runs in the [packetReceiverScope].
-         * That scope's associated dispatcher is overwritten; an internal
+         * That scope's associated dispatcher is overwritten; a different
          * dispatcher is used instead (one that never executes tasks
          * simultaneously, on several threads). The "packet receiver"
          * is that coroutine. It runs a loop that keeps receiving packets.
-         * The [onPacketReceived] callback defines  if the packet receiver
+         * The [onPacketReceived] callback defines if the packet receiver
          * should drop the packet or forward it through an internal channel
          * to receive() calls.
          *
