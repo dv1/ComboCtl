@@ -648,6 +648,11 @@ suspend fun navigateToRTScreen(
             }
         }
 
+    if (currentParsedScreen::class == targetScreenType) {
+        logger(LogLevel.DEBUG) { "Already at target; exiting" }
+        return currentParsedScreen
+    }
+
     logger(LogLevel.DEBUG) { "Navigation starts at screen $currentParsedScreen" }
 
     // Figure out the shortest path.

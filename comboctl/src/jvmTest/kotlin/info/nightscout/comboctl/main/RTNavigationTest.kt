@@ -181,6 +181,25 @@ class RTNavigationTest {
     }
 
     @Test
+    fun checkRTNavigationWhenAlreadyAtTarget() {
+        // Check edge case handling when we want to navigate to
+        // a target screen type, but we are in fact already there.
+
+        val rtNavigationContext = TestRTNavigationContext(listOf(
+            ParsedScreen.MainScreen(MainScreenContent.Normal(
+                currentTime = LocalDateTime(year = 2020, monthNumber = 10, dayOfMonth = 4, hour = 0, minute = 0),
+                activeBasalRateNumber = 1,
+                currentBasalRateFactor = 300,
+                batteryState = BatteryState.FULL_BATTERY
+            ))
+        ))
+
+        runBlockingWithWatchdog(6000) {
+            navigateToRTScreen(rtNavigationContext, ParsedScreen.MainScreen::class)
+        }
+    }
+
+    @Test
     fun checkLongPressRTButtonUntil() {
         // Test long RT button presses by simulating transitions
         // between screens that happen due to the long button
