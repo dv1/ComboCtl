@@ -177,16 +177,12 @@ class PumpIOTest {
 
         runBlockingWithWatchdog(6000) {
             val testStates = TestStates(true)
-            val mainScope = this
             val pumpIO = testStates.pumpIO
             val testIO = testStates.testIO
 
             testStates.feedInitialPackets()
 
-            pumpIO.connectAsync(
-                packetReceiverScope = mainScope,
-                runHeartbeat = false
-            ).join()
+            pumpIO.connect(runHeartbeat = false)
 
             pumpIO.sendShortRTButtonPress(ApplicationLayer.RTButton.UP)
             delay(200L)
@@ -250,7 +246,6 @@ class PumpIOTest {
 
         runBlockingWithWatchdog(6000) {
             val testStates = TestStates(true)
-            val mainScope = this
             val testIO = testStates.testIO
             val pumpIO = testStates.pumpIO
 
@@ -258,10 +253,7 @@ class PumpIOTest {
 
             testStates.feedInitialPackets()
 
-            pumpIO.connectAsync(
-                packetReceiverScope = mainScope,
-                runHeartbeat = false
-            ).join()
+            pumpIO.connect(runHeartbeat = false)
 
             var counter = 0
             pumpIO.startLongRTButtonPress(ApplicationLayer.RTButton.UP) {
@@ -289,10 +281,7 @@ class PumpIOTest {
 
             testStates.feedInitialPackets()
 
-            pumpIO.connectAsync(
-                packetReceiverScope = mainScope,
-                runHeartbeat = false
-            ).join()
+            pumpIO.connect(runHeartbeat = false)
 
             pumpIO.startLongRTButtonPress(ApplicationLayer.RTButton.DOWN)
             delay(500L)
@@ -318,10 +307,7 @@ class PumpIOTest {
 
             testStates.feedInitialPackets()
 
-            pumpIO.connectAsync(
-                packetReceiverScope = mainScope,
-                runHeartbeat = false
-            ).join()
+            pumpIO.connect(runHeartbeat = false)
 
             var counter = 0
             pumpIO.startLongRTButtonPress(ApplicationLayer.RTButton.UP) {
@@ -355,10 +341,7 @@ class PumpIOTest {
 
             testStates.feedInitialPackets()
 
-            pumpIO.connectAsync(
-                packetReceiverScope = mainScope,
-                runHeartbeat = false
-            ).join()
+            pumpIO.connect(runHeartbeat = false)
 
             var counter = 0
             pumpIO.startLongRTButtonPress(ApplicationLayer.RTButton.UP) {
@@ -397,10 +380,7 @@ class PumpIOTest {
 
             testStates.feedInitialPackets()
 
-            pumpIO.connectAsync(
-                packetReceiverScope = mainScope,
-                runHeartbeat = false
-            ).join()
+            pumpIO.connect(runHeartbeat = false)
 
             pumpIO.sendShortRTButtonPress(ApplicationLayer.RTButton.UP)
             delay(200L)
@@ -463,11 +443,10 @@ class PumpIOTest {
 
             testStates.feedInitialPackets()
 
-            pumpIO.connectAsync(
-                packetReceiverScope = mainScope,
+            pumpIO.connect(
                 initialMode = PumpIO.Mode.COMMAND,
                 runHeartbeat = false
-            ).join()
+            )
 
             val errorWarningStatusData = byteArrayListOfInts(
                 0x10, 0x23, 0x08, 0x00, 0x01, 0x39, 0x01, 0x00, 0x00, 0x00, 0x00,
@@ -663,11 +642,10 @@ class PumpIOTest {
 
             testStates.feedInitialPackets()
 
-            pumpIO.connectAsync(
-                packetReceiverScope = mainScope,
+            pumpIO.connect(
                 initialMode = PumpIO.Mode.COMMAND,
                 runHeartbeat = false
-            ).join()
+            )
 
             historyBlockPacketData.forEach { testIO.feedIncomingData(it) }
 

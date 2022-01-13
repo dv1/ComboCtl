@@ -1,26 +1,15 @@
 package info.nightscout.comboctl.base
 
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Deferred
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.async
-import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.plus
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDateTime
 
 private val logger = Logger.get("PumpIO")
@@ -55,10 +44,10 @@ typealias PairingPINCallback = suspend (previousAttemptFailed: Boolean) -> Pairi
  *
  * For initiating the Combo pairing, the [performPairing] function is
  * available. This must not be used if a connection was already established
- * via [connectAsync] - pairing is only possible in the disconnected state.
+ * via [connect] - pairing is only possible in the disconnected state.
  *
- * For initiating a regular connection, use [connectAsync]. Do not call
- * [connectAsync] again until after disconnecting with [disconnect]. Also
+ * For initiating a regular connection, use [connect]. Do not call
+ * [connect] again until after disconnecting with [disconnect]. Also
  * see the remarks above about pairing and connecting at the same time.
  *
  * The Combo regularly sends new display frames when running in the
@@ -83,7 +72,7 @@ typealias PairingPINCallback = suspend (previousAttemptFailed: Boolean) -> Pairi
  * so RT_KEEP_ALIVE / CMD_PING only need to be sent if no other command
  * has been sent for a while now.
  * In some cases (typically unit tests), a regular connection without
- * a heartbeat is needed. [connectAsync] accepts an argument to start
+ * a heartbeat is needed. [connect] accepts an argument to start
  * without one for this purpose.
  *
  * The supplied [pumpStateStore] is used during pairing and regular
@@ -127,7 +116,8 @@ class PumpIO(
         rtButtonConfirmationBarrier.close(packetReceiverException)
     }
 
-    private var sequencedDispatcherScope: CoroutineScope? = null
+    private var internalScopeJob: Job? = null
+    private var internalScope: CoroutineScope? = null
 
     // Job representing the coroutine that runs the CMD ping heartbeat.
     private var cmdPingHeartbeatJob: Job? = null
@@ -213,7 +203,7 @@ class PumpIO(
          * State after a pump command failed, typically because of an IO error.
          *
          * When this state is reached, nothing more can be done with the pump
-         * until [disconnect] or [reconnect] are called.
+         * until [disconnect] is called.
          */
         FAILED
     }
@@ -563,7 +553,7 @@ class PumpIO(
     )
 
     /**
-     * [StateFlow] for reporting progress during the [connectAsync] call.
+     * [StateFlow] for reporting progress during the [connect] call.
      *
      * See the [ProgressReporter] documentation for details.
      */
@@ -618,15 +608,14 @@ class PumpIO(
      * @return [Deferred] representing the coroutine that finishes the connection
      *   setup procedure.
      * @throws IllegalStateException if IO was already started by a previous
-     *   [connectAsync] call or if the [PumpStateStore] that was passed to the
+     *   [connect] call or if the [PumpStateStore] that was passed to the
      *   class constructor has no pairing data for this pump (most likely
      *   because the pump isn't paired yet).
      */
-    fun connectAsync(
-        packetReceiverScope: CoroutineScope,
+    suspend fun connect(
         initialMode: Mode = Mode.REMOTE_TERMINAL,
         runHeartbeat: Boolean = true
-    ): Deferred<Unit> {
+    ) {
         // Prerequisites.
 
         check(isPaired()) {
@@ -653,15 +642,12 @@ class PumpIO(
         // (See the transportLayerIO initialization code.)
         rtButtonConfirmationBarrier = newRtButtonConfirmationBarrier()
 
-        // Start the actual IO activity.
-        transportLayerIO.start(packetReceiverScope) { tpLayerPacket -> processReceivedPacket(tpLayerPacket) }
+        val newScopeJob = SupervisorJob()
+        val newScope = CoroutineScope(newScopeJob + Dispatchers.Default)
 
-        // Store the scope to allow other functions such as
-        // startLongRTButtonPress to start coroutines in this scope.
-        // We use our own sequenced dispatcher with it to disallow
-        // parallelism in our internal coroutines.
-        this.sequencedDispatcherScope = packetReceiverScope + transportLayerIO.sequencedDispatcher()
         this.initialMode = initialMode
+        this.internalScopeJob = newScopeJob
+        this.internalScope = newScope
 
         // Make sure the frame parser has no leftover data from
         // a previous connection.
@@ -671,59 +657,60 @@ class PumpIO(
 
         logger(LogLevel.DEBUG) { "Pump IO connecting asynchronously" }
 
-        connectProgressReporter.setCurrentProgressStage(BasicProgressStage.PerformingConnectionHandshake)
+        try {
+            _connectionState.value = ConnectionState.CONNECTING
 
-        // Launch the coroutine that sets up the connection.
-        return this.sequencedDispatcherScope!!.async {
-            try {
-                _connectionState.value = ConnectionState.CONNECTING
-
-                // Suspend the coroutine until Bluetooth is connected.
-                // Do this in a separate coroutine with an IO dispatcher
-                // since the connection setup may block.
-                withContext(ioDispatcher()) {
-                    bluetoothDevice.connect(connectProgressReporter)
-                }
-
-                logger(LogLevel.DEBUG) { "Sending regular connection request" }
-
-                // Initiate connection at the transport layer.
-                sendPacketWithResponse(
-                    TransportLayer.createRequestRegularConnectionPacketInfo(),
-                    TransportLayer.Command.REGULAR_CONNECTION_REQUEST_ACCEPTED
-                )
-
-                // Initiate connection at the application layer.
-                logger(LogLevel.DEBUG) { "Initiating application layer connection" }
-                sendPacketWithResponse(
-                    ApplicationLayer.createCTRLConnectPacket(),
-                    ApplicationLayer.Command.CTRL_CONNECT_RESPONSE
-                )
-
-                // Explicitly switch to the initial mode.
-                switchMode(initialMode, runHeartbeat)
-
-                logger(LogLevel.INFO) { "Pump IO connected" }
-
-                _connectionState.value = ConnectionState.CONNECTED
-
-                connectProgressReporter.setCurrentProgressStage(BasicProgressStage.Finished)
-            } catch (e: CancellationException) {
-                connectProgressReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
-                disconnect()
-                throw e
-            } catch (t: Throwable) {
-                connectProgressReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
-                _connectionState.value = ConnectionState.FAILED
-                throw t
+            // Suspend the coroutine until Bluetooth is connected.
+            // Do this in a separate coroutine with an IO dispatcher
+            // since the connection setup may block.
+            withContext(ioDispatcher()) {
+                bluetoothDevice.connect(connectProgressReporter)
             }
+
+            connectProgressReporter.setCurrentProgressStage(BasicProgressStage.PerformingConnectionHandshake)
+
+            // Start the actual IO activity.
+            transportLayerIO.start(newScope) { tpLayerPacket -> processReceivedPacket(tpLayerPacket) }
+
+            logger(LogLevel.DEBUG) { "Sending regular connection request" }
+
+            // Initiate connection at the transport layer.
+            sendPacketWithResponse(
+                TransportLayer.createRequestRegularConnectionPacketInfo(),
+                TransportLayer.Command.REGULAR_CONNECTION_REQUEST_ACCEPTED
+            )
+
+            // Initiate connection at the application layer.
+            logger(LogLevel.DEBUG) { "Initiating application layer connection" }
+            sendPacketWithResponse(
+                ApplicationLayer.createCTRLConnectPacket(),
+                ApplicationLayer.Command.CTRL_CONNECT_RESPONSE
+            )
+
+            // Explicitly switch to the initial mode.
+            switchMode(initialMode, runHeartbeat)
+
+            logger(LogLevel.INFO) { "Pump IO connected" }
+
+            _connectionState.value = ConnectionState.CONNECTED
+
+            connectProgressReporter.setCurrentProgressStage(BasicProgressStage.Finished)
+        } catch (e: CancellationException) {
+            connectProgressReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
+            disconnect()
+            throw e
+        } catch (t: Throwable) {
+            newScopeJob.cancelAndJoin()
+            connectProgressReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
+            _connectionState.value = ConnectionState.FAILED
+            throw t
         }
     }
 
     /**
      * Disconnects from a pump.
      *
-     * This terminates the connection that was set up by [connectAsync].
+     * This terminates the connection that was set up by [connect].
      *
      * If no connection is running, this does nothing.
      *
@@ -748,33 +735,14 @@ class PumpIO(
             ::disconnectBTDeviceAndCatchExceptions
         )
 
-        sequencedDispatcherScope = null
+        internalScope = null
+        internalScopeJob?.cancelAndJoin()
+        internalScopeJob = null
+
+        internalScope = null
         _currentModeFlow.value = null
 
         logger(LogLevel.DEBUG) { "Pump IO disconnected" }
-    }
-
-    /**
-     * Reconnects a pump.
-     *
-     * This is useful if this pump is in the [ConnectionState.FAILED] state.
-     * It reconnects the pump with the coroutine scope and initial mode that
-     * were specified in the last [connectAsync] call.
-     *
-     * Look up [connectAsync] for the list of exceptions that can be thrown
-     * in addition to what is listed below.
-     *
-     * @throws IllegalStateException if this was called even though no
-     *   previous successful [connectAsync] call was made.
-     */
-    suspend fun reconnect() {
-        check(sequencedDispatcherScope != null)
-        check(initialMode != null)
-
-        logger(LogLevel.DEBUG) { "Reconnecting pump with address ${bluetoothDevice.address}" }
-
-        disconnect()
-        connectAsync(sequencedDispatcherScope!!, initialMode!!).await()
     }
 
     /**
@@ -881,7 +849,7 @@ class PumpIO(
      *   to the history.
      * @throws ComboIOException if IO with the pump fails.
      */
-    suspend fun getCMDHistoryDelta(maxRequests: Int): List<ApplicationLayer.CMDHistoryEvent> {
+    suspend fun getCMDHistoryDelta(maxRequests: Int = 40): List<ApplicationLayer.CMDHistoryEvent> {
         require(maxRequests >= 10) { "Maximum amount of requests must be at least 10; caller specified $maxRequests" }
 
         return runPumpIOCall("get history delta", Mode.COMMAND) {
@@ -1217,7 +1185,7 @@ class PumpIO(
      * If an exception occurs, either disconnect, or try to repeat the mode switch.
      * This is important to make sure the pump is in a known mode.
      *
-     * The runHeartbeat argument functions just like the one in [connectAsync].
+     * The runHeartbeat argument functions just like the one in [connect].
      * It is necessary because mode switching stops any currently ongoing heartbeat.
      *
      * If the mode specified by newMode is the same as the current mode,
@@ -1339,10 +1307,12 @@ class PumpIO(
 
     private suspend fun sendPacketWithResponse(
         appLayerPacketToSend: ApplicationLayer.Packet,
-        expectedResponseCommand: ApplicationLayer.Command? = null
+        expectedResponseCommand: ApplicationLayer.Command? = null,
+        doRestartHeartbeat: Boolean = true
     ): ApplicationLayer.Packet = sendPacketMutex.withLock {
         return withContext(NonCancellable) {
-            restartHeartbeat()
+            if (doRestartHeartbeat)
+                restartHeartbeat()
 
             sendAppLayerPacket(appLayerPacketToSend)
 
@@ -1372,10 +1342,12 @@ class PumpIO(
     }
 
     private suspend fun sendPacketWithoutResponse(
-        appLayerPacketToSend: ApplicationLayer.Packet
+        appLayerPacketToSend: ApplicationLayer.Packet,
+        doRestartHeartbeat: Boolean = true
     ) = sendPacketMutex.withLock {
         withContext(NonCancellable) {
-            restartHeartbeat()
+            if (doRestartHeartbeat)
+                restartHeartbeat()
             sendAppLayerPacket(appLayerPacketToSend)
         }
     }
@@ -1383,6 +1355,7 @@ class PumpIO(
     private suspend fun sendAppLayerPacket(appLayerPacket: ApplicationLayer.Packet) {
         // NOTE: This function does NOT lock a mutex and does NOT use
         // NonCancellable. Make sure to set these up before calling this.
+        check(sendPacketMutex.isLocked)
 
         logger(LogLevel.VERBOSE) {
             "Sending application layer packet via transport layer:  $appLayerPacket"
@@ -1538,20 +1511,42 @@ class PumpIO(
 
         logger(LogLevel.VERBOSE) { "Starting background CMD ping heartbeat" }
 
-        require(sequencedDispatcherScope != null)
+        require(internalScope != null)
 
-        cmdPingHeartbeatJob = sequencedDispatcherScope!!.launch {
-            // We have to send a CMD_PING packet to the Combo
-            // every second to let the Combo know that we are still
-            // there. Otherwise, it will terminate the connection,
-            // since it then assumes that we are no longer connected
-            // (for example due to a system crash).
+        cmdPingHeartbeatJob = internalScope!!.launch {
+            // In command mode, if no command has been sent to the Combo
+            // within about 1-1.5 seconds, the Combo terminates the
+            // connection, assuming that the client is gone. As a
+            // consequence, we have to send an CMD_PING packet
+            // to the Combo after a second.
+            //
+            // It is possible to prevent these packets from being
+            // sent when other commands were sent. To that end, if
+            // a command is to be sent, restartHeartbeat() can be
+            // called to effectively reset this timeout back to
+            // one second. If command-mode commands are sent frequently,
+            // this causes the timeout to be constantly reset, and the
+            // CMD_PING packet isn't sent until no more command-mode
+            // commands are sent.
+            //
+            // Also note that in here, we use sendPacketWithResponse()
+            // with doRestartHeartbeat set to false. The reason for this
+            // is that otherwise, the sendPacketWithResponse() function
+            // would internally call restartHeartbeat(), and doing that
+            // here would cause an infinite loop (and make no sense).
             while (true) {
+                // *First* wait, and only *afterwards* send the
+                // CMD_PING packet. This order is important, since
+                // otherwise, an CMD_PING packet would be sent out
+                // immediately, and thus we would not have the timeout
+                // behavior described above.
+                delay(1000)
                 logger(LogLevel.VERBOSE) { "Transmitting CMD ping packet" }
                 try {
                     sendPacketWithResponse(
                         ApplicationLayer.createCMDPingPacket(),
-                        ApplicationLayer.Command.CMD_PING_RESPONSE
+                        ApplicationLayer.Command.CMD_PING_RESPONSE,
+                        doRestartHeartbeat = false
                     )
                 } catch (e: CancellationException) {
                     cmdPingHeartbeatJob = null
@@ -1572,7 +1567,6 @@ class PumpIO(
                     cmdPingHeartbeatJob = null
                     break
                 }
-                delay(1000)
             }
         }
     }
@@ -1597,9 +1591,9 @@ class PumpIO(
 
         logger(LogLevel.VERBOSE) { "Starting background RT keep-alive heartbeat" }
 
-        require(sequencedDispatcherScope != null)
+        require(internalScope != null)
 
-        rtKeepAliveHeartbeatJob = sequencedDispatcherScope!!.launch {
+        rtKeepAliveHeartbeatJob = internalScope!!.launch {
             // In RT mode, if no RT command has been sent to the Combo
             // within about 1-1.5 seconds, the Combo terminates the
             // connection, assuming that the client is gone. As a
@@ -1608,19 +1602,18 @@ class PumpIO(
             //
             // It is possible to prevent these packets from being
             // sent when other RT commands were sent. To that end, if
-            // an RT command is to be sent, restartKeepAliveIfRequired()
-            // can be called to effectively reset this timeout back to
+            // an RT command is to be sent, restartHeartbeat() can be
+            // called to effectively reset this timeout back to
             // one second. If RT commands are sent frequently, this
             // causes the timeout to be constantly reset, and the
             // RT_KEEP_ALIVE packet isn't sent until no more RT
             // commands are sent.
             //
-            // Also note that in here, we use sendAppLayerPacket()
-            // directly, and not sendPacketWithoutResponse(). The reason
-            // for this is that the sendPacketWithoutResponse() function
-            // internally resets the timeout using restartHeartbeat(),
-            // and doing that here would cause an infinite loop
-            // (and makes no sense).
+            // Also note that in here, we use sendPacketWithoutResponse()
+            // with doRestartHeartbeat set to false. The reason for this
+            // is that otherwise, the sendPacketWithoutResponse() function
+            // would internally call restartHeartbeat(), and doing that
+            // here would cause an infinite loop (and make no sense).
             while (true) {
                 // *First* wait, and only *afterwards* send the
                 // RT_KEEP_ALIVE packet. This order is important, since
@@ -1630,7 +1623,10 @@ class PumpIO(
                 delay(1000)
                 logger(LogLevel.VERBOSE) { "Transmitting RT keep-alive packet" }
                 try {
-                    sendAppLayerPacket(ApplicationLayer.createRTKeepAlivePacket())
+                    sendPacketWithoutResponse(
+                        ApplicationLayer.createRTKeepAlivePacket(),
+                        doRestartHeartbeat = false
+                    )
                 } catch (e: CancellationException) {
                     rtKeepAliveHeartbeatJob = null
                     throw e
@@ -1714,7 +1710,7 @@ class PumpIO(
 
         var delayBeforeNoButton = false
 
-        currentLongRTPressJob = sequencedDispatcherScope!!.async {
+        currentLongRTPressJob = internalScope!!.async {
             try {
                 // First time, we send the button status with
                 // the CHANGED status and with the codes for
