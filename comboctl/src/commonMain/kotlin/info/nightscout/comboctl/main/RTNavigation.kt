@@ -143,6 +143,17 @@ class CouldNotFindRTScreenException(val targetScreenType: KClassifier) :
     RTNavigationException("Could not find RT screen $targetScreenType")
 
 /**
+ * Exception thrown when the RT navigation encountered an unexpected screen type.
+ *
+ * @property expectedScreenType Type of the screen that was expected.
+ * @property encounteredScreenType Type of the screen that was encountered.
+ */
+class UnexpectedRTScreenException(
+    val expectedScreenType: KClassifier,
+    val encounteredScreenType: KClassifier
+) : RTNavigationException("Unexpected RT screen; expected $expectedScreenType, encountered $encounteredScreenType")
+
+/**
  * Exception thrown when in spite of repeatedly trying to exit to the main screen, no recognizable RT screen is found.
  *
  * This is different from [NoUsableRTScreenException] in that the code tried to get out
