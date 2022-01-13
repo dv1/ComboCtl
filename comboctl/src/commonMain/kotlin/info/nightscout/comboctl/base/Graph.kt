@@ -93,13 +93,15 @@ data class PathSegment<NodeValue, EdgeValue>(val targetNodeValue: NodeValue, val
  *
  * This is a shortcut for accessing "from" and "to" nodes
  * from [Graph.node] based on user-defined node values.
+ * If values are specified that are not associated with
+ * nodes, [IllegalArgumentException] is thrown.
  */
 fun <NodeValue, EdgeValue> Graph<NodeValue, EdgeValue>.findShortestPath(
     from: NodeValue,
     to: NodeValue
-): List<PathSegment<NodeValue, EdgeValue>> {
-    val fromNode = nodes[from] ?: return listOf()
-    val toNode = nodes[to] ?: return listOf()
+): List<PathSegment<NodeValue, EdgeValue>>? {
+    val fromNode = nodes[from] ?: throw IllegalArgumentException()
+    val toNode = nodes[to] ?: throw IllegalArgumentException()
     return findShortestPath(fromNode, toNode)
 }
 
@@ -107,12 +109,17 @@ fun <NodeValue, EdgeValue> Graph<NodeValue, EdgeValue>.findShortestPath(
  * Finds the shortest path between two nodes.
  *
  * The path starts at [from] and ends at [to]. If no path between these two
- * nodes can be found, an empty list is returned.
+ * nodes can be found, null is returned. If [from] and [to] are the same,
+ * an empty list is returned. If no path can be found, null is returned.
+ *
+ * @param fromNode Start node of the shortest path.
+ * @param toNode End node of the shortest path.
+ * @return Shortest path, or null if no such path exists.
  */
 fun <NodeValue, EdgeValue> Graph<NodeValue, EdgeValue>.findShortestPath(
     fromNode: Graph<NodeValue, EdgeValue>.Node,
     toNode: Graph<NodeValue, EdgeValue>.Node
-): List<PathSegment<NodeValue, EdgeValue>> {
+): List<PathSegment<NodeValue, EdgeValue>>? {
     if (fromNode === toNode)
         return listOf()
 
@@ -142,9 +149,10 @@ fun <NodeValue, EdgeValue> Graph<NodeValue, EdgeValue>.findShortestPath(
         return false
     }
 
-    visitAdjacentNodes(fromNode)
-
-    return path
+    return if (visitAdjacentNodes(fromNode))
+        path
+    else
+        null
 }
 
 fun <NodeValue, EdgeValue> connectDirectionally(

@@ -76,7 +76,7 @@ class GraphTest {
             n4.connectTo(n3, "e43")
             n3.connectTo(n2, "e32")
 
-            val pathFromN1ToN4 = findShortestPath(1, 4)
+            val pathFromN1ToN4 = findShortestPath(1, 4)!!
             assertEquals(3, pathFromN1ToN4.size)
             assertEquals("e12", pathFromN1ToN4[0].edgeValue)
             assertEquals(2, pathFromN1ToN4[0].targetNodeValue)
@@ -85,7 +85,7 @@ class GraphTest {
             assertEquals("e34", pathFromN1ToN4[2].edgeValue)
             assertEquals(4, pathFromN1ToN4[2].targetNodeValue)
 
-            val pathFromN4ToN1 = findShortestPath(4, 1)
+            val pathFromN4ToN1 = findShortestPath(4, 1)!!
             assertEquals(2, pathFromN4ToN1.size)
             assertEquals("e42", pathFromN4ToN1[0].edgeValue)
             assertEquals(2, pathFromN4ToN1[0].targetNodeValue)
@@ -112,7 +112,7 @@ class GraphTest {
             n1.connectTo(n2, "e12")
             n1.connectTo(n3, "e13")
 
-            val path = findShortestPath(2, 3)
+            val path = findShortestPath(2, 3)!!
             assertTrue(path.isEmpty())
         }
     }
