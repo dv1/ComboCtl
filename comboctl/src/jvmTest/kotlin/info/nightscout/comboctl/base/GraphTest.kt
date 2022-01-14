@@ -2,8 +2,8 @@ package info.nightscout.comboctl.base
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertSame
-import kotlin.test.assertTrue
 
 class GraphTest {
     @Test
@@ -102,7 +102,7 @@ class GraphTest {
         // the edges are directional, getting from nodes 2 and 3 to
         // node 1 is not possible. Consequently, a path from node 2
         // to node 3 cannot be found. findShortestPath() should
-        // detect this and return an empty path (= an empty collection).
+        // detect this and return null.
 
         Graph<Int, String>().apply {
             val n1 = node(1)
@@ -112,8 +112,8 @@ class GraphTest {
             n1.connectTo(n2, "e12")
             n1.connectTo(n3, "e13")
 
-            val path = findShortestPath(2, 3)!!
-            assertTrue(path.isEmpty())
+            val path = findShortestPath(2, 3)
+            assertNull(path)
         }
     }
 }
