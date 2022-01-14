@@ -15,6 +15,7 @@ import kotlin.math.abs
 import kotlin.reflect.KClassifier
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -310,6 +311,24 @@ suspend fun longPressRTButtonUntil(
             logger(LogLevel.VERBOSE) { "Started long press RT button coroutine" }
             rtNavigationContext.startLongButtonPress(button) {
                 val stop = channel.receive()
+                if (!stop) {
+                    // Wait for a short while. This is necessary, because
+                    // at each startLongButtonPress callback iteration,
+                    // a command is sent to the Combo that informs it
+                    // that the button is still being held down. This
+                    // triggers an update in the Combo. For example, if
+                    // the current screen is a TBR percentage screen,
+                    // and the UP button is held down, then the percentage
+                    // will be increased after that command is sent to
+                    // the Combo. These commands cannot be sent too
+                    // rapidly, since it takes the Combo some time to
+                    // send a new screen (a screen with the incremented
+                    // percentage in this TBR example) to the client.
+                    // If the commands are sent too quickly, then the
+                    // Combo would keep sending new screens even long
+                    // after the button was released.
+                    delay(110)
+                }
                 return@startLongButtonPress !stop
             }
             rtNavigationContext.waitForLongButtonPressToFinish()
