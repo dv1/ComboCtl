@@ -56,6 +56,8 @@ internal val rtNavigationGraph = Graph<KClassifier, RTNavigationButton>().apply 
     val myDataDailyTotalsMenuNode = node(ParsedScreen.MyDataDailyTotalsScreen::class)
     val myDataTbrDataMenuNode = node(ParsedScreen.MyDataTbrDataScreen::class)
     val basalRate1MenuNode = node(ParsedScreen.BasalRate1ProgrammingMenuScreen::class)
+    val basalRateTotalNode = node(ParsedScreen.BasalRateTotalScreen::class)
+    val basalRateFactorSettingNode = node(ParsedScreen.BasalRateFactorSettingScreen::class)
     val timeDateSettingsMenuNode = node(ParsedScreen.TimeAndDateSettingsMenuScreen::class)
     val timeDateSettingsHourNode = node(ParsedScreen.TimeAndDateSettingsHourScreen::class)
     val timeDateSettingsMinuteNode = node(ParsedScreen.TimeAndDateSettingsMinuteScreen::class)
@@ -89,6 +91,13 @@ internal val rtNavigationGraph = Graph<KClassifier, RTNavigationButton>().apply 
     connectBidirectionally(RTNavigationButton.CHECK, RTNavigationButton.BACK, tbrMenuNode, tbrPercentageNode)
     connectBidirectionally(RTNavigationButton.MENU, RTNavigationButton.MENU, tbrPercentageNode, tbrDurationNode)
     connectDirectionally(RTNavigationButton.BACK, tbrDurationNode, tbrMenuNode)
+
+    // The basal rate programming screens. Going to the basal rate factors requires
+    // two transitions (basal rate 1 -> basal rate total -> basal rate factor).
+    // Going back requires one, but directly goes back to basal rate 1.
+    connectBidirectionally(RTNavigationButton.CHECK, RTNavigationButton.BACK, basalRate1MenuNode, basalRateTotalNode)
+    connectDirectionally(RTNavigationButton.MENU, basalRateTotalNode, basalRateFactorSettingNode)
+    connectDirectionally(RTNavigationButton.BACK, basalRateFactorSettingNode, basalRate1MenuNode)
 
     // Connections between myData screens. Navigation through these screens
     // is rather straightforward. Pressing CHECK when at the my data menu
