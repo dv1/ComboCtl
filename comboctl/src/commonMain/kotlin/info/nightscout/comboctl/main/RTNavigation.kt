@@ -671,7 +671,7 @@ suspend fun navigateToRTScreen(
 ): ParsedScreen {
     logger(LogLevel.DEBUG) { "About to navigate to RT screen of type $targetScreenType" }
 
-    // Get the current screen so we know the starting point. If it is an
+    // Get the current screen to know the starting point. If it is an
     // unrecognized screen, press BACK until we are at the main screen.
     var numAttemptsToRecognizeScreen = 0
     var currentParsedScreen = rtNavigationContext.getParsedScreenFlow()
@@ -692,20 +692,24 @@ suspend fun navigateToRTScreen(
         return currentParsedScreen
     }
 
-    logger(LogLevel.DEBUG) { "Navigation starts at screen $currentParsedScreen" }
+    logger(LogLevel.DEBUG) { "Navigation starts at screen of type ${currentParsedScreen::class} and ends at screen of type $targetScreenType" }
 
     // Figure out the shortest path.
     var path = try {
         rtNavigationGraph.findShortestPath(currentParsedScreen::class, targetScreenType)
     } catch (e: IllegalArgumentException) {
-        // Happens when currentParsedScreen::class is not found in the navigation tree.
-        listOf()
+        // Happens when currentParsedScreen::class or targetScreenType are not found in the navigation tree.
+        null
     }
 
-    if (path.isEmpty()) {
-        // If we are getting an unknown screen, try exiting by repeatedly pressing BACK.
-        // cycleToRTScreen() takes care of that. If it fails to find the main screen,
-        // it throws a CouldNotFindRTScreenException.
+    if (path?.isEmpty() ?: false)
+        return currentParsedScreen
+
+    if (path == null) {
+        // If we reach this place, then the currentParsedScreen was recognized by the parser,
+        // but there is no known path in the rtNavigationGraph to get from there to the target.
+        // Try exiting by repeatedly pressing BACK. cycleToRTScreen() takes care of that.
+        // If it fails to find the main screen, it throws a CouldNotFindRTScreenException.
 
         logger(LogLevel.WARN) {
             "We are at screen of type ${currentParsedScreen::class}, which is unknown " +
@@ -725,7 +729,7 @@ suspend fun navigateToRTScreen(
             listOf()
         }
 
-        if (path.isEmpty()) {
+        if (path == null) {
             // Should not happen due to the cycleToRTScreen() call above.
             logger(LogLevel.ERROR) { "Could not find RT navigation path even after navigating back to the main menu" }
             throw CouldNotFindRTScreenException(targetScreenType)
@@ -743,22 +747,44 @@ suspend fun navigateToRTScreen(
 
             logger(LogLevel.DEBUG) { "We are currently at screen $parsedScreen" }
 
-            val intermediateScreenType = nextPathItem.targetNodeValue
-            val navButtonToPress = nextPathItem.edgeValue
+            // A path item's targetNodeValue is the screen type we are trying
+            // to reach, and the edgeValue is the RT button to press to reach it.
+            // We stay at the same path item until we reach the screen type that
+            // is specified by targetNodeValue. When that happens, we move on
+            // to the next path item. Importantly, we _first_ move on to the next
+            // item, and _then_ send the short RT button press based on that next
+            // item, to avoid sending the RT button from the incorrect path item.
+            // Example: Path item 1 contains target screen type A and RT button
+            // MENU. Path item 2 contains target screen type B and RT button CHECK.
+            // On every iteration, we first check if the current screen is of type
+            // A. If it isn't, we need to press MENU again and check in the next
+            // iteration again. If it is of type A however, then pressing MENU
+            // would be incorrect, since we already are at A. Instead, we _first_
+            // must move on to the next path item, and _that_ one says to press
+            // CHECK until type B is reached.
 
-            if (parsedScreen::class == intermediateScreenType) {
+            val nextTargetScreenTypeInPath = nextPathItem.targetNodeValue
+
+            if (parsedScreen::class == nextTargetScreenTypeInPath) {
                 cycleCount = 0
                 if (pathIt.hasNext()) {
-                    logger(LogLevel.DEBUG) { "Reached intermediate target type $intermediateScreenType" }
                     nextPathItem = pathIt.next()
+                    logger(LogLevel.DEBUG) {
+                        "Reached screen type $nextTargetScreenTypeInPath in path; " +
+                        "continuing to ${nextPathItem.targetNodeValue}"
+                    }
                 } else {
-                    logger(LogLevel.DEBUG) { "Target screen type reached" }
+                    // If this is the last path item, it implies
+                    // that we reached our destination.
+                    logger(LogLevel.DEBUG) { "Target screen type $targetScreenType reached" }
                     return@first true
                 }
             }
 
+            val navButtonToPress = nextPathItem.edgeValue
             logger(LogLevel.DEBUG) { "Pressing button $navButtonToPress to navigate further" }
             rtNavigationContext.shortPressButton(navButtonToPress)
+
             cycleCount++
             return@first false
         }
