@@ -2,6 +2,7 @@ package info.nightscout.comboctl.main
 
 import info.nightscout.comboctl.base.LogLevel
 import info.nightscout.comboctl.base.Logger
+import info.nightscout.comboctl.base.PathSegment
 import info.nightscout.comboctl.base.findShortestPath
 import info.nightscout.comboctl.base.testUtils.runBlockingWithWatchdog
 import info.nightscout.comboctl.parser.AlertScreenException
@@ -10,6 +11,7 @@ import info.nightscout.comboctl.parser.MainScreenContent
 import info.nightscout.comboctl.parser.ParsedScreen
 import info.nightscout.comboctl.parser.Quickinfo
 import info.nightscout.comboctl.parser.ReservoirState
+import kotlin.reflect.KClassifier
 import kotlin.test.Test
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
@@ -25,6 +27,9 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalDateTime
 import org.junit.jupiter.api.BeforeAll
+import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 
 class RTNavigationTest {
     /* RTNavigationContext implementation for testing out RTNavigation functionality.
@@ -57,6 +62,8 @@ class RTNavigationTest {
         private var currentParsedScreen = testParsedScreenListIter.next()
         private val parsedScreenFlow = MutableSharedFlow<ParsedScreen>()
         private var longButtonJob: Job? = null
+
+        val shortPressedRTButtons = mutableListOf<RTNavigationButton>()
 
         init {
             mainScope.launch {
@@ -126,6 +133,7 @@ class RTNavigationTest {
             // Simulate the consequences of user interaction by moving to the next screen.
             currentParsedScreen = testParsedScreenListIter.next()
             System.err.println("Moved to next screen $currentParsedScreen after short button press")
+            shortPressedRTButtons.add(button)
         }
     }
 
@@ -155,6 +163,22 @@ class RTNavigationTest {
                 assertTrue(path!!.isNotEmpty())
             }
         }
+    }
+
+    @Test
+    fun checkRTNavigationGraphPathFromMainScreenToBasalRateFactorSettingScreen() {
+        val path = rtNavigationGraph.findShortestPath(
+            ParsedScreen.MainScreen::class,
+            ParsedScreen.BasalRateFactorSettingScreen::class
+        )
+
+        assertNotNull(path)
+        assertEquals(5, path.size)
+        assertEquals(PathSegment<KClassifier, RTNavigationButton>(ParsedScreen.TemporaryBasalRateMenuScreen::class, RTNavigationButton.MENU), path[0])
+        assertEquals(PathSegment<KClassifier, RTNavigationButton>(ParsedScreen.MyDataMenuScreen::class, RTNavigationButton.MENU), path[1])
+        assertEquals(PathSegment<KClassifier, RTNavigationButton>(ParsedScreen.BasalRate1ProgrammingMenuScreen::class, RTNavigationButton.MENU), path[2])
+        assertEquals(PathSegment<KClassifier, RTNavigationButton>(ParsedScreen.BasalRateTotalScreen::class, RTNavigationButton.CHECK), path[3])
+        assertEquals(PathSegment<KClassifier, RTNavigationButton>(ParsedScreen.BasalRateFactorSettingScreen::class, RTNavigationButton.MENU), path[4])
     }
 
     @Test
@@ -197,6 +221,61 @@ class RTNavigationTest {
         runBlockingWithWatchdog(6000) {
             navigateToRTScreen(rtNavigationContext, ParsedScreen.MainScreen::class)
         }
+    }
+
+    @Test
+    fun checkRTNavigationFromMainScreenToBasalRateFactorSettingScreen() {
+        // Check the result of a more complex navigation.
+
+        val rtNavigationContext = TestRTNavigationContext(listOf(
+            ParsedScreen.MainScreen(MainScreenContent.Normal(
+                currentTime = LocalDateTime(year = 0, monthNumber = 1, dayOfMonth = 1, hour = 23, minute = 11),
+                activeBasalRateNumber = 1,
+                currentBasalRateFactor = 800,
+                batteryState = BatteryState.FULL_BATTERY
+            )),
+            ParsedScreen.StopPumpMenuScreen,
+            ParsedScreen.StandardBolusMenuScreen,
+            ParsedScreen.ExtendedBolusMenuScreen,
+            ParsedScreen.MultiwaveBolusMenuScreen,
+            ParsedScreen.TemporaryBasalRateMenuScreen,
+            ParsedScreen.MyDataMenuScreen,
+            ParsedScreen.BasalRateProfileSelectionMenuScreen,
+            ParsedScreen.BasalRate1ProgrammingMenuScreen,
+            ParsedScreen.BasalRateTotalScreen(1840, 1),
+            ParsedScreen.BasalRateFactorSettingScreen(
+                LocalDateTime(year = 0, monthNumber = 1, dayOfMonth = 1, hour = 0, minute = 0),
+                LocalDateTime(year = 0, monthNumber = 1, dayOfMonth = 1, hour = 1, minute = 0),
+                1000,
+                1
+            )
+        ))
+
+        runBlockingWithWatchdog(6000) {
+            val targetScreen = navigateToRTScreen(rtNavigationContext, ParsedScreen.BasalRateFactorSettingScreen::class)
+            assertIs<ParsedScreen.BasalRateFactorSettingScreen>(targetScreen)
+        }
+
+        // Navigation is done by pressing MENU 9 times until the basal rate
+        // 1 programming menu is reached. The programming menu is entered
+        // by pressing CHECK, after which the basal rate totals screen
+        // shows up. Pressing MENU again enters further and shows the
+        // first basal profile factor, which is the target the navigation
+        // is trying to reach.
+        val expectedShortRTButtonPressSequence = listOf(
+            RTNavigationButton.MENU,
+            RTNavigationButton.MENU,
+            RTNavigationButton.MENU,
+            RTNavigationButton.MENU,
+            RTNavigationButton.MENU,
+            RTNavigationButton.MENU,
+            RTNavigationButton.MENU,
+            RTNavigationButton.MENU,
+            RTNavigationButton.CHECK,
+            RTNavigationButton.MENU
+        )
+
+        assertContentEquals(expectedShortRTButtonPressSequence, rtNavigationContext.shortPressedRTButtons)
     }
 
     @Test
