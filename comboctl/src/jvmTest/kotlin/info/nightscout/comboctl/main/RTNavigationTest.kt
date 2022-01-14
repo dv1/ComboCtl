@@ -152,7 +152,7 @@ class RTNavigationTest {
                     continue
 
                 val path = rtNavigationGraph.findShortestPath(nodeA, nodeB)
-                assertTrue(path.isNotEmpty())
+                assertTrue(path!!.isNotEmpty())
             }
         }
     }
