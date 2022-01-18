@@ -134,31 +134,120 @@ sealed class ParsedScreen {
     data class TimeAndDateSettingsMonthScreen(val month: Int?) : ParsedScreen()
     data class TimeAndDateSettingsDayScreen(val day: Int?) : ParsedScreen()
 
+    /**
+     * Bolus history entry in the "My Data" section.
+     */
     data class MyDataBolusDataScreen(
+        /**
+         * Index of the currently shown bolus. Valid range is 1 to [totalNumEntries].
+         */
         val index: Int,
+
+        /**
+         * Total number of bolus entries in the pump's history.
+         */
         val totalNumEntries: Int,
+
+        /**
+         * Timestamp of when the bolus finished, in localtime.
+         */
         val timestamp: LocalDateTime,
+
+        /**
+         * Bolus amount in 0.1 IU units.
+         */
         val bolusAmount: Int,
+
+        /**
+         * Type of the bolus (standard / extended / multiwave).
+         */
         val bolusType: MyDataBolusType,
+
+        /**
+         * Duration of the bolus in minutes. Set to null if this is a standard bolus.
+         */
         val durationInMinutes: Int?
     ) : ParsedScreen()
+
+    /**
+     * Alert history entry in the "My Data" section.
+     *
+     * (These can be both errors and warnings. The section is called "error data" though.)
+     */
     data class MyDataErrorDataScreen(
+        /**
+         * Index of the currently shown alert. Valid range is 1 to [totalNumEntries].
+         */
         val index: Int,
+
+        /**
+         * Total number of alert entries in the pump's history.
+         */
         val totalNumEntries: Int,
+
+        /**
+         * Timestamp of when the alert occurred, in localtime.
+         */
         val timestamp: LocalDateTime,
+
+        /**
+         * The alert that occurred.
+         */
         val alert: AlertScreenContent
     ) : ParsedScreen()
+
+    /**
+     * Total daily dosage (TDD) history entry in the "My Data" section.
+     */
     data class MyDataDailyTotalsScreen(
+        /**
+         * Index of the currently shown TDD entry. Valid range is 1 to [totalNumEntries].
+         */
         val index: Int,
+
+        /**
+         * Total number of TDD entries in the pump's history.
+         */
         val totalNumEntries: Int,
+
+        /**
+         * Day for which this entry specifies the TDD amount, in localtime.
+         */
         val date: LocalDate,
+
+        /**
+         * TDD amount in 1 IU units.
+         */
         val totalDailyAmount: Int
     ) : ParsedScreen()
+
+    /**
+     * TBR history entry in the "My Data" section.
+     */
     data class MyDataTbrDataScreen(
+        /**
+         * Index of the currently shown TBR entry. Valid range is 1 to [totalNumEntries].
+         */
         val index: Int,
+
+        /**
+         * Total number of TBR entries in the pump's history.
+         */
         val totalNumEntries: Int,
+
+        /**
+         * Timestamp when this TBR ended.
+         */
         val timestamp: LocalDateTime,
+
+        /**
+         * TBR percentage, in the 0-500 range.
+         */
         val percentage: Int,
+
+        /**
+         * TBR duration in minutes, in the 15-1440 range.
+         */
         val durationInMinutes: Int
     ) : ParsedScreen()
 }
