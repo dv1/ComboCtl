@@ -1,5 +1,7 @@
 package info.nightscout.comboctl.base
 
+import kotlinx.datetime.UtcOffset
+
 /**
  * Pump related data that is set during pairing and not changed afterwards.
  *
@@ -47,6 +49,35 @@ data class InvariantPumpData(
 }
 
 /**
+ * The current state of an ongoing TBR (if any).
+ *
+ * Due to limitations of the Combo, it is necessary to remember this
+ * current state in case the client crashes and restarts, otherwise
+ * it is not possible to deduce the starting timestamp (incl. the
+ * UTC offset at the time of the TBR start) and whether or not a
+ * previously started TBR finished in the meantime. To work around
+ * this limitation, we store that information in the [PumpStateStore]
+ * in a persistent fashion.
+ */
+sealed class CurrentTbrState {
+    /**
+     * No TBR is currently ongoing. If the main screen shows TBR info
+     * while this is the current TBR state it means that an unknown
+     * TBR was started, for example by the user while the client
+     * application that uses comboctl was down.
+     */
+    object NoTbrOngoing : CurrentTbrState()
+
+    /**
+     * TBR is currently ongoing. This stores a [Tbr] instance with
+     * its timestamp specifying when the TBR started. If the main
+     * screen shows no TBR info while this is the current TBR state,
+     * it means that the TBR ended already.
+     */
+    data class TbrStarted(val tbr: Tbr) : CurrentTbrState()
+}
+
+/**
  * Exception thrown when accessing the stored state of a specific pump fails.
  *
  * @param pumpAddress Bluetooth address of the pump whose
@@ -82,7 +113,7 @@ class PumpStateDoesNotExistException(val pumpAddress: BluetoothAddress) :
  *
  * This interface provides access to a store that persistently
  * records the data of [InvariantPumpData] instances along with
- * the current Tx nonce.
+ * the current Tx nonce, UTC offset, and TBR state.
  *
  * As the name suggests, these states are recorded persistently,
  * immediately, and ideally also atomically. If atomic storage cannot
@@ -93,10 +124,12 @@ class PumpStateDoesNotExistException(val pumpAddress: BluetoothAddress) :
  *
  * There is one state for each paired pump. Each instance contains the
  * [InvariantPumpData], which does not change after the pump was paired,
- * and the Tx nonce, which does change after each packet that is sent to
- * the Combo. These two parts of a pump's state are kept separate due to
- * this difference in access, since this allows for optimizations in
- * implementations.
+ * the Tx nonce, which does change after each packet that is sent to
+ * the Combo, the UTC offset, which usually does not change often, and
+ * the TBR state, which changes whenever a TBR starts/ends. These parts
+ * of a pump's state are kept separate due to the difference in access
+ * patterns (that is, how often they are updated), since this allows for
+ * optimizations in implementations.
  *
  * Each state is associate with a pump via the pump's Bluetooth address.
  *
@@ -114,10 +147,30 @@ class PumpStateDoesNotExistException(val pumpAddress: BluetoothAddress) :
  *
  * Different pump states can be accessed, created, deleted concurrently.
  * However, operations on the same state must not happen concurrently.
- * For example, it is valid to create a pump state while an existing [Pump]
+ * For example, it is valid to create a pump state while an existing [PumpIO]
  * instance updates the Tx nonce of its associated state, but no two threads
- * may update the Tx nonce at the same time, or try to access state data
- * and delete the same state simultaneously.
+ * may update the Tx nonce at the same time, or try to access state data and
+ * delete the same state simultaneously, or access a pump state's Tx nonce
+ * while another thread writes a new UTC offset into the same pump state.
+ *
+ * The UTC offset that is stored for each pump here exists because the Combo
+ * is unaware of timezones or UTC offsets. All the time data it stores is
+ * in localtime. The UTC offset in this store specifies what UTC offset
+ * to associate any current Combo localtime timestamp with. Particularly
+ * for the bolus history this is very important, since it allows for properly
+ * handling daylight savings changes and timezone changes (for example because
+ * the user is on vacation in another timezone). The stored UTC offset is
+ * also necessary to be able to detect UTC offset changes even if they
+ * happen when the client is not running. The overall rule with regard
+ * to UTC offset changes and stored Combo localtime timestamps is that
+ * all currently stored timestamps use the currently stored UTC offset,
+ * and any timestamps that might be stored later on will use the new
+ * UTC offset. In practice, this means that all timestamps from the Combo's
+ * command mode history delta use the current UTC offset, and after the
+ * delta was fetched, the UTC offset is updated.
+ *
+ * Finally, the stored TBR state exists because of limitations in the Combo
+ * regarding ongoing TBR information. See [CurrentTbrState] for details.
  */
 interface PumpStateStore {
     /**
@@ -126,9 +179,12 @@ interface PumpStateStore {
      * This is called during the pairing process. In regular
      * connections, this is not used. It initializes a state for the pump
      * with the given ID in the store. Before this call, trying to access
-     * the state with [getInvariantPumpData], [getCurrentTxNonce], or
-     * [setCurrentTxNonce] fails with an exception. The new state's nonce
-     * is set to a null nonce (= all of its bytes set to zero).
+     * the state with [getInvariantPumpData], [getCurrentTxNonce],
+     * [setCurrentTxNonce], [getCurrentUtcOffset], [getCurrentTbrState]
+     * fails with an exception. The new state's nonce is set to a null
+     * nonce (= all of its bytes set to zero). The UTC offset is set to
+     * the one from the current system timezone and system time. The
+     * TBR state is set to [CurrentTbrState.NoTbrOngoing].
      *
      * The state is removed by calling [deletePumpState].
      *
@@ -199,6 +255,54 @@ interface PumpStateStore {
      *         due to an error that occurred in the underlying implementation.
      */
     fun setCurrentTxNonce(pumpAddress: BluetoothAddress, currentTxNonce: Nonce)
+
+    /**
+     * Returns the current UTC offset that is to be used for all timestamps from now on.
+     *
+     * See the [PumpStateStore] documentation for details about this offset.
+     *
+     * @throws PumpStateDoesNotExistException if no pump state associated with
+     *         the given address exists in the store.
+     * @throws PumpStateStoreAccessException if accessing the nonce fails
+     *         due to an error that occurred in the underlying implementation.
+     */
+    fun getCurrentUtcOffset(pumpAddress: BluetoothAddress): UtcOffset
+
+    /**
+     * Sets the current UTC offset that is to be used for all timestamps from now on.
+     *
+     * See the [PumpStateStore] documentation for details about this offset.
+     *
+     * @throws PumpStateDoesNotExistException if no pump state associated with
+     *         the given address exists in the store.
+     * @throws PumpStateStoreAccessException if accessing the nonce fails
+     *         due to an error that occurred in the underlying implementation.
+     */
+    fun setCurrentUtcOffset(pumpAddress: BluetoothAddress, utcOffset: UtcOffset)
+
+    /**
+     * Returns the TBR state that is currently known for the pump with the given [pumpAddress].
+     *
+     * See the [CurrentTbrState] documentation for details about this offset.
+     *
+     * @throws PumpStateDoesNotExistException if no pump state associated with
+     *         the given address exists in the store.
+     * @throws PumpStateStoreAccessException if accessing the nonce fails
+     *         due to an error that occurred in the underlying implementation.
+     */
+    fun getCurrentTbrState(pumpAddress: BluetoothAddress): CurrentTbrState
+
+    /**
+     * Sets the TBR state that is currently known for the pump with the given [pumpAddress].
+     *
+     * See the [CurrentTbrState] documentation for details about this offset.
+     *
+     * @throws PumpStateDoesNotExistException if no pump state associated with
+     *         the given address exists in the store.
+     * @throws PumpStateStoreAccessException if accessing the nonce fails
+     *         due to an error that occurred in the underlying implementation.
+     */
+    fun setCurrentTbrState(pumpAddress: BluetoothAddress, currentTbrState: CurrentTbrState)
 }
 
 /*
