@@ -381,24 +381,36 @@ object ApplicationLayer {
      * IMPORTANT: Bolus amounts are given in 0.1 IU units,
      * so for example, "57" means 5.7 IU.
      */
-    sealed class CMDHistoryEventDetail {
-        data class QuickBolusRequested(val bolusAmount: Int) : CMDHistoryEventDetail()
-        data class QuickBolusInfused(val bolusAmount: Int) : CMDHistoryEventDetail()
-        data class StandardBolusRequested(val bolusAmount: Int, val manual: Boolean) : CMDHistoryEventDetail()
-        data class StandardBolusInfused(val bolusAmount: Int, val manual: Boolean) : CMDHistoryEventDetail()
-        data class ExtendedBolusStarted(val totalBolusAmount: Int, val totalDurationMinutes: Int) : CMDHistoryEventDetail()
-        data class ExtendedBolusEnded(val totalBolusAmount: Int, val totalDurationMinutes: Int) : CMDHistoryEventDetail()
+    sealed class CMDHistoryEventDetail(val isBolusDetail: Boolean) {
+        data class QuickBolusRequested(val bolusAmount: Int) : CMDHistoryEventDetail(isBolusDetail = true)
+        data class QuickBolusInfused(val bolusAmount: Int) : CMDHistoryEventDetail(isBolusDetail = true)
+        data class StandardBolusRequested(
+            val bolusAmount: Int,
+            val manual: Boolean
+        ) : CMDHistoryEventDetail(isBolusDetail = true)
+        data class StandardBolusInfused(
+            val bolusAmount: Int,
+            val manual: Boolean
+        ) : CMDHistoryEventDetail(isBolusDetail = true)
+        data class ExtendedBolusStarted(
+            val totalBolusAmount: Int,
+            val totalDurationMinutes: Int
+        ) : CMDHistoryEventDetail(isBolusDetail = true)
+        data class ExtendedBolusEnded(
+            val totalBolusAmount: Int,
+            val totalDurationMinutes: Int
+        ) : CMDHistoryEventDetail(isBolusDetail = true)
         data class MultiwaveBolusStarted(
             val totalBolusAmount: Int,
             val immediateBolusAmount: Int,
             val totalDurationMinutes: Int
-        ) : CMDHistoryEventDetail()
+        ) : CMDHistoryEventDetail(isBolusDetail = true)
         data class MultiwaveBolusEnded(
             val totalBolusAmount: Int,
             val immediateBolusAmount: Int,
             val totalDurationMinutes: Int
-        ) : CMDHistoryEventDetail()
-        data class NewDateTimeSet(val dateTime: LocalDateTime) : CMDHistoryEventDetail()
+        ) : CMDHistoryEventDetail(isBolusDetail = true)
+        data class NewDateTimeSet(val dateTime: LocalDateTime) : CMDHistoryEventDetail(isBolusDetail = false)
     }
 
     /**
