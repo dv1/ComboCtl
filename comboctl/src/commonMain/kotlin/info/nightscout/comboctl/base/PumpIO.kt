@@ -14,6 +14,11 @@ import kotlinx.datetime.LocalDateTime
 
 private val logger = Logger.get("PumpIO")
 
+private object PumpIOConstants {
+    const val MAX_NUM_REGULAR_CONNECTION_ATTEMPTS = 3
+    const val NONCE_INCREMENT = 500
+}
+
 /**
  * Callback used during pairing for asking the user for the 10-digit PIN.
  *
@@ -69,8 +74,8 @@ typealias PairingPINCallback = suspend (previousAttemptFailed: Boolean) -> Pairi
  * of these two heartbeats are active, depending on the current mode of the
  * Combo.
  * Note that other commands sent to the Combo _also_ count as heartbeats,
- * so RT_KEEP_ALIVE / CMD_PING only need to be sent if no other command
- * has been sent for a while now.
+ * so RT_KEEP_ALIVE / CMD_PING only need to be sent by the internal heartbeat
+ * if no other command has been sent for a while now.
  * In some cases (typically unit tests), a regular connection without
  * a heartbeat is needed. [connect] accepts an argument to start
  * without one for this purpose.
@@ -79,8 +84,7 @@ typealias PairingPINCallback = suspend (previousAttemptFailed: Boolean) -> Pairi
  * connections. During pairing, a new pump state is set up for the
  * pump that is being paired. It is during pairing that the invariant
  * portion of the pump state is written. During regular (= not pairing)
- * connections, the invariant part is read, not written. Only the nonce
- * gets updated regularly during regular IO.
+ * connections, the invariant part is read, not written.
  *
  * This class accesses the pump state in a thread safe manner, ensuring
  * that no two threads access the pump state at the same time. See
@@ -209,6 +213,14 @@ class PumpIO(
     }
 
     /**
+     * Exception thrown after all attempts to establish a regular connection failed.
+     *
+     * See [connect] for details about the regular connection attempts.
+     */
+    class ConnectionRequestIsNotBeingAcceptedException :
+        ComboIOException("All attempts to have the Combo accept connection request after establishing Bluetooth socket failed")
+
+    /**
      * The pump's Bluetooth address.
      */
     val address: BluetoothAddress = bluetoothDevice.address
@@ -222,6 +234,10 @@ class PumpIO(
 
     /**
      * Read-only [StateFlow] property that announces when the current [Mode] changes.
+     *
+     * This flow's value is null until the connection is fully established (at which point
+     * the mode is set to [PumpIO.Mode.REMOTE_TERMINAL] or [PumpIO.Mode.COMMAND]), and
+     * set back to null again after disconnecting.
      */
     val currentModeFlow = _currentModeFlow.asStateFlow()
 
@@ -514,36 +530,6 @@ class PumpIO(
         }
     }
 
-    /**
-     * Unpairs the pump.
-     *
-     * Unpairing consists of deleting any associated pump state,
-     * followed by unpairing the Bluetooth device.
-     *
-     * This calls [disconnect] before unpairing to make sure there
-     * is no ongoing connection before attempting to unpair.
-     *
-     * If the pump isn't paired already, this function does nothing.
-     */
-    suspend fun unpair() {
-        if (!pumpStateStore.hasPumpState(address))
-            return
-
-        disconnect()
-
-        pumpStateStore.deletePumpState(address)
-
-        // Unpairing in a coroutine with an IO dispatcher
-        // in case unpairing blocks.
-        // NOTE: The user still has to manually unpair the client through
-        // the Combo's UI before any communication with it can be resumed.
-        withContext(ioDispatcher()) {
-            bluetoothDevice.unpair()
-        }
-
-        logger(LogLevel.INFO) { "Unpaired from pump with address ${bluetoothDevice.address}" }
-    }
-
     private val connectProgressReporter = ProgressReporter<Unit>(
         listOf(
             BasicProgressStage.EstablishingBtConnection::class,
@@ -567,27 +553,19 @@ class PumpIO(
      * The client must have been paired with the Combo before such connections
      * can be established.
      *
+     * This function suspends the calling coroutine until the connection is up
+     * and running or a connection setup error occurs, which will cause an
+     * exception to be thrown. If this happens, users must call [disconnect]
+     * before doing anything else again with this [PumpIO] instance.
+     *
      * The Bluetooth connection is set up by this function. [connectProgressFlow]
      * and [connectionState] are updated by it as well.
      *
      * This must be called before [switchMode] and any RT / command mode
      * function are used.
      *
-     * The [packetReceiverScope] is used as the scope to run the transport
-     * layer packet receiver in (handled by [TransportLayer.IO]). Some functions
-     * like [startLongRTButtonPress] also launch coroutines. Any function that
-     * launches coroutines does that in that scope.
-     *
-     * The actual connection procedure also happens in that scope, in its
-     * own coroutine. That coroutine is represented by the [Deferred] that
-     * is returned by this function.
-     *
-     * If an exception occurs _during_ connection setup, the connection
-     * attempt is aborted, and the exception is caught by the returned Deferred
-     * value. Users call [Deferred.await] to wait for the connection procedure
-     * to finish; if an exception occurred during that procedure, it is re-thrown
-     * by that function. If an exception was thrown, users must call [disconnect]
-     * before doing anything else again with this [PumpIO] instance.
+     * Transport layer packets are received in a background coroutine that is part
+     * of an internal coroutine scope. Reception is handled by [TransportLayer.IO].
      *
      * [isIORunning] will return true if the connection was established.
      *
@@ -601,12 +579,25 @@ class PumpIO(
      * an exception, unless it is a [CancellationException], in which case
      * this function performs a normal disconnection by calling [disconnect].
      *
-     * @param packetReceiverScope Scope to run the packet receiver and other
-     *   internal coroutines in.
+     * This function also handles a special situation if the [Nonce] that is
+     * stored in [PumpStateStore] for this pump is incorrect. The Bluetooth
+     * socket can then be successfully connected, but right afterwards, when
+     * this function tries to send a [TransportLayer.Command.REQUEST_REGULAR_CONNECTION]
+     * packet, the Combo does not respond, instead terminating the connection
+     * and producing a [BluetoothException]. If this happens, this function
+     * increments the nonce and tries again. This is done multiple times
+     * until either the connection setup succeeds or the maximum number of
+     * attempts is reached. In the latter case, this function throws a
+     * [ConnectionRequestIsNotBeingAcceptedException]. The user should then
+     * be recommended to re-pair with the Combo, since establishing a connection
+     * isn't working.
+     *
      * @param initialMode What mode to initially switch to.
      * @param runHeartbeat True if the heartbeat shall be started.
-     * @return [Deferred] representing the coroutine that finishes the connection
-     *   setup procedure.
+     * @throws ConnectionRequestIsNotBeingAcceptedException if connecting the
+     *   actual Bluetooth socket succeeds, but the Combo does not accept the
+     *   packet that requests a connection, and this failed several times
+     *   in a row.
      * @throws IllegalStateException if IO was already started by a previous
      *   [connect] call or if the [PumpStateStore] that was passed to the
      *   class constructor has no pairing data for this pump (most likely
@@ -642,6 +633,10 @@ class PumpIO(
         // (See the transportLayerIO initialization code.)
         rtButtonConfirmationBarrier = newRtButtonConfirmationBarrier()
 
+        // Start the internal coroutine scope that will run the heartbeat,
+        // packet receiver, and other internal coroutines. Enforce the
+        // default dispatcher to rule out that something like the UI
+        // scope could be picked automatically on some platforms.
         val newScopeJob = SupervisorJob()
         val newScope = CoroutineScope(newScopeJob + Dispatchers.Default)
 
@@ -660,25 +655,66 @@ class PumpIO(
         try {
             _connectionState.value = ConnectionState.CONNECTING
 
-            // Suspend the coroutine until Bluetooth is connected.
-            // Do this in a separate coroutine with an IO dispatcher
-            // since the connection setup may block.
-            withContext(ioDispatcher()) {
-                bluetoothDevice.connect(connectProgressReporter)
+            // The Combo does not tell us if the nonce is wrong. We have to infer
+            // that from its behavior. If the nonce is wrong, then the Bluetooth
+            // socket can be connected, but sending the REQUEST_REGULAR_CONNECTION
+            // packet fails - the expected response is not received, and instead,
+            // a BluetoothException occurs. In this particular case - Bluetooth
+            // connect() call succeeds, sendPacketWithResponse() call that shall
+            // send REQUEST_REGULAR_CONNECTION fails with BluetoothException - we
+            // may have an incorrect nonce. Increment the nonce by NONCE_INCREMENT,
+            // then retry. We retry a limited number of times. If sending the
+            // REQUEST_REGULAR_CONNECTION still fails, then we give up, and throw
+            // an exception that shall show on a UI a message to the user that
+            // establishing a connection isn't working and the user should consider
+            // re-pairing the pump instead.
+            var regularConnectionRequestAccepted = false
+            for (regularConnectionAttemptNr in 0 until PumpIOConstants.MAX_NUM_REGULAR_CONNECTION_ATTEMPTS) {
+                // Suspend the coroutine until Bluetooth is connected.
+                // Do this in a separate coroutine with an IO dispatcher
+                // since the connection setup may block.
+                withContext(ioDispatcher()) {
+                    bluetoothDevice.connect(connectProgressReporter)
+                }
+
+                connectProgressReporter.setCurrentProgressStage(BasicProgressStage.PerformingConnectionHandshake)
+
+                try {
+                    // Start the actual IO activity.
+                    transportLayerIO.start(newScope) { tpLayerPacket -> processReceivedPacket(tpLayerPacket) }
+
+                    logger(LogLevel.DEBUG) { "Sending regular connection request" }
+
+                    // Initiate connection at the transport layer.
+                    sendPacketWithResponse(
+                        TransportLayer.createRequestRegularConnectionPacketInfo(),
+                        TransportLayer.Command.REGULAR_CONNECTION_REQUEST_ACCEPTED
+                    )
+
+                    regularConnectionRequestAccepted = true
+                } catch (e: BluetoothException) {
+                    logger(LogLevel.INFO) {
+                        "Successfully set up Bluetooth socket, but attempting to send " +
+                        "the regular connection request packet failed; exception: $e"
+                    }
+                    logger(LogLevel.INFO) {
+                        "Nonce might be wrong; incrementing nonce by ${PumpIOConstants.NONCE_INCREMENT} " +
+                        "and retrying (attempt $regularConnectionAttemptNr of " +
+                        "${PumpIOConstants.MAX_NUM_REGULAR_CONNECTION_ATTEMPTS})"
+                    }
+
+                    // Explicitly disconnect Bluetooth to be sure that
+                    // the socket it is in a disconnected state.
+                    disconnectBTDeviceAndCatchExceptions()
+
+                    pumpStateStore.incrementTxNonce(bluetoothDevice.address, PumpIOConstants.NONCE_INCREMENT)
+                }
             }
 
-            connectProgressReporter.setCurrentProgressStage(BasicProgressStage.PerformingConnectionHandshake)
-
-            // Start the actual IO activity.
-            transportLayerIO.start(newScope) { tpLayerPacket -> processReceivedPacket(tpLayerPacket) }
-
-            logger(LogLevel.DEBUG) { "Sending regular connection request" }
-
-            // Initiate connection at the transport layer.
-            sendPacketWithResponse(
-                TransportLayer.createRequestRegularConnectionPacketInfo(),
-                TransportLayer.Command.REGULAR_CONNECTION_REQUEST_ACCEPTED
-            )
+            if (!regularConnectionRequestAccepted) {
+                logger(LogLevel.ERROR) { "All attempts to request regular connection failed" }
+                throw ConnectionRequestIsNotBeingAcceptedException()
+            }
 
             // Initiate connection at the application layer.
             logger(LogLevel.DEBUG) { "Initiating application layer connection" }
