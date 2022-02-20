@@ -291,11 +291,18 @@ class PumpIO(
      * was passed to the constructor of this class. This state will contain
      * new pairing data, a new pump ID string, and a new initial nonce.
      *
-     * The pairingPINCallback callback has two arguments. previousAttemptFailed
+     * The [onPairingPIN] block has two arguments. previousAttemptFailed
      * is set to false initially, and true if this is a repeated call due
      * to a previous failure to apply the PIN. Such a failure typically
      * happens because the user mistyped the PIN, but in rare cases can also
      * happen due to corrupted packets.
+     *
+     * Note that [onPairingPIN] is called by a coroutine that is run on
+     * a different thread than the one that called this function . With
+     * some UI frameworks like JavaFX, it is invalid to operate UI controls
+     * in coroutines that are not associated with a particular UI coroutine
+     * context. Consider using [kotlinx.coroutines.withContext] in
+     * [onPairingPIN] for this reason.
      *
      * WARNING: Do not run multiple performPairing functions simultaneously
      * on the same pump. Otherwise, undefined behavior occurs.
@@ -304,8 +311,8 @@ class PumpIO(
      *   REQUEST_ID packets. Use [BluetoothInterface.getAdapterFriendlyName]
      *   to get the friendly name.
      * @param progressReporter [ProgressReporter] for tracking pairing progress.
-     * @param pairingPINCallback Callback that gets invoked as soon as
-     *   the pairing process needs the 10-digit-PIN.
+     * @param onPairingPIN Suspending block that asks the user for
+     *   the 10-digit pairing PIN during the pairing process.
      * @throws IllegalStateException if this is ran while a connection
      *   is running.
      * @throws PumpStateAlreadyExistsException if the pump was already
@@ -316,7 +323,7 @@ class PumpIO(
     suspend fun performPairing(
         bluetoothFriendlyName: String,
         progressReporter: ProgressReporter<Unit>?,
-        pairingPINCallback: PairingPINCallback
+        onPairingPIN: suspend (newPumpAddress: BluetoothAddress, previousAttemptFailed: Boolean) -> PairingPIN
     ) {
         check(!isPaired()) {
             "Attempting to pair with pump with address ${bluetoothDevice.address} even though it is already paired"
@@ -385,7 +392,7 @@ class PumpIO(
 
                     // Request the PIN. If canceled, PairingAbortedException is
                     // thrown by the callback.
-                    val pin = pairingPINCallback.invoke(previousPINAttemptFailed)
+                    val pin = onPairingPIN(bluetoothDevice.address, previousPINAttemptFailed)
 
                     logger(LogLevel.DEBUG) { "Provided PIN: $pin" }
 
@@ -708,10 +715,10 @@ class PumpIO(
 
                     // Exit the connection-attempt for-loop, since we are done.
                     break
-                } catch (e: BluetoothException) {
+                } catch (e: TransportLayer.PacketReceiverException) {
                     logger(LogLevel.INFO) {
                         "Successfully set up Bluetooth socket, but attempting to send " +
-                        "the regular connection request packet failed; exception: $e"
+                        "the regular connection request packet failed; exception: ${e.cause}"
                     }
                     logger(LogLevel.INFO) {
                         "Nonce might be wrong; incrementing nonce by ${PumpIOConstants.NONCE_INCREMENT} " +
@@ -719,11 +726,16 @@ class PumpIO(
                         "${PumpIOConstants.MAX_NUM_REGULAR_CONNECTION_ATTEMPTS})"
                     }
 
-                    // Explicitly disconnect Bluetooth to be sure that
-                    // the socket it is in a disconnected state.
-                    disconnectBTDeviceAndCatchExceptions()
+                    // Call this to reset the states in the transport layer IO object
+                    // and to disconnect Bluetooth. Otherwise we cannot call
+                    // transportLayerIO.start() later again.
+                    transportLayerIO.stop(disconnectPacketInfo = null, ::disconnectBTDeviceAndCatchExceptions)
 
                     pumpStateStore.incrementTxNonce(bluetoothDevice.address, PumpIOConstants.NONCE_INCREMENT)
+
+                    // Wait one second before the next attempt. The Combo does not seem to be able
+                    // to handle an immediate reconnect attempt, and some Bluetooth stacks don't either.
+                    delay(1000)
                 }
             }
 
@@ -790,8 +802,6 @@ class PumpIO(
         internalScope = null
         internalScopeJob?.cancelAndJoin()
         internalScopeJob = null
-
-        internalScope = null
         _currentModeFlow.value = null
 
         logger(LogLevel.DEBUG) { "Pump IO disconnected" }
