@@ -14,6 +14,7 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.Job
+import kotlinx.datetime.UtcOffset
 
 class TransportLayerTest {
     @Test
@@ -238,7 +239,8 @@ class TransportLayerTest {
                     pumpClientCipher = Cipher(testDecryptedPCKey.toByteArray()),
                     keyResponseAddress = testAddress,
                     pumpID = "testPump"
-                )
+                ),
+                UtcOffset.ZERO, CurrentTbrState.NoTbrOngoing
             )
 
             val errorResponsePacket = TransportLayer.Packet(
@@ -335,7 +337,8 @@ class TransportLayerTest {
                     pumpClientCipher = Cipher(testDecryptedPCKey.toByteArray()),
                     keyResponseAddress = testAddress,
                     pumpID = "testPump"
-                )
+                ),
+                UtcOffset.ZERO, CurrentTbrState.NoTbrOngoing
             )
 
             // The packets that our simulated Combo transmits to our client.

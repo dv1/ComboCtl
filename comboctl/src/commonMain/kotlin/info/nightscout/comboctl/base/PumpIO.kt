@@ -10,7 +10,10 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.datetime.Clock
 import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.offsetAt
 
 private val logger = Logger.get("PumpIO")
 
@@ -428,7 +431,17 @@ class PumpIO(
                     pumpID = pumpID
                 )
                 transportLayerIO.setManualInvariantPumpData(newPumpData)
-                pumpStateStore.createPumpState(bluetoothDevice.address, newPumpData)
+
+                val currentSystemDateTime = Clock.System.now()
+                val currentSystemTimeZone = TimeZone.currentSystemDefault()
+                val currentSystemUtcOffset =  currentSystemTimeZone.offsetAt(currentSystemDateTime)
+
+                pumpStateStore.createPumpState(
+                    bluetoothDevice.address,
+                    newPumpData,
+                    currentSystemUtcOffset,
+                    CurrentTbrState.NoTbrOngoing
+                )
 
                 val firstTxNonce = Nonce(
                     byteArrayListOfInts(

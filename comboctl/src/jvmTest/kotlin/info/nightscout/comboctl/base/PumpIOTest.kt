@@ -12,6 +12,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlinx.coroutines.delay
 import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.UtcOffset
 
 class PumpIOTest {
     // Common test code.
@@ -44,7 +45,7 @@ class PumpIOTest {
                         0x32, 0xb2, 0x48, 0x94, 0xe1, 0x6d, 0xe9, 0x5c)),
                     pumpID = "testPump"
                 )
-                testPumpStateStore.createPumpState(testBluetoothDevice.address, invariantPumpData)
+                testPumpStateStore.createPumpState(testBluetoothDevice.address, invariantPumpData, UtcOffset.ZERO, CurrentTbrState.NoTbrOngoing)
                 testIO.pumpClientCipher = invariantPumpData.pumpClientCipher
             }
 
@@ -438,7 +439,8 @@ class PumpIOTest {
                     0x57, 0x2b, 0x05, 0x50, 0x34, 0x43, 0xc9, 0x8d)),
                 pumpID = "testPump"
             )
-            testStates.testPumpStateStore.createPumpState(testStates.testBluetoothDevice.address, invariantPumpData)
+            testStates.testPumpStateStore.createPumpState(
+                testStates.testBluetoothDevice.address, invariantPumpData, UtcOffset.ZERO, CurrentTbrState.NoTbrOngoing)
             testIO.pumpClientCipher = invariantPumpData.pumpClientCipher
 
             testStates.feedInitialPackets()
@@ -491,7 +493,8 @@ class PumpIOTest {
                     0xad, 0xb7, 0xb7, 0xc1, 0x48, 0x37, 0xf3, 0x07)),
                 pumpID = "testPump"
             )
-            testStates.testPumpStateStore.createPumpState(testStates.testBluetoothDevice.address, invariantPumpData)
+            testStates.testPumpStateStore.createPumpState(
+                testStates.testBluetoothDevice.address, invariantPumpData, UtcOffset.ZERO, CurrentTbrState.NoTbrOngoing)
             testIO.pumpClientCipher = invariantPumpData.pumpClientCipher
 
             val historyBlockPacketData = listOf(

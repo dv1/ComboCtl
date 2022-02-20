@@ -192,12 +192,19 @@ interface PumpStateStore {
      *
      * @param pumpAddress Bluetooth address of the pump to create a state for.
      * @param invariantPumpData Invariant pump data to use in the new state.
+     * @param utcOffset Initial UTC offset value to use in the new state.
+     * @param tbrState Initial TBR state to use in the new state.
      * @throws PumpStateAlreadyExistsException if there is already a state
      *         with the given Bluetooth address.
      * @throws PumpStateStoreAccessException if writing the new state fails
      *         due to an error that occurred in the underlying implementation.
      */
-    fun createPumpState(pumpAddress: BluetoothAddress, invariantPumpData: InvariantPumpData)
+    fun createPumpState(
+        pumpAddress: BluetoothAddress,
+        invariantPumpData: InvariantPumpData,
+        utcOffset: UtcOffset,
+        tbrState: CurrentTbrState
+    )
 
     /**
      * Deletes a pump state that is associated with the given address.
