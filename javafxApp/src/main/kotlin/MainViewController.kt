@@ -3,7 +3,7 @@ package info.nightscout.comboctl.javafxApp
 import info.nightscout.comboctl.base.BluetoothAddress
 import info.nightscout.comboctl.base.BluetoothException
 import info.nightscout.comboctl.base.PairingPIN
-import info.nightscout.comboctl.base.TransportLayerIO
+import info.nightscout.comboctl.base.nullPairingPIN
 import info.nightscout.comboctl.main.Pump
 import info.nightscout.comboctl.main.PumpManager
 import javafx.beans.binding.Bindings
@@ -147,41 +147,6 @@ class MainViewController {
         val displayFrameView = scene.lookup("#displayFrameView") as ImageView
         displayFrameView.image = pumpViewController.displayFrameImage
 
-        // Bidirectinally bind the pumpViewController properties that
-        // are associated with datetime values to the date picker and
-        // the hour/minute/second spinners. The bidirectional binding
-        // allows for the controls to be updated when a new datetime
-        // is read from the Combo and also allows for setting a new
-        // date and time and sending that to the Combo.
-
-        val datePicker = scene.lookup("#datePicker") as? DatePicker
-            ?: TODO("Could not access date picker")
-        datePicker.valueProperty().bindBidirectional(
-            pumpViewController.dateProperty)
-
-        // Need to suppress unchecked cast warnings, since these are produced
-        // even though we use a safe cast here. This is a Kotlin limitation,
-        // and only happens when safe-casting to a generic type. See:
-        // https://stackoverflow.com/a/36570969/560774
-
-        @Suppress("UNCHECKED_CAST")
-        val hourSpinner = scene.lookup("#hourSpinner") as? Spinner<Int>
-            ?: TODO("Could not access hour spinner")
-        hourSpinner.getValueFactory().valueProperty().bindBidirectional(
-            pumpViewController.hourProperty)
-
-        @Suppress("UNCHECKED_CAST")
-        val minuteSpinner = scene.lookup("#minuteSpinner") as? Spinner<Int>
-            ?: TODO("Could not access minute spinner")
-        minuteSpinner.getValueFactory().valueProperty().bindBidirectional(
-            pumpViewController.minuteProperty)
-
-        @Suppress("UNCHECKED_CAST")
-        val secondSpinner = scene.lookup("#secondSpinner") as? Spinner<Int>
-            ?: TODO("Could not access second spinner")
-        secondSpinner.getValueFactory().valueProperty().bindBidirectional(
-            pumpViewController.secondProperty)
-
         val progressBar = scene.lookup("#progressBar") as? ProgressBar
             ?: TODO("Could not access progress bar")
         progressBar.progressProperty().bind(pumpViewController.progressProperty)
@@ -254,9 +219,12 @@ class MainViewController {
         okButton.disableProperty().bind(isInvalid)
 
         val result = dialog.showAndWait()
-        if (result.isPresent)
-            return PairingPIN(result.get().map { it - '0' }.toIntArray())
-        else
-            throw TransportLayerIO.PairingAbortedException()
+        return if (result.isPresent) {
+            PairingPIN(result.get().map { it - '0' }.toIntArray())
+        } else {
+            // TODO: Test if this works properly
+            pairingJob?.cancel()
+            nullPairingPIN()
+        }
     }
 }

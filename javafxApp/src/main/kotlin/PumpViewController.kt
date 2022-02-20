@@ -1,19 +1,18 @@
 package info.nightscout.comboctl.javafxApp
 
+import info.nightscout.comboctl.base.ApplicationLayer
 import info.nightscout.comboctl.base.DISPLAY_FRAME_HEIGHT
 import info.nightscout.comboctl.base.DISPLAY_FRAME_WIDTH
-import info.nightscout.comboctl.base.DateTime
 import info.nightscout.comboctl.base.DisplayFrame
 import info.nightscout.comboctl.base.PumpIO
-import info.nightscout.comboctl.main.NUM_BASAL_PROFILE_FACTORS
+import info.nightscout.comboctl.main.BasalProfile
+import info.nightscout.comboctl.main.NUM_COMBO_BASAL_PROFILE_FACTORS
 import info.nightscout.comboctl.main.Pump
-import info.nightscout.comboctl.main.PumpCommandDispatcher
 import java.io.File
-import java.time.LocalDate
-import java.time.LocalDateTime
 import javafx.beans.property.ObjectProperty
 import javafx.beans.property.SimpleObjectProperty
 import javafx.geometry.Pos
+import javafx.scene.Scene
 import javafx.scene.control.Alert
 import javafx.scene.control.ButtonBar
 import javafx.scene.control.ButtonType
@@ -120,22 +119,6 @@ class PumpViewController {
 
     val displayFrameImage: Image = mutableDisplayFrameImage
 
-    // JavaFX properties to notify observers about updated datetime
-    // and progress values. The latter is used in several operations
-    // that provide a progress reporter.
-
-    private val mutableDateProperty = SimpleObjectProperty<LocalDate>()
-    val dateProperty: ObjectProperty<LocalDate> = mutableDateProperty
-
-    private val mutableHourProperty = SimpleObjectProperty<Int>()
-    val hourProperty: ObjectProperty<Int> = mutableHourProperty
-
-    private val mutableMinuteProperty = SimpleObjectProperty<Int>()
-    val minuteProperty: ObjectProperty<Int> = mutableMinuteProperty
-
-    private val mutableSecondProperty = SimpleObjectProperty<Int>()
-    val secondProperty: ObjectProperty<Int> = mutableSecondProperty
-
     private val mutableProgressProperty = SimpleObjectProperty<Double>()
     val progressProperty: ObjectProperty<Double> = mutableProgressProperty
 
@@ -147,9 +130,6 @@ class PumpViewController {
         this.pump = pump
         this.mainScope = mainScope
         this.stage = stage
-
-        // Initialize the date and time properties to the current datetime.
-        useCurrentDateAndTime()
 
         // Fill the image view with a checkerboard pattern initially.
         for (y in 0 until DISPLAY_FRAME_HEIGHT) {
@@ -180,10 +160,8 @@ class PumpViewController {
                 }
                 .launchIn(mainScope!!)
 
-            // Connect to the pump and let it initially run in the COMMAND mode.
-            pump!!.connectAsync(mainScope!!, initialMode = PumpIO.Mode.COMMAND).await()
+            pump!!.connect()
 
-            // We are done with the COMMAND mode, now switch to REMOTE_TERMINAL.
             pump!!.switchMode(PumpIO.Mode.REMOTE_TERMINAL)
         }
     }
@@ -215,16 +193,15 @@ class PumpViewController {
         }
     }
 
-    fun pressCheckButton() = pressRTButtons(listOf(PumpIO.Button.CHECK))
-    fun pressMenuButton() = pressRTButtons(listOf(PumpIO.Button.MENU))
-    fun pressUpButton() = pressRTButtons(listOf(PumpIO.Button.UP))
-    fun pressDownButton() = pressRTButtons(listOf(PumpIO.Button.DOWN))
-    fun pressBackButton() = pressRTButtons(listOf(PumpIO.Button.MENU, PumpIO.Button.UP))
+    fun pressCheckButton() = pressRTButtons(listOf(ApplicationLayer.RTButton.CHECK))
+    fun pressMenuButton() = pressRTButtons(listOf(ApplicationLayer.RTButton.MENU))
+    fun pressUpButton() = pressRTButtons(listOf(ApplicationLayer.RTButton.UP))
+    fun pressDownButton() = pressRTButtons(listOf(ApplicationLayer.RTButton.DOWN))
+    fun pressBackButton() = pressRTButtons(listOf(ApplicationLayer.RTButton.MENU, ApplicationLayer.RTButton.UP))
 
     fun setRandomBasalProfile() {
-        val randomBasalProfile = List(NUM_BASAL_PROFILE_FACTORS) {
-            val randomFactor = Random.nextInt(0, 10000)
-            when (randomFactor) {
+        val randomBasalProfile = List(NUM_COMBO_BASAL_PROFILE_FACTORS) {
+            when (val randomFactor = Random.nextInt(0, 10000)) {
                 in 50..1000 -> ((randomFactor + 5) / 10) * 10 // round to the next integer 0.01 IU multiple
                 else -> ((randomFactor + 25) / 50) * 50 // round to the next integer 0.05 IU multiple
             }
@@ -242,53 +219,29 @@ class PumpViewController {
         setBasalProfile(fixedBasalProfile)
     }
 
-    fun getBasalProfile() = launchJob {
-        val pumpCommandDispatcher = PumpCommandDispatcher(pump!!)
-
-        pumpCommandDispatcher.basalProfileAccessFlow
-            .onEach {
-                println("Basal progress: $it")
-                mutableProgressProperty.setValue(it.overallProgress)
-            }
-            .launchIn(mainScope!!)
-
-        val basalProfile = pumpCommandDispatcher.getBasalProfile()
-        println("Basal profile: $basalProfile")
-        Alert(Alert.AlertType.INFORMATION, "Basal profile: $basalProfile").showAndWait()
-    }
-
     fun setTbr() = launchJob {
         val dialog = TbrDialog(this.stage!!)
 
         val result = dialog.showAndWait()
 
-        if (result.isPresent()) {
-            val pumpCommandDispatcher = PumpCommandDispatcher(pump!!)
+        if (result.isPresent) {
             val tbr = result.get()
             println("Setting TBR: $tbr")
 
-            pumpCommandDispatcher.tbrProgressFlow
+            pump!!.setTbrProgressFlow
                 .onEach {
                     println("TBR setting progress: $it")
                     mutableProgressProperty.setValue(it.overallProgress)
                 }
                 .launchIn(mainScope!!)
 
-            pumpCommandDispatcher.setTemporaryBasalRate(tbr.first, tbr.second)
+            pump!!.setTbr(percentage = tbr.first, durationInMinutes = tbr.second)
         }
     }
 
-    fun getCurrentBasalRateFactor() = launchJob {
-        val pumpCommandDispatcher = PumpCommandDispatcher(pump!!)
-        val basalRateFactor = pumpCommandDispatcher.readCurrentBasalRateFactor()
-        println("Current basal rate factor: $basalRateFactor")
-        Alert(Alert.AlertType.INFORMATION, "Current basal rate factor: $basalRateFactor").showAndWait()
-    }
-
     fun readPumpStatus() = launchJob {
-        val pumpCommandDispatcher = PumpCommandDispatcher(pump!!)
-        val pumpStatus = pumpCommandDispatcher.readPumpStatus()
-        Alert(Alert.AlertType.INFORMATION, "Pump status: $pumpStatus").showAndWait()
+        pump!!.updateStatus()
+        Alert(Alert.AlertType.INFORMATION, "Pump status: ${pump!!.statusFlow.value!!}").showAndWait()
     }
 
     fun deliverBolus() = launchJob {
@@ -296,91 +249,29 @@ class PumpViewController {
 
         val result = dialog.showAndWait()
 
-        if (result.isPresent()) {
-            val pumpCommandDispatcher = PumpCommandDispatcher(pump!!)
+        if (result.isPresent) {
             val bolusAmount = result.get()
             println("Delivering bolus; amount: $bolusAmount")
 
-            pumpCommandDispatcher.bolusDeliveryProgressFlow
+            pump!!.bolusDeliveryProgressFlow
                 .onEach {
                     println("Bolus delivery progress: $it")
                     mutableProgressProperty.setValue(it.overallProgress)
                 }
                 .launchIn(mainScope!!)
 
-            pumpCommandDispatcher.deliverBolus(bolusAmount)
+            pump!!.deliverBolus(bolusAmount)
         }
-    }
-
-    fun fetchHistory() = launchJob {
-        val pumpCommandDispatcher = PumpCommandDispatcher(pump!!)
-
-        pumpCommandDispatcher.historyProgressFlow
-            .onEach {
-                println("Fetch history progress: $it")
-                mutableProgressProperty.setValue(it.overallProgress)
-            }
-            .launchIn(mainScope!!)
-
-        val history = pumpCommandDispatcher.fetchHistory(
-            setOf(
-                PumpCommandDispatcher.HistoryPart.HISTORY_DELTA,
-                PumpCommandDispatcher.HistoryPart.TDD_HISTORY,
-                PumpCommandDispatcher.HistoryPart.TBR_HISTORY
-            )
-        )
-
-        Alert(Alert.AlertType.INFORMATION, "History: $history").showAndWait()
-    }
-
-    fun setDatetime() = launchJob {
-        val pumpCommandDispatcher = PumpCommandDispatcher(pump!!)
-        val localDate = dateProperty.getValue()
-        val dateTime = DateTime(
-            year = localDate.getYear(),
-            month = localDate.getMonthValue(),
-            day = localDate.getDayOfMonth(),
-            hour = hourProperty.getValue(),
-            minute = minuteProperty.getValue(),
-            second = secondProperty.getValue()
-        )
-
-        pumpCommandDispatcher.setDateTimeProgressFlow
-            .onEach {
-                println("Set datetime progress: $it")
-                mutableProgressProperty.setValue(it.overallProgress)
-            }
-            .launchIn(mainScope!!)
-
-        pumpCommandDispatcher.setDateTime(dateTime)
-    }
-
-    fun getDatetime() = launchJob {
-        val pumpCommandDispatcher = PumpCommandDispatcher(pump!!)
-        val dateTime = pumpCommandDispatcher.getDateTime()
-
-        mutableDateProperty.setValue(LocalDate.of(dateTime.year, dateTime.month, dateTime.day))
-        mutableHourProperty.setValue(dateTime.hour)
-        mutableMinuteProperty.setValue(dateTime.minute)
-        mutableSecondProperty.setValue(dateTime.second)
-    }
-
-    fun useCurrentDateAndTime() {
-        val currentLocalDateTime = LocalDateTime.now()
-        mutableDateProperty.setValue(currentLocalDateTime.toLocalDate())
-        mutableHourProperty.setValue(currentLocalDateTime.getHour())
-        mutableMinuteProperty.setValue(currentLocalDateTime.getMinute())
-        mutableSecondProperty.setValue(currentLocalDateTime.getSecond())
     }
 
     private fun askForConfirmation(description: String): Boolean {
         val alert = Alert(Alert.AlertType.CONFIRMATION)
-        alert.setTitle("Requesting confirmation")
-        alert.setContentText("Are you sure you want to $description?")
+        alert.title = "Requesting confirmation"
+        alert.contentText = "Are you sure you want to $description?"
 
         val okButton = ButtonType("Yes", ButtonBar.ButtonData.YES)
         val noButton = ButtonType("No", ButtonBar.ButtonData.NO)
-        alert.getButtonTypes().setAll(okButton, noButton)
+        alert.buttonTypes.setAll(okButton, noButton)
 
         var ok = true
         alert.showAndWait().ifPresent { buttonType ->
@@ -414,20 +305,18 @@ class PumpViewController {
         }
     }
 
-    private fun setBasalProfile(basalProfile: List<Int>) = launchJob {
-        val pumpCommandDispatcher = PumpCommandDispatcher(pump!!)
-
-        pumpCommandDispatcher.basalProfileAccessFlow
+    private fun setBasalProfile(basalProfileFactors: List<Int>) = launchJob {
+        pump!!.setBasalProfileFlow
             .onEach {
                 println("Basal progress: $it")
                 mutableProgressProperty.setValue(it.overallProgress)
             }
             .launchIn(mainScope!!)
 
-        pumpCommandDispatcher.setBasalProfile(basalProfile)
+        pump!!.setBasalProfile(BasalProfile(basalProfileFactors))
     }
 
-    private fun pressRTButtons(buttons: List<PumpIO.Button>) = launchJob {
+    private fun pressRTButtons(buttons: List<ApplicationLayer.RTButton>) = launchJob {
         pump!!.sendShortRTButtonPress(buttons)
     }
 

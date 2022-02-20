@@ -73,43 +73,13 @@
                                  <children>
                                     <Button mnemonicParsing="false" onAction="#readPumpStatus" text="Read pump status" GridPane.halignment="CENTER" GridPane.valignment="CENTER" />
                                     <Button mnemonicParsing="false" onAction="#deliverBolus" text="Deliver bolus" GridPane.halignment="CENTER" GridPane.rowIndex="1" GridPane.valignment="CENTER" />
-                                    <Button mnemonicParsing="false" onAction="#fetchHistory" text="Fetch history" GridPane.columnIndex="1" GridPane.halignment="CENTER" GridPane.rowIndex="1" GridPane.valignment="CENTER" />
                                     <Button mnemonicParsing="false" onAction="#setTbr" text="Set TBR" GridPane.columnIndex="1" GridPane.halignment="CENTER" GridPane.valignment="CENTER" />
-                                    <Button mnemonicParsing="false" onAction="#getCurrentBasalRateFactor" text="Get current basal factor" GridPane.columnIndex="2" GridPane.halignment="CENTER" GridPane.valignment="CENTER" />
                                  </children>
                               </GridPane>
                               <HBox alignment="CENTER" fillHeight="false" VBox.vgrow="NEVER">
                                  <children>
                                     <Button mnemonicParsing="false" onAction="#setRandomBasalProfile" text="Set random basal profile" />
                                     <Button mnemonicParsing="false" onAction="#setFixedBasalProfile" text="Set fixed basal profile" />
-                                    <Button mnemonicParsing="false" onAction="#getBasalProfile" text="Get basal profile" />
-                                 </children>
-                              </HBox>
-                              <HBox alignment="CENTER" fillHeight="false" VBox.vgrow="NEVER">
-                                 <children>
-                                    <Button mnemonicParsing="false" onAction="#setDatetime" text="Set date and time" />
-                                    <Button mnemonicParsing="false" onAction="#getDatetime" text="Get date and time" />
-                                    <Button mnemonicParsing="false" onAction="#useCurrentDateAndTime" text="Use current date and time" />
-                                 </children>
-                              </HBox>
-                              <HBox fillHeight="false" VBox.vgrow="NEVER">
-                                 <children>
-                                    <DatePicker fx:id="datePicker" HBox.hgrow="ALWAYS" />
-                                    <Spinner fx:id="hourSpinner" editable="true" HBox.hgrow="NEVER">
-                                       <valueFactory>
-                                         <SpinnerValueFactory.IntegerSpinnerValueFactory max="23" min="0" />
-                                       </valueFactory>
-                                    </Spinner>
-                                    <Spinner fx:id="minuteSpinner" editable="true" HBox.hgrow="NEVER">
-                                       <valueFactory>
-                                         <SpinnerValueFactory.IntegerSpinnerValueFactory max="59" min="0" />
-                                       </valueFactory>
-                                    </Spinner>
-                                    <Spinner fx:id="secondSpinner" editable="true" HBox.hgrow="NEVER">
-                                       <valueFactory>
-                                         <SpinnerValueFactory.IntegerSpinnerValueFactory max="59" min="0" />
-                                       </valueFactory>
-                                    </Spinner>
                                  </children>
                               </HBox>
                            </children>
