@@ -303,7 +303,6 @@ class PumpIOTest {
 
         runBlockingWithWatchdog(6000) {
             val testStates = TestStates(true)
-            val mainScope = this
             val pumpIO = testStates.pumpIO
 
             testStates.feedInitialPackets()
@@ -337,7 +336,6 @@ class PumpIOTest {
 
         runBlockingWithWatchdog(6000) {
             val testStates = TestStates(true)
-            val mainScope = this
             val pumpIO = testStates.pumpIO
 
             testStates.feedInitialPackets()
@@ -375,7 +373,6 @@ class PumpIOTest {
 
         runBlockingWithWatchdog(6000) {
             val testStates = TestStates(true)
-            val mainScope = this
             val pumpIO = testStates.pumpIO
             val testIO = testStates.testIO
 
@@ -423,7 +420,6 @@ class PumpIOTest {
             // the retrieved status is correct.
 
             val testStates = TestStates(setupInvariantPumpData = false)
-            val mainScope = this
             val pumpIO = testStates.pumpIO
             val testIO = testStates.testIO
 
@@ -477,7 +473,6 @@ class PumpIOTest {
             // are correctly parsed and that the retrieved history is correct.
 
             val testStates = TestStates(setupInvariantPumpData = false)
-            val mainScope = this
             val pumpIO = testStates.pumpIO
             val testIO = testStates.testIO
 
