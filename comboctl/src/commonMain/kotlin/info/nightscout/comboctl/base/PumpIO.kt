@@ -705,6 +705,9 @@ class PumpIO(
                     )
 
                     regularConnectionRequestAccepted = true
+
+                    // Exit the connection-attempt for-loop, since we are done.
+                    break
                 } catch (e: BluetoothException) {
                     logger(LogLevel.INFO) {
                         "Successfully set up Bluetooth socket, but attempting to send " +
