@@ -452,7 +452,7 @@ class PairingSessionTest {
             pumpIO.performPairing(
                 testBtFriendlyName,
                 null
-            ) { testPIN }
+            ) { _, _ -> testPIN }
         }
 
         if (testIO.testErrorOccurred)
