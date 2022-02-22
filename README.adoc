@@ -137,7 +137,7 @@ like up, down, etc.
 
 == Prerequisites
 
-To build ComboCtl with IDEA or Android Studio, make sure that Kotlin 1.4.10
+To build ComboCtl with IDEA or Android Studio, make sure that Kotlin 1.5.31
 support is installed. Preinstalled Kotlin plugins may not be up to date.
 
 On Android Studio, also install the KMM plugin.
