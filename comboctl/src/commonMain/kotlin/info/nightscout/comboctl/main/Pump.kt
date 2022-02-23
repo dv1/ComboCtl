@@ -574,6 +574,7 @@ class Pump(
         val availableUnitsInReservoir: Int,
         val activeBasalRateNumber: Int,
         val currentBasalRateFactor: Int,
+        val tbrOngoing: Boolean,
         val remainingTbrDurationInMinutes: Int,
         val tbrPercentage: Int,
         val reservoirState: ReservoirState,
@@ -2285,6 +2286,7 @@ class Pump(
                     availableUnitsInReservoir = quickinfo.availableUnits,
                     activeBasalRateNumber = mainScreenContent.activeBasalRateNumber,
                     currentBasalRateFactor = mainScreenContent.currentBasalRateFactor,
+                    tbrOngoing = false,
                     remainingTbrDurationInMinutes = 0,
                     tbrPercentage = 100,
                     reservoirState = quickinfo.reservoirState,
@@ -2301,6 +2303,7 @@ class Pump(
                     // factor. Set this to 0 to let the caller know
                     // that the current factor is unknown.
                     currentBasalRateFactor = 0,
+                    tbrOngoing = false,
                     remainingTbrDurationInMinutes = 0,
                     tbrPercentage = 0,
                     reservoirState = quickinfo.reservoirState,
@@ -2322,6 +2325,7 @@ class Pump(
                         mainScreenContent.currentBasalRateFactor * 100 / mainScreenContent.tbrPercentage
                     else
                         0,
+                    tbrOngoing = true,
                     remainingTbrDurationInMinutes = mainScreenContent.remainingTbrDurationInMinutes,
                     tbrPercentage = mainScreenContent.tbrPercentage,
                     reservoirState = quickinfo.reservoirState,
