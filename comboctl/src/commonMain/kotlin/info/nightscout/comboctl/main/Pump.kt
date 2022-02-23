@@ -842,20 +842,27 @@ class Pump(
      * set to true by default. There might be corner cases where setting this to
      * false results in faster execution, but at the moment, none are known.
      *
+     * This also checks if setting the profile is actually necessary by comparing
+     * [basalProfile] with [currentBasalProfile]. If these match, this function
+     * does not set anything, and just returns false. Otherwise, it sets the
+     * new profile, sets [basalProfile] as the new [currentBasalProfile],
+     * and returns true. Note that a return value of false is _not_ an error.
+     *
      * @param basalProfile New basal profile to program into the pump.
      * @param carryOverLastFactor If set to true, previously programmed in factors
-     *        are carried to the next factor while navigating through the profile.
+     *   are carried to the next factor while navigating through the profile.
+     * @return true if the profile was actually set, false otherwise.
      * @throws AlertScreenException if an alert occurs during this call.
      * @throws IllegalStateException if the current state is not
      *   [State.READY_FOR_COMMANDS].
      */
-    suspend fun setBasalProfile(basalProfile: BasalProfile, carryOverLastFactor: Boolean = true) = executeCommand(
+    suspend fun setBasalProfile(basalProfile: BasalProfile, carryOverLastFactor: Boolean = true) = executeCommand<Boolean>(
         pumpMode = PumpIO.Mode.REMOTE_TERMINAL,
         isIdempotent = true
     ) {
         if (basalProfile == currentBasalProfile) {
             logger(LogLevel.DEBUG) { "Current basal profile equals the profile that is to be set; ignoring redundant call"}
-            return@executeCommand
+            return@executeCommand false
         }
 
         setBasalProfileReporter.reset(Unit)
@@ -917,6 +924,8 @@ class Pump(
             waitUntilScreenAppears(rtNavigationContext, ParsedScreen.MainScreen::class)
 
             setBasalProfileReporter.setCurrentProgressStage(BasicProgressStage.Finished)
+
+            return@executeCommand true
         } catch (t: Throwable) {
             setBasalProfileReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
             throw t
