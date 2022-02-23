@@ -604,10 +604,13 @@ class Pump(
     /**
      * Information about the last bolus. See [lastBolusFlow].
      *
+     * NOTE: This only reports quick and standard boluses, not multiwave and extended ones.
+     *
+     * @property bolusId ID associated with this bolus.
      * @property bolusAmount Bolus amount, in 0.1 IU units.
      * @property timestamp Timestamp of the bolus delivery.
      */
-    data class LastBolus(val bolusAmount: Int, val timestamp: Instant)
+    data class LastBolus(val bolusId: Long, val bolusAmount: Int, val timestamp: Instant)
 
     private var _lastBolusFlow = MutableStateFlow<LastBolus?>(null)
 
@@ -1653,6 +1656,10 @@ class Pump(
         historyDelta: List<ApplicationLayer.CMDHistoryEvent>,
         block: (historyEntry: ApplicationLayer.CMDHistoryEvent) -> Unit = { }
     ) {
+        var lastBolusId = 0L
+        var lastBolusAmount = 0
+        var lastBolusInfusionTimestamp: Instant? = null
+
         historyDelta.onEach { entry ->
             block(entry)
 
@@ -1665,12 +1672,16 @@ class Pump(
                         timestamp = timestamp,
                         bolusAmount = detail.bolusAmount
                     ))
-                is CMDHistoryEventDetail.QuickBolusInfused ->
+                is CMDHistoryEventDetail.QuickBolusInfused -> {
                     onEvent(Event.QuickBolusInfused(
                         bolusId = entry.eventCounter,
                         timestamp = timestamp,
                         bolusAmount = detail.bolusAmount
                     ))
+                    lastBolusId = entry.eventCounter
+                    lastBolusAmount = detail.bolusAmount
+                    lastBolusInfusionTimestamp = timestamp
+                }
                 is CMDHistoryEventDetail.StandardBolusRequested ->
                     onEvent(Event.StandardBolusRequested(
                         bolusId = entry.eventCounter,
@@ -1678,13 +1689,17 @@ class Pump(
                         manual = detail.manual,
                         bolusAmount = detail.bolusAmount
                     ))
-                is CMDHistoryEventDetail.StandardBolusInfused ->
+                is CMDHistoryEventDetail.StandardBolusInfused -> {
                     onEvent(Event.StandardBolusInfused(
                         bolusId = entry.eventCounter,
                         timestamp = timestamp,
                         manual = detail.manual,
                         bolusAmount = detail.bolusAmount
                     ))
+                    lastBolusId = entry.eventCounter
+                    lastBolusAmount = detail.bolusAmount
+                    lastBolusInfusionTimestamp = timestamp
+                }
                 is CMDHistoryEventDetail.ExtendedBolusStarted ->
                     onEvent(Event.ExtendedBolusStarted(
                         bolusId = entry.eventCounter,
@@ -1692,13 +1707,14 @@ class Pump(
                         totalBolusAmount = detail.totalBolusAmount,
                         totalDurationMinutes = detail.totalDurationMinutes
                     ))
-                is CMDHistoryEventDetail.ExtendedBolusEnded ->
+                is CMDHistoryEventDetail.ExtendedBolusEnded -> {
                     onEvent(Event.ExtendedBolusEnded(
                         bolusId = entry.eventCounter,
                         timestamp = timestamp,
                         totalBolusAmount = detail.totalBolusAmount,
                         totalDurationMinutes = detail.totalDurationMinutes
                     ))
+                }
                 is CMDHistoryEventDetail.MultiwaveBolusStarted ->
                     onEvent(Event.MultiwaveBolusStarted(
                         bolusId = entry.eventCounter,
@@ -1707,7 +1723,7 @@ class Pump(
                         immediateBolusAmount = detail.immediateBolusAmount,
                         totalDurationMinutes = detail.totalDurationMinutes
                     ))
-                is CMDHistoryEventDetail.MultiwaveBolusEnded ->
+                is CMDHistoryEventDetail.MultiwaveBolusEnded -> {
                     onEvent(Event.MultiwaveBolusEnded(
                         bolusId = entry.eventCounter,
                         timestamp = timestamp,
@@ -1715,8 +1731,17 @@ class Pump(
                         immediateBolusAmount = detail.immediateBolusAmount,
                         totalDurationMinutes = detail.totalDurationMinutes
                     ))
+                }
                 else -> Unit
             }
+        }
+
+        lastBolusInfusionTimestamp?.let { timestamp ->
+            _lastBolusFlow.value = LastBolus(
+                bolusId = lastBolusId,
+                bolusAmount = lastBolusAmount,
+                timestamp = timestamp
+            )
         }
     }
 
