@@ -365,13 +365,25 @@ class PumpManager(
      * The pump must have been paired before it can be acquired. If this is
      * not done, an [PumpNotPairedException] is thrown.
      *
+     * For details about [initialBasalProfile] and [onEvent], consult the
+     * [Pump] documentation.
+     *
      * @param pumpAddress Bluetooth address of the pump to acquire.
+     * @param initialBasalProfile Basal profile to use as the initial profile,
+     *   or null if no initial profile shall be used.
+     * @param onEvent Callback to inform caller about events that happen
+     *   during a connection, like when the battery is going low, or when
+     *   a TBR started.
      * @throws PumpAlreadyAcquiredException if the pump was already acquired.
      * @throws PumpNotPairedException if the pump was not yet paired.
      * @throws info.nightscout.comboctl.base.BluetoothException if getting
      *   a [info.nightscout.comboctl.base.BluetoothDevice] for this pump fails.
      */
-    suspend fun acquirePump(pumpAddress: BluetoothAddress) =
+    suspend fun acquirePump(
+        pumpAddress: BluetoothAddress,
+        initialBasalProfile: BasalProfile? = null,
+        onEvent: (event: Pump.Event) -> Unit = { }
+    ) =
         pumpStateAccessMutex.withLock {
             if (acquiredPumps.contains(pumpAddress))
                 throw PumpAlreadyAcquiredException(pumpAddress)
@@ -383,7 +395,7 @@ class PumpManager(
 
             val bluetoothDevice = bluetoothInterface.getDevice(pumpAddress)
 
-            val pump = Pump(bluetoothDevice, pumpStateStore)
+            val pump = Pump(bluetoothDevice, pumpStateStore, initialBasalProfile, onEvent)
 
             acquiredPumps[pumpAddress] = pump
 
