@@ -381,6 +381,22 @@ class Pump(
         )
 
     /**
+     * Exception thrown when the TBR that was passed to setTbr() does not match the actually active TBR.
+     *
+     * If no TBR is active, [actualTbrDuration] is 0. If no TBR was expected to be active,
+     * [expectedTbrDuration] is 0.
+     */
+    class UnexpectedTbrStateException(
+        val expectedTbrPercentage: Int,
+        val expectedTbrDuration: Int,
+        val actualTbrPercentage: Int,
+        val actualTbrDuration: Int
+    ) : ComboException(
+        "Expected TBR: $expectedTbrPercentage% $expectedTbrDuration minutes ; " +
+        "actual TBR: $actualTbrPercentage% $actualTbrDuration minutes"
+    )
+
+    /**
      * Events that can occur during operation.
      *
      * These are forwarded through the [onEvent] property.
@@ -979,8 +995,11 @@ class Pump(
      *   or if the percentage value is not an integer multiple of 10, or if
      *   the duration is <15 or not an integer multiple of 15 (see the note
      *   about duration being ignored with percentage 100 above though).
-     * @throws IllegalStateException  if the current state is not
-     *   [State.READY_FOR_COMMANDS].
+     * @throws UnexpectedTbrStateException if the TBR that is actually active
+     *   after this function finishes does not match the specified percentage
+     *   and duration.
+     * @throws IllegalStateException if the current state is not
+     *   [State.READY_FOR_COMMANDS], or if the pump is suspended after setting the TBR.
      * @throws AlertScreenException if alerts occurs during this call, and they
      *   aren't a W6 warning (those are handled by this function).
      */
@@ -993,6 +1012,8 @@ class Pump(
         // class is rather meant for TBR events.
 
         val currentStatus = statusFlow.value ?: throw IllegalStateException("Cannot start TBR without a known pump status")
+        var expectedTbrPercentage = 0
+        var expectedTbrDuration = 0
 
         // In the code below, we always create a Tbr object _before_ calling
         // setCurrentTbr to make use of the checks in the Tbr constructor.
@@ -1004,19 +1025,75 @@ class Pump(
             if (currentStatus.tbrPercentage != 100) {
                 if (force100Percent) {
                     setCurrentTbr(100, 0)
-
                     reportOngoingTbrAsStopped()
+                    expectedTbrPercentage = 100
+                    expectedTbrDuration = 0
                 } else {
                     val newPercentage = if (currentStatus.tbrPercentage < 100) 110 else 90
                     val tbr = Tbr(timestamp = Clock.System.now(), percentage = newPercentage, durationInMinutes = 15)
-                    setCurrentTbr(percentage = newPercentage, durationInMinutes = durationInMinutes)
+                    setCurrentTbr(percentage = newPercentage, durationInMinutes = 15)
                     reportStartedTbr(tbr)
+                    expectedTbrPercentage = newPercentage
+                    expectedTbrDuration = 15
                 }
             }
         } else {
             val tbr = Tbr(timestamp = Clock.System.now(), percentage = percentage, durationInMinutes = durationInMinutes)
             setCurrentTbr(percentage = percentage, durationInMinutes = durationInMinutes)
             reportStartedTbr(tbr)
+            expectedTbrPercentage = percentage
+            expectedTbrDuration = durationInMinutes
+        }
+
+        // We just set the TBR. Now check the main screen contents to see if
+        // the TBR was actually set, and if so, whether it was set correctly.
+        // If not, throw an exception, since this is an error.
+
+        val mainScreen = waitUntilScreenAppears(rtNavigationContext, ParsedScreen.MainScreen::class)
+        val mainScreenContent = when (mainScreen) {
+            is ParsedScreen.MainScreen -> mainScreen.content
+            else -> throw NoUsableRTScreenException()
+        }
+        logger(LogLevel.DEBUG) { "Main screen content after setting TBR: $mainScreenContent" }
+        when (mainScreenContent) {
+            is MainScreenContent.Stopped ->
+                throw IllegalStateException("Combo is in the stopped state after setting TBR")
+
+            is MainScreenContent.Normal -> {
+                if (expectedTbrPercentage != 100) {
+                    // We expected a TBR to be active, but there isn't any;
+                    // we aren't seen any TBR main screen contents.
+                    throw UnexpectedTbrStateException(
+                        expectedTbrPercentage = expectedTbrPercentage,
+                        expectedTbrDuration = expectedTbrDuration,
+                        actualTbrPercentage = 100,
+                        actualTbrDuration = 0
+                    )
+                }
+            }
+
+            is MainScreenContent.Tbr -> {
+                if (expectedTbrPercentage == 100) {
+                    // We expected the TBR to be cancelled, but it isn't.
+                    throw UnexpectedTbrStateException(
+                        expectedTbrPercentage = 100,
+                        expectedTbrDuration = 0,
+                        actualTbrPercentage = mainScreenContent.tbrPercentage,
+                        actualTbrDuration = mainScreenContent.remainingTbrDurationInMinutes
+                    )
+                } else if ((expectedTbrDuration - mainScreenContent.remainingTbrDurationInMinutes) > 2) {
+                    // The current TBR duration does not match the programmed one.
+                    // We allow a tolerance range of 2 minutes since a little while
+                    // may have passed between setting the TBR and reaching this
+                    // location in the code.
+                    throw UnexpectedTbrStateException(
+                        expectedTbrPercentage = expectedTbrPercentage,
+                        expectedTbrDuration = expectedTbrDuration,
+                        actualTbrPercentage = mainScreenContent.tbrPercentage,
+                        actualTbrDuration = mainScreenContent.remainingTbrDurationInMinutes
+                    )
+                }
+            }
         }
     }
 
