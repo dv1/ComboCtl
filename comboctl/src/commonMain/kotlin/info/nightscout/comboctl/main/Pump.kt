@@ -42,6 +42,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
+import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.UtcOffset
@@ -300,6 +301,26 @@ class Pump(
         ),
         Unit
     )
+
+    private val tddHistoryProgressReporter = ProgressReporter<Unit>(
+        listOf(
+            RTCommandProgressStage.FetchingTDDHistory::class
+        ),
+        Unit
+    ) { _: Int, _: Int, stage: ProgressStage, _: Unit ->
+        when (stage) {
+            // TDD history fetching progress is determined by the single
+            // stage in the reporter, which is FetchingTDDHistory.
+            // That stage contains the index of the TDD that was just
+            // read, which is suitable for a progress indicator,
+            // so we use that for the overall progress.
+            BasicProgressStage.Finished,
+            BasicProgressStage.Aborted -> 1.0
+            is RTCommandProgressStage.FetchingTDDHistory ->
+                stage.historyEntryIndex.toDouble() / stage.totalNumEntries.toDouble()
+            else -> 0.0
+        }
+    }
 
     /**
      * Exception thrown when an idempotent command failed every time.
@@ -1335,6 +1356,80 @@ class Pump(
                 // by executeCommand().
                 updateStatusByReadingMainAndQuickinfoScreens(switchStatesIfNecessary = true)
             }
+        }
+    }
+
+    /**
+     * Total daily dosage (TDD) history entry.
+     *
+     * @property date Date of the TDD.
+     * @property totalDailyAmount Total amount of insulin used in that day.
+     *           Stored as an integer-encoded-decimal; last 3 digits of that
+     *           integer are the 3 most significant fractional digits of the
+     *           decimal amount.
+     */
+    data class TDDHistoryEntry(val date: LocalDate, val totalDailyAmount: Int)
+
+    /**
+     * [ProgressReporter] flow for keeping track of the progress of [fetchTDDHistory].
+     */
+    val tddHistoryProgressFlow = tddHistoryProgressReporter.progressFlow
+
+    /**
+     * Fetches the TDD history.
+     *
+     * This suspends the calling coroutine until the entire TDD history
+     * is fetched, an error occurs, or the coroutine is cancelled.
+     *
+     * @throws IllegalStateException if the current state is not
+     *   [State.READY_FOR_COMMANDS].
+     * @throws AlertScreenException if alerts occurs during this call, and
+     *   they aren't a W6 warning (those are handled by this function).
+     */
+    suspend fun fetchTDDHistory() = executeCommand<List<TDDHistoryEntry>>(
+        pumpMode = PumpIO.Mode.REMOTE_TERMINAL,
+        isIdempotent = true
+    ) {
+        tddHistoryProgressReporter.reset(Unit)
+
+        try {
+            val tddHistoryEntries = mutableListOf<TDDHistoryEntry>()
+
+            navigateToRTScreen(rtNavigationContext, ParsedScreen.MyDataDailyTotalsScreen::class)
+
+            longPressRTButtonUntil(rtNavigationContext, RTNavigationButton.DOWN) { parsedScreen ->
+                if (parsedScreen !is ParsedScreen.MyDataDailyTotalsScreen) {
+                    logger(LogLevel.DEBUG) { "Got a non-TDD screen ($parsedScreen) ; stopping TDD history scan" }
+                    return@longPressRTButtonUntil LongPressRTButtonsCommand.ReleaseButton
+                }
+
+                tddHistoryEntries.add(
+                    TDDHistoryEntry(
+                        date = parsedScreen.date,
+                        totalDailyAmount = parsedScreen.totalDailyAmount
+                    )
+                )
+
+                logger(LogLevel.DEBUG) {
+                    "Got TDD history entry ${parsedScreen.index} / ${parsedScreen.totalNumEntries} ; " +
+                    "date = ${parsedScreen.date} ; " +
+                    "TDD = ${parsedScreen.totalDailyAmount.toStringWithDecimal(3)}"
+                }
+
+                tddHistoryProgressReporter.setCurrentProgressStage(
+                    RTCommandProgressStage.FetchingTDDHistory(parsedScreen.index, parsedScreen.totalNumEntries)
+                )
+
+                return@longPressRTButtonUntil if (parsedScreen.index >= parsedScreen.totalNumEntries)
+                    LongPressRTButtonsCommand.ReleaseButton
+                else
+                    LongPressRTButtonsCommand.ContinuePressingButton
+            }
+
+            return@executeCommand tddHistoryEntries
+        } catch (e: Exception) {
+            tddHistoryProgressReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
+            throw e
         }
     }
 

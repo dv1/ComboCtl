@@ -239,6 +239,11 @@ class PumpViewController {
         }
     }
 
+    fun fetchTDD() = launchJob {
+        val tddHistory = pump!!.fetchTDDHistory()
+        Alert(Alert.AlertType.INFORMATION, "TDD history: ${tddHistory.joinToString(" ")}").showAndWait()
+    }
+
     fun readPumpStatus() = launchJob {
         pump!!.updateStatus()
         Alert(Alert.AlertType.INFORMATION, "Pump status: ${pump!!.statusFlow.value!!}").showAndWait()
