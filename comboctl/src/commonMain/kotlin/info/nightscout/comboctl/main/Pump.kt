@@ -554,7 +554,7 @@ class Pump(
     val connectProgressFlow: StateFlow<ProgressReport> = pumpIO.connectProgressFlow
 
     /**
-     * [StateFlow] for reporting progress while the pump datetime is set.
+     * [ProgressReporter] flow for reporting progress while the pump datetime is set.
      *
      * See the [ProgressReporter] documentation for details.
      *
@@ -1158,7 +1158,7 @@ class Pump(
      *   have enough IUs left for this bolus.
      * @throws IllegalArgumentException if [bolusAmount] is not in the 0-250 range,
      *   or if [bolusStatusUpdateIntervalInMs] is less than 1.
-     * @throws IllegalStateException  if the current state is not
+     * @throws IllegalStateException if the current state is not
      *   [State.READY_FOR_COMMANDS].
      * @throws AlertScreenException if alerts occurs during this call, and they
      *   aren't a W6 warning (those are handled by this function).
@@ -1348,7 +1348,7 @@ class Pump(
      * the main screen and the quickinfo screen, so it should not be called more
      * than necessary, since reading remote terminal screens takes some time.
      *
-     * @throws IllegalStateException  if the current state is not
+     * @throws IllegalStateException if the current state is not
      *   [State.SUSPENDED] or [State.READY_FOR_COMMANDS].
      * @throws AlertScreenException if alerts occurs during this call, and
      *   they aren't a W6 warning (those are handled by this function).
