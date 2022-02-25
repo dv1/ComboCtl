@@ -318,8 +318,8 @@ suspend fun longPressRTButtonUntil(
                 // case here though because of the way the Combo's UX
                 // works. When holding down a button, there is one update,
                 // followed by a period of inactivity, followed by more
-                // updates. This is done because otherwise it would not
-                // be possible to reliably tell the Combo whether a button
+                // updates. The Combo does this because otherwise it would not
+                // be possible for the user to reliably specify whether a button
                 // press is a short or a long one. During the inactivity
                 // period, there is no information from the Combo, no
                 // RT button confirmation. But we have to keep sending
