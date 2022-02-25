@@ -22,6 +22,8 @@ import kotlinx.coroutines.launch
 
 private val logger = Logger.get("RTNavigation")
 
+private const val WAIT_PERIOD_DURING_LONG_RT_BUTTON_PRESS_IN_MS = 110L
+
 /**
  * RT navigation buttons.
  *
@@ -308,27 +310,55 @@ suspend fun longPressRTButtonUntil(
         }
 
         launch {
+            var inactivityCompensationStage = 0
+
             logger(LogLevel.VERBOSE) { "Started long press RT button coroutine" }
             rtNavigationContext.startLongButtonPress(button) {
-                val stop = channel.receive()
+                // Check if we need to stop. We have to handle a special
+                // case here though because of the way the Combo's UX
+                // works. When holding down a button, there is one update,
+                // followed by a period of inactivity, followed by more
+                // updates. This is done because otherwise it would not
+                // be possible to reliably tell the Combo whether a button
+                // press is a short or a long one. During the inactivity
+                // period, there is no information from the Combo, no
+                // RT button confirmation. But we have to keep sending
+                // RT_BUTTON_STATUS packets during this period, otherwise
+                // the inactivity period never ends. We solve this by adding
+                // a special case: During that period, don't suspend until
+                // the channel receives something. Instead, if the channel
+                // did not receive anything, behave as if the channel received
+                // "false". That way, the code below will run, and a new
+                // RT_BUTTON_STATUS will be sent, and this will go on until
+                // the channel actually receives something.
+                val stop = if (inactivityCompensationStage == 2) {
+                    val receiveAttemptResult = channel.tryReceive()
+                    if (!receiveAttemptResult.isSuccess) {
+                        false
+                    } else
+                        receiveAttemptResult.getOrThrow()
+                } else
+                    channel.receive()
+                if (inactivityCompensationStage < 3)
+                    inactivityCompensationStage++
+
                 if (!stop) {
-                    // Wait for a short while. This is necessary, because
-                    // at each startLongButtonPress callback iteration,
-                    // a command is sent to the Combo that informs it
-                    // that the button is still being held down. This
-                    // triggers an update in the Combo. For example, if
-                    // the current screen is a TBR percentage screen,
-                    // and the UP button is held down, then the percentage
-                    // will be increased after that command is sent to
-                    // the Combo. These commands cannot be sent too
-                    // rapidly, since it takes the Combo some time to
-                    // send a new screen (a screen with the incremented
-                    // percentage in this TBR example) to the client.
-                    // If the commands are sent too quickly, then the
-                    // Combo would keep sending new screens even long
-                    // after the button was released.
-                    delay(110)
+                    // In here, we wait for a short while. This is necessary,
+                    // because at each startLongButtonPress callback iteration,
+                    // a command is sent to the Combo that informs it that the
+                    // button is still being held down. This triggers an update
+                    // in the Combo. For example, if the current screen is a
+                    // TBR percentage screen, and the UP button is held down,
+                    // then the percentage will be increased after that command
+                    // is sent to the Combo. These commands cannot be sent too
+                    // rapidly, since it takes the Combo some time to  send a
+                    // new screen (a screen with the incremented percentage in
+                    // this TBR example) to the client. If the commands are sent
+                    // too quickly, then the Combo would keep sending new
+                    // screens even long after the button was released.
+                    delay(WAIT_PERIOD_DURING_LONG_RT_BUTTON_PRESS_IN_MS)
                 }
+
                 return@startLongButtonPress !stop
             }
             rtNavigationContext.waitForLongButtonPressToFinish()
