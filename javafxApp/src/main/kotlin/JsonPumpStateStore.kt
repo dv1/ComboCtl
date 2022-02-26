@@ -58,7 +58,8 @@ class JsonPumpStateStore : PumpStateStore {
                     CurrentTbrState.TbrStarted(Tbr(
                         timestamp = Instant.fromEpochSeconds(tbrJson.long("timestamp")!!),
                         percentage = tbrJson.int("percentage")!!,
-                        durationInMinutes = tbrJson.int("durationInMinutes")!!
+                        durationInMinutes = tbrJson.int("durationInMinutes")!!,
+                        type = Tbr.fromStringId(tbrJson.string("type")!!)!!
                     ))
                 } else CurrentTbrState.NoTbrOngoing
 
@@ -169,7 +170,8 @@ class JsonPumpStateStore : PumpStateStore {
                 is CurrentTbrState.TbrStarted -> json { obj(
                     "timestamp" to tbrState.tbr.timestamp.epochSeconds,
                     "percentage" to tbrState.tbr.percentage,
-                    "durationInMinutes" to tbrState.tbr.durationInMinutes
+                    "durationInMinutes" to tbrState.tbr.durationInMinutes,
+                    "type" to tbrState.tbr.type.stringId
                 ) }
                 else -> null
             }

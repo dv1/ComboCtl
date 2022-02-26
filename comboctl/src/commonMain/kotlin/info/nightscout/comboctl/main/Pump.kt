@@ -1009,9 +1009,14 @@ class Pump(
      *
      * @param percentage TBR percentage to set.
      * @param durationInMinutes TBR duration in minutes to set.
+     *   This argument is not used if [percentage] is 100.
+     * @param type Type of the TBR. Only [Tbr.Type.NORMAL], [Tbr.Type.SUPERBOLUS],
+     *   and [Tbr.Type.EMULATED_COMBO_STOP] can be used here.
+     *   This argument is not used if [percentage] is 100.
      * @param force100Percent Whether to really set the TBR to 100% (= actually
      *   cancelling an ongoing TBR, which produces a W6 warning) or to fake a
      *   100% TBR by setting 90% / 110% TBRs (see above).
+     *   This argument is only used if [percentage] is 100.
      * @throws IllegalArgumentException if the percentage is not in the 0-500 range,
      *   or if the percentage value is not an integer multiple of 10, or if
      *   the duration is <15 or not an integer multiple of 15 (see the note
@@ -1024,10 +1029,17 @@ class Pump(
      * @throws AlertScreenException if alerts occurs during this call, and they
      *   aren't a W6 warning (those are handled by this function).
      */
-    suspend fun setTbr(percentage: Int, durationInMinutes: Int, force100Percent: Boolean = false) = executeCommand(
+    suspend fun setTbr(
+        percentage: Int,
+        durationInMinutes: Int,
+        type: Tbr.Type,
+        force100Percent: Boolean = false,
+    ) = executeCommand(
         pumpMode = PumpIO.Mode.REMOTE_TERMINAL,
         isIdempotent = true
     ) {
+        require(type in listOf(Tbr.Type.NORMAL, Tbr.Type.SUPERBOLUS, Tbr.Type.EMULATED_COMBO_STOP)) { "Invalid TBR type" }
+
         // NOTE: Not using the Tbr class directly as a function argument since
         // the timestamp property of that class is not useful here. The Tbr
         // class is rather meant for TBR events.
@@ -1051,7 +1063,12 @@ class Pump(
                     expectedTbrDuration = 0
                 } else {
                     val newPercentage = if (currentStatus.tbrPercentage < 100) 110 else 90
-                    val tbr = Tbr(timestamp = Clock.System.now(), percentage = newPercentage, durationInMinutes = 15)
+                    val tbr = Tbr(
+                        timestamp = Clock.System.now(),
+                        percentage = newPercentage,
+                        durationInMinutes = 15,
+                        Tbr.Type.EMULATED_100_PERCENT
+                    )
                     setCurrentTbr(percentage = newPercentage, durationInMinutes = 15)
                     reportStartedTbr(tbr)
                     expectedTbrPercentage = newPercentage
@@ -1059,7 +1076,12 @@ class Pump(
                 }
             }
         } else {
-            val tbr = Tbr(timestamp = Clock.System.now(), percentage = percentage, durationInMinutes = durationInMinutes)
+            val tbr = Tbr(
+                timestamp = Clock.System.now(),
+                percentage = percentage,
+                durationInMinutes = durationInMinutes,
+                type
+            )
             setCurrentTbr(percentage = percentage, durationInMinutes = durationInMinutes)
             reportStartedTbr(tbr)
             expectedTbrPercentage = percentage
@@ -2009,7 +2031,8 @@ class Pump(
                         val tbr = Tbr(
                             timestamp = endTbrTimestamp,
                             percentage = currentTbrState.tbr.percentage,
-                            durationInMinutes = currentTbrState.tbr.durationInMinutes
+                            durationInMinutes = currentTbrState.tbr.durationInMinutes,
+                            currentTbrState.tbr.type
                         )
                         pumpStateStore.setCurrentTbrState(bluetoothDevice.address, CurrentTbrState.NoTbrOngoing)
                         onEvent(Event.TbrEnded(tbr))
@@ -2279,7 +2302,7 @@ class Pump(
     // If the pump is suspended, there is no insulin delivery. Model this
     // as a 0% TBR that started just now and lasts for 15 minutes.
     private fun reportPumpSuspendedTbr() =
-        reportStartedTbr(Tbr(timestamp = Clock.System.now(), percentage = 0, durationInMinutes = 15))
+        reportStartedTbr(Tbr(timestamp = Clock.System.now(), percentage = 0, durationInMinutes = 15, Tbr.Type.COMBO_STOPPED))
 
     private fun reportStartedTbr(tbr: Tbr) {
         // If a TBR is already ongoing, it will be aborted. We have to
@@ -2319,7 +2342,8 @@ class Pump(
             onEvent(Event.TbrEnded(Tbr(
                 timestamp = timestamp,
                 percentage = tbr.percentage,
-                durationInMinutes = tbr.durationInMinutes
+                durationInMinutes = tbr.durationInMinutes,
+                tbr.type
             )))
         }
     }

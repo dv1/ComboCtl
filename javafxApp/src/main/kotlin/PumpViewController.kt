@@ -5,6 +5,7 @@ import info.nightscout.comboctl.base.DISPLAY_FRAME_HEIGHT
 import info.nightscout.comboctl.base.DISPLAY_FRAME_WIDTH
 import info.nightscout.comboctl.base.DisplayFrame
 import info.nightscout.comboctl.base.PumpIO
+import info.nightscout.comboctl.base.Tbr
 import info.nightscout.comboctl.main.BasalProfile
 import info.nightscout.comboctl.main.NUM_COMBO_BASAL_PROFILE_FACTORS
 import info.nightscout.comboctl.main.Pump
@@ -235,7 +236,7 @@ class PumpViewController {
                 }
                 .launchIn(mainScope!!)
 
-            pump!!.setTbr(percentage = tbr.first, durationInMinutes = tbr.second)
+            pump!!.setTbr(percentage = tbr.first, durationInMinutes = tbr.second, type = Tbr.Type.NORMAL)
         }
     }
 
