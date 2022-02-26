@@ -451,58 +451,58 @@ class Pump(
     sealed class Event {
         object BatteryLow : Event()
         object ReservoirLow : Event()
-        class QuickBolusRequested(
+        data class QuickBolusRequested(
             val bolusId: Long,
             val timestamp: Instant,
             val bolusAmount: Int
         ) : Event()
-        class QuickBolusInfused(
+        data class QuickBolusInfused(
             val bolusId: Long,
             val timestamp: Instant,
             val bolusAmount: Int
         ) : Event()
-        class StandardBolusRequested(
+        data class StandardBolusRequested(
             val bolusId: Long,
             val timestamp: Instant,
             val manual: Boolean,
             val bolusAmount: Int,
             val standardBolusReason: StandardBolusReason
         ) : Event()
-        class StandardBolusInfused(
+        data class StandardBolusInfused(
             val bolusId: Long,
             val timestamp: Instant,
             val manual: Boolean,
             val bolusAmount: Int,
             val standardBolusReason: StandardBolusReason
         ) : Event()
-        class ExtendedBolusStarted(
+        data class ExtendedBolusStarted(
             val bolusId: Long,
             val timestamp: Instant,
             val totalBolusAmount: Int,
             val totalDurationMinutes: Int
         ) : Event()
-        class ExtendedBolusEnded(
+        data class ExtendedBolusEnded(
             val bolusId: Long,
             val timestamp: Instant,
             val totalBolusAmount: Int,
             val totalDurationMinutes: Int
         ) : Event()
-        class MultiwaveBolusStarted(
-            val bolusId: Long,
-            val timestamp: Instant,
-            val totalBolusAmount: Int,
-            val immediateBolusAmount: Int,
-            val totalDurationMinutes: Int
-        ) : Event()
-        class MultiwaveBolusEnded(
+        data class MultiwaveBolusStarted(
             val bolusId: Long,
             val timestamp: Instant,
             val totalBolusAmount: Int,
             val immediateBolusAmount: Int,
             val totalDurationMinutes: Int
         ) : Event()
-        class TbrStarted(val tbr: Tbr) : Event()
-        class TbrEnded(val tbr: Tbr) : Event()
+        data class MultiwaveBolusEnded(
+            val bolusId: Long,
+            val timestamp: Instant,
+            val totalBolusAmount: Int,
+            val immediateBolusAmount: Int,
+            val totalDurationMinutes: Int
+        ) : Event()
+        data class TbrStarted(val tbr: Tbr) : Event()
+        data class TbrEnded(val tbr: Tbr) : Event()
     }
 
     /**
