@@ -132,7 +132,9 @@ class MainViewController {
         val pumpViewController: PumpViewController = loader.getController()
 
         val pump = runBlocking {
-            pumpManager!!.acquirePump(pumpBluetoothAddress)
+            pumpManager!!.acquirePump(pumpBluetoothAddress) { event ->
+                println("New pump event: $event")
+            }
         }
         pumpInstances[pumpBluetoothAddress] = pump
 
