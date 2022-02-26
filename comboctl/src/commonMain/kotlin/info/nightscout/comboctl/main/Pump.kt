@@ -29,6 +29,7 @@ import info.nightscout.comboctl.parser.BatteryState
 import info.nightscout.comboctl.parser.MainScreenContent
 import info.nightscout.comboctl.parser.ParsedScreen
 import info.nightscout.comboctl.parser.ReservoirState
+import kotlin.math.absoluteValue
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
@@ -50,7 +51,6 @@ import kotlinx.datetime.atStartOfDayIn
 import kotlinx.datetime.offsetAt
 import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
-import kotlin.math.absoluteValue
 
 private val logger = Logger.get("Pump")
 
@@ -719,7 +719,6 @@ class Pump(
         logger(LogLevel.INFO) { "Unpaired from pump with address ${bluetoothDevice.address}" }
     }
 
-
     /**
      * Establishes a connection to the Combo.
      *
@@ -923,7 +922,7 @@ class Pump(
         isIdempotent = true
     ) {
         if (basalProfile == currentBasalProfile) {
-            logger(LogLevel.DEBUG) { "Current basal profile equals the profile that is to be set; ignoring redundant call"}
+            logger(LogLevel.DEBUG) { "Current basal profile equals the profile that is to be set; ignoring redundant call" }
             return@executeCommand false
         }
 
@@ -1058,7 +1057,7 @@ class Pump(
         percentage: Int,
         durationInMinutes: Int,
         type: Tbr.Type,
-        force100Percent: Boolean = false,
+        force100Percent: Boolean = false
     ) = executeCommand(
         pumpMode = PumpIO.Mode.REMOTE_TERMINAL,
         isIdempotent = true
@@ -1869,7 +1868,6 @@ class Pump(
                     rtNavigationContext.shortPressButton(RTNavigationButton.CHECK)
                     dismissalCount++
                 }
-
             }
         }
     }
@@ -2101,7 +2099,7 @@ class Pump(
         // Make sure that (a) we have a known current basal profile and
         // (b) that any existing current basal profile is valid.
         if (currentBasalProfile == null) {
-            logger(LogLevel.DEBUG) { "No current basal profile known; reading the pump's profile now"}
+            logger(LogLevel.DEBUG) { "No current basal profile known; reading the pump's profile now" }
             currentBasalProfile = getBasalProfile()
         } else {
             // Compare the basal factor shown on the RT main screen against the current
@@ -2125,13 +2123,13 @@ class Pump(
                 // is to fetch again the pump's current datetime and retry the check.
                 // If there is again a mismatch, then it is a real one.
                 if (currentBasalRateFactor != currentFactorFromProfile) {
-                    logger(LogLevel.DEBUG) { "Factors do not match; checking again"}
+                    logger(LogLevel.DEBUG) { "Factors do not match; checking again" }
 
                     val currentPumpTime = pumpIO.readCMDDateTime()
                     currentFactorFromProfile = currentBasalProfile!![currentPumpTime.hour]
 
                     if (currentBasalRateFactor != currentFactorFromProfile) {
-                        logger(LogLevel.DEBUG) { "Second check showed again a factor mismatch; reading basal profile"}
+                        logger(LogLevel.DEBUG) { "Second check showed again a factor mismatch; reading basal profile" }
                         currentBasalProfile = getBasalProfile()
                     }
                 }
@@ -2145,7 +2143,7 @@ class Pump(
         val currentPumpDateTime = currentPumpLocalDateTime.toInstant(currentPumpUtcOffset!!)
         val currentSystemDateTime = Clock.System.now()
         val currentSystemTimeZone = TimeZone.currentSystemDefault()
-        val currentSystemUtcOffset =  currentSystemTimeZone.offsetAt(currentSystemDateTime)
+        val currentSystemUtcOffset = currentSystemTimeZone.offsetAt(currentSystemDateTime)
 
         logger(LogLevel.DEBUG) { "History delta size: ${historyDelta.size}" }
         logger(LogLevel.DEBUG) { "Pump local datetime: $currentPumpLocalDateTime with UTC offset: $currentPumpDateTime" }
@@ -2457,7 +2455,8 @@ class Pump(
     }
 
     private suspend fun setCurrentTbr(
-        percentage: Int, durationInMinutes: Int
+        percentage: Int,
+        durationInMinutes: Int
     ) {
         setTbrProgressReporter.reset(Unit)
 

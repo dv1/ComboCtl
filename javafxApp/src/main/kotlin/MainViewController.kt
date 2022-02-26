@@ -16,10 +16,8 @@ import javafx.scene.Parent
 import javafx.scene.Scene
 import javafx.scene.control.ButtonType
 import javafx.scene.control.CheckBox
-import javafx.scene.control.DatePicker
 import javafx.scene.control.ProgressBar
 import javafx.scene.control.SelectionModel
-import javafx.scene.control.Spinner
 import javafx.scene.control.TextInputDialog
 import javafx.scene.image.ImageView
 import javafx.scene.layout.Pane

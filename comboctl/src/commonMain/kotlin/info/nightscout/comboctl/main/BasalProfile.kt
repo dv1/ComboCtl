@@ -73,7 +73,6 @@ class BasalProfile(sourceFactors: List<Int>) {
         }
     }
 
-
     override fun toString() = factors.mapIndexed { index, factor ->
         "hour $index: factor ${factor.toStringWithDecimal(3)}"
     }.joinToString("; ")

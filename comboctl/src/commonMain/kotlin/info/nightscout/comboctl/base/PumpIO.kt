@@ -1,15 +1,27 @@
 package info.nightscout.comboctl.base
 
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
@@ -441,7 +453,7 @@ class PumpIO(
 
                 val currentSystemDateTime = Clock.System.now()
                 val currentSystemTimeZone = TimeZone.currentSystemDefault()
-                val currentSystemUtcOffset =  currentSystemTimeZone.offsetAt(currentSystemDateTime)
+                val currentSystemUtcOffset = currentSystemTimeZone.offsetAt(currentSystemDateTime)
 
                 pumpStateStore.createPumpState(
                     bluetoothDevice.address,

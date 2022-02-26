@@ -13,7 +13,10 @@ import info.nightscout.comboctl.parser.Quickinfo
 import info.nightscout.comboctl.parser.ReservoirState
 import kotlin.reflect.KClassifier
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -27,9 +30,6 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalDateTime
 import org.junit.jupiter.api.BeforeAll
-import kotlin.test.assertContentEquals
-import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
 
 class RTNavigationTest {
     /* RTNavigationContext implementation for testing out RTNavigation functionality.
@@ -174,11 +174,16 @@ class RTNavigationTest {
 
         assertNotNull(path)
         assertEquals(5, path.size)
-        assertEquals(PathSegment<KClassifier, RTNavigationButton>(ParsedScreen.TemporaryBasalRateMenuScreen::class, RTNavigationButton.MENU), path[0])
-        assertEquals(PathSegment<KClassifier, RTNavigationButton>(ParsedScreen.MyDataMenuScreen::class, RTNavigationButton.MENU), path[1])
-        assertEquals(PathSegment<KClassifier, RTNavigationButton>(ParsedScreen.BasalRate1ProgrammingMenuScreen::class, RTNavigationButton.MENU), path[2])
-        assertEquals(PathSegment<KClassifier, RTNavigationButton>(ParsedScreen.BasalRateTotalScreen::class, RTNavigationButton.CHECK), path[3])
-        assertEquals(PathSegment<KClassifier, RTNavigationButton>(ParsedScreen.BasalRateFactorSettingScreen::class, RTNavigationButton.MENU), path[4])
+        assertEquals(PathSegment<KClassifier, RTNavigationButton>(
+            ParsedScreen.TemporaryBasalRateMenuScreen::class, RTNavigationButton.MENU), path[0])
+        assertEquals(PathSegment<KClassifier, RTNavigationButton>(
+            ParsedScreen.MyDataMenuScreen::class, RTNavigationButton.MENU), path[1])
+        assertEquals(PathSegment<KClassifier, RTNavigationButton>(
+            ParsedScreen.BasalRate1ProgrammingMenuScreen::class, RTNavigationButton.MENU), path[2])
+        assertEquals(PathSegment<KClassifier, RTNavigationButton>(
+            ParsedScreen.BasalRateTotalScreen::class, RTNavigationButton.CHECK), path[3])
+        assertEquals(PathSegment<KClassifier, RTNavigationButton>(
+            ParsedScreen.BasalRateFactorSettingScreen::class, RTNavigationButton.MENU), path[4])
     }
 
     @Test
