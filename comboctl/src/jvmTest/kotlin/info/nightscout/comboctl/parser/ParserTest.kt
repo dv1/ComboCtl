@@ -565,6 +565,20 @@ class ParserTest {
                     timeWithoutDate(hour = 0, minute = 0),
                     0, 3
                 )
+            ),
+            // This tests a special case where the basal rate factor setting screen
+            // shows a time period of 23:00 - 24:00 instead of 23:00 - 00:00.
+            // The "24:00" needs to be parsed correctly - as 00:00.
+            // If this is not done, then an hour value of 24 may be passed
+            // on to kotlinx.datetime LocalDateTime, which does _not_ accept
+            // HourOfDay values outside of the 0..23 range.
+            Pair(
+                testFrameBasalRateFactorSettingScreenMidnightAs24,
+                ParsedScreen.BasalRateFactorSettingScreen(
+                    timeWithoutDate(hour = 23, minute = 0),
+                    timeWithoutDate(hour = 0, minute = 0),
+                    800, 1
+                )
             )
         )
 

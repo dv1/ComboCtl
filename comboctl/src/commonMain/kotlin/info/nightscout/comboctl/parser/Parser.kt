@@ -261,6 +261,8 @@ private fun amPmTo24Hour(hour: Int, amPm: String) =
         0
     else if ((hour != 12) && (amPm == "PM"))
         hour + 12
+    else if (hour == 24)
+        0
     else
         hour
 
@@ -790,6 +792,15 @@ class TimeParser : Parser() {
 
             hour = regexGroups[1]!!.value.toInt(radix = 10)
             minute = regexGroups[2]!!.value.toInt(radix = 10)
+
+            // Special case that can happen in basal rate factor
+            // setting screens. The screen that shows the factor
+            // that starts at 23:00 and ends at 00:00 shows a
+            // time range from 23:00 to 24:00, and _not to 00:00
+            // for some reason. Catch this here, otherwise the
+            // LocalDateTime class will throw an IllegalArgumentException.
+            if (hour == 24)
+                hour = 0
 
             // If there is an AM/PM specifier, convert the hour
             // to the 24-hour format.
