@@ -419,6 +419,28 @@ class Pump(
     )
 
     /**
+     * Reason for a standard bolus delivery.
+     *
+     * A standard bolus may be delivered for various reasons.
+     */
+    enum class StandardBolusReason {
+        /**
+         * This is a normal bolus.
+         */
+        NORMAL,
+
+        /**
+         * This is a superbolus.
+         */
+        SUPERBOLUS,
+
+        /**
+         * This is a bolus that is used for priming an infusion set.
+         */
+        PRIMING_INFUSION_SET
+    }
+
+    /**
      * Events that can occur during operation.
      *
      * These are forwarded through the [onEvent] property.
@@ -443,13 +465,15 @@ class Pump(
             val bolusId: Long,
             val timestamp: Instant,
             val manual: Boolean,
-            val bolusAmount: Int
+            val bolusAmount: Int,
+            val standardBolusReason: StandardBolusReason
         ) : Event()
         class StandardBolusInfused(
             val bolusId: Long,
             val timestamp: Instant,
             val manual: Boolean,
-            val bolusAmount: Int
+            val bolusAmount: Int,
+            val standardBolusReason: StandardBolusReason
         ) : Event()
         class ExtendedBolusStarted(
             val bolusId: Long,
@@ -1189,6 +1213,7 @@ class Pump(
      * @param bolusAmount Bolus amount to deliver. Note that this is given
      *   in 0.1 IU units, so for example, "57" means 5.7 IU. Valid range
      *   is 0.0 IU to 25.0 IU (that is, integer values 0-250).
+     * @param bolusReason Reason for this standard bolus.
      * @param bolusStatusUpdateIntervalInMs Interval between status updates,
      *   in milliseconds. Must be at least 1
      * @throws BolusNotDeliveredException if the pump did not deliver the bolus.
@@ -1207,7 +1232,7 @@ class Pump(
      * @throws AlertScreenException if alerts occurs during this call, and they
      *   aren't a W6 warning (those are handled by this function).
      */
-    suspend fun deliverBolus(bolusAmount: Int, bolusStatusUpdateIntervalInMs: Long = 250) = executeCommand(
+    suspend fun deliverBolus(bolusAmount: Int, bolusReason: StandardBolusReason, bolusStatusUpdateIntervalInMs: Long = 250) = executeCommand(
         // Instruct executeCommand() to not set the mode on its own.
         // This function itself switches manually between the
         // command and remote terminal modes.
@@ -1334,7 +1359,10 @@ class Pump(
                 } else {
                     var numStandardBolusInfusedEntries = 0
                     var unexpectedBolusEntriesDetected = false
-                    scanHistoryDeltaForBolusToEmit(historyDelta) { entry ->
+                    scanHistoryDeltaForBolusToEmit(
+                        historyDelta,
+                        reasonForLastStandardBolusInfusion = bolusReason
+                    ) { entry ->
                         when (val detail = entry.detail) {
                             is CMDHistoryEventDetail.StandardBolusInfused -> {
                                 numStandardBolusInfusedEntries++
@@ -1858,13 +1886,20 @@ class Pump(
     // history delta entry, for example to check for unaccounted boluses.
     private fun scanHistoryDeltaForBolusToEmit(
         historyDelta: List<ApplicationLayer.CMDHistoryEvent>,
+        reasonForLastStandardBolusInfusion: StandardBolusReason = StandardBolusReason.NORMAL,
         block: (historyEntry: ApplicationLayer.CMDHistoryEvent) -> Unit = { }
     ) {
         var lastBolusId = 0L
         var lastBolusAmount = 0
         var lastBolusInfusionTimestamp: Instant? = null
+        var lastStandardBolusRequestedTypeSet = false
+        var lastStandardBolusInfusedTypeSet = false
 
-        historyDelta.onEach { entry ->
+        // Traverse the history delta in reverse order. The last entries
+        // are the most recent ones, and we are particularly interested
+        // in details about the last (standard) bolus. By traversing
+        // in reverse, we encounter the last (standard) bolus first.
+        historyDelta.reversed().onEach { entry ->
             block(entry)
 
             val timestamp = entry.timestamp.toInstant(currentPumpUtcOffset!!)
@@ -1882,27 +1917,40 @@ class Pump(
                         timestamp = timestamp,
                         bolusAmount = detail.bolusAmount
                     ))
-                    lastBolusId = entry.eventCounter
-                    lastBolusAmount = detail.bolusAmount
-                    lastBolusInfusionTimestamp = timestamp
+                    if (lastBolusInfusionTimestamp != null) {
+                        lastBolusId = entry.eventCounter
+                        lastBolusAmount = detail.bolusAmount
+                        lastBolusInfusionTimestamp = timestamp
+                    }
                 }
-                is CMDHistoryEventDetail.StandardBolusRequested ->
+                is CMDHistoryEventDetail.StandardBolusRequested -> {
+                    val standardBolusReason =
+                        if (lastStandardBolusRequestedTypeSet) StandardBolusReason.NORMAL else reasonForLastStandardBolusInfusion
                     onEvent(Event.StandardBolusRequested(
                         bolusId = entry.eventCounter,
                         timestamp = timestamp,
                         manual = detail.manual,
-                        bolusAmount = detail.bolusAmount
+                        bolusAmount = detail.bolusAmount,
+                        standardBolusReason = standardBolusReason
                     ))
+                    lastStandardBolusRequestedTypeSet = true
+                }
                 is CMDHistoryEventDetail.StandardBolusInfused -> {
+                    val standardBolusReason =
+                        if (lastStandardBolusInfusedTypeSet) StandardBolusReason.NORMAL else reasonForLastStandardBolusInfusion
                     onEvent(Event.StandardBolusInfused(
                         bolusId = entry.eventCounter,
                         timestamp = timestamp,
                         manual = detail.manual,
-                        bolusAmount = detail.bolusAmount
+                        bolusAmount = detail.bolusAmount,
+                        standardBolusReason = standardBolusReason
                     ))
-                    lastBolusId = entry.eventCounter
-                    lastBolusAmount = detail.bolusAmount
-                    lastBolusInfusionTimestamp = timestamp
+                    lastStandardBolusInfusedTypeSet = true
+                    if (lastBolusInfusionTimestamp != null) {
+                        lastBolusId = entry.eventCounter
+                        lastBolusAmount = detail.bolusAmount
+                        lastBolusInfusionTimestamp = timestamp
+                    }
                 }
                 is CMDHistoryEventDetail.ExtendedBolusStarted ->
                     onEvent(Event.ExtendedBolusStarted(

@@ -266,7 +266,7 @@ class PumpViewController {
                 }
                 .launchIn(mainScope!!)
 
-            pump!!.deliverBolus(bolusAmount)
+            pump!!.deliverBolus(bolusAmount, Pump.StandardBolusReason.NORMAL)
         }
     }
 
