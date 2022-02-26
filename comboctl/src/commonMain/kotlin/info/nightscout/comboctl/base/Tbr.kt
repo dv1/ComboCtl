@@ -58,7 +58,17 @@ data class Tbr(val timestamp: Instant, val percentage: Int, val durationInMinute
         /**
          * TBR set when a superbolus is delivered.
          */
-        SUPERBOLUS("superbolus")
+        SUPERBOLUS("superbolus");
+
+        companion object {
+            private val values = values()
+            /**
+             * Converts a string ID to a [Tbr.Type].
+             *
+             * @return TBR type, or null if there is no matching type.
+             */
+            fun fromStringId(stringId: String) = values.firstOrNull { it.stringId == stringId }
+        }
     }
 
     init {
@@ -68,15 +78,5 @@ data class Tbr(val timestamp: Instant, val percentage: Int, val durationInMinute
             (percentage == 100) ||
             ((durationInMinutes >= 15) && (durationInMinutes <= (24 * 60)) && ((durationInMinutes % 15) == 0))
         )
-    }
-
-    companion object {
-        private val values = Tbr.Type.values()
-        /**
-         * Converts a string ID to a [Tbr.Type].
-         *
-         * @return TBR type, or null if there is no matching type.
-         */
-        fun fromStringId(stringId: String) = values.firstOrNull { it.stringId == stringId }
     }
 }
