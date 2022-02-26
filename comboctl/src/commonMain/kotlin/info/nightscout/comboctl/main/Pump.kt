@@ -42,10 +42,11 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
-import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.UtcOffset
+import kotlinx.datetime.asTimeZone
+import kotlinx.datetime.atStartOfDayIn
 import kotlinx.datetime.offsetAt
 import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
@@ -1390,7 +1391,7 @@ class Pump(
      *           integer are the 3 most significant fractional digits of the
      *           decimal amount.
      */
-    data class TDDHistoryEntry(val date: LocalDate, val totalDailyAmount: Int)
+    data class TDDHistoryEntry(val date: Instant, val totalDailyAmount: Int)
 
     /**
      * [ProgressReporter] flow for keeping track of the progress of [fetchTDDHistory].
@@ -1427,7 +1428,7 @@ class Pump(
 
                 tddHistoryEntries.add(
                     TDDHistoryEntry(
-                        date = parsedScreen.date,
+                        date = parsedScreen.date.atStartOfDayIn(currentPumpUtcOffset!!.asTimeZone()),
                         totalDailyAmount = parsedScreen.totalDailyAmount
                     )
                 )
