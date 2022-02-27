@@ -1751,6 +1751,13 @@ class PumpIO(
                     startCMDPingHeartbeat()
                 }
             }
+
+            // This happens during pairing and connecting, when CTRL packets
+            // are sent via sendPacketWithResponse() calls. These calls in
+            // turn call this function, but there is no defined heartbeat
+            // in the control mode (which is only used to set up pairing
+            // and a connection). Just don't do anything in that case.
+            null -> Unit
         }
     }
 
