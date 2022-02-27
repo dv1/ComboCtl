@@ -939,7 +939,7 @@ class Pump(
             // different hours).
             var previousBeginHour = (parsedScreenFlow.first() as ParsedScreen.BasalRateFactorSettingScreen).beginTime.hour
 
-            for (index in basalProfile) {
+            for (index in 0 until basalProfile.size) {
                 val basalFactor = basalProfile[index]
                 adjustQuantityOnScreen(rtNavigationContext, basalFactor) {
                     (it as ParsedScreen.BasalRateFactorSettingScreen).numUnits
