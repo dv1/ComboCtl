@@ -1,5 +1,12 @@
 import org.jetbrains.dokka.gradle.DokkaTask
 
+buildscript {
+    extra.apply {
+        set("kotlinx_coroutines_version", "1.6.0")
+        set("kotlinx_datetime_version", "0.3.2")
+    }
+}
+
 plugins {
     kotlin("multiplatform")
     id("com.android.library")
@@ -16,8 +23,10 @@ kotlin {
     sourceSets {
         val commonMain by getting {
             dependencies {
-                implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.3.1")
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.5.2")
+                val kotlinx_coroutines_version = project.extra["kotlinx_coroutines_version"]
+                val kotlinx_datetime_version = project.extra["kotlinx_datetime_version"]
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinx_coroutines_version")
+                implementation("org.jetbrains.kotlinx:kotlinx-datetime:$kotlinx_datetime_version")
                 // Need to use project.dependencies.platform() instead of platform()
                 // due to this bug: https://youtrack.jetbrains.com/issue/KT-40489
                 implementation(project.dependencies.platform("org.jetbrains.kotlin:kotlin-bom"))
