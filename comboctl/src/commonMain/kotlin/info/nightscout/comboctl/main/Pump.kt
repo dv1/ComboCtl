@@ -29,7 +29,8 @@ import info.nightscout.comboctl.parser.BatteryState
 import info.nightscout.comboctl.parser.MainScreenContent
 import info.nightscout.comboctl.parser.ParsedScreen
 import info.nightscout.comboctl.parser.ReservoirState
-import kotlin.math.absoluteValue
+import kotlin.time.DurationUnit
+import kotlin.time.toDuration
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
@@ -2064,16 +2065,19 @@ class Pump(
             //    just continue due to the situation now being unclear. Ideally, this exception leads
             //    to an alert shown on the UI. Also, in this case, we do a hard TBR cancel, which
             //    triggers W6, but this is an unusual situation, so the extra vibration is okay.
+            //
+            // NOTE: When no TBR information is shown on the main screen, the status.tbrPercentage is
+            // always set to 100. When there's TBR information, it is always something other than 100.
+
+            val tbrInfoShownOnMainScreen = (status.tbrPercentage != 100)
+
             when (currentTbrState) {
                 is CurrentTbrState.TbrStarted -> {
-                    if (status.tbrPercentage == 100) {
-                        // TODO: Once kotlinx.datetime is updated to version 0.3.2 or later,
-                        // replace this with duration based arithmetic to calculate the
-                        // end TBR timestamp.
-                        val endTbrTimestamp = Instant.fromEpochMilliseconds(
-                            currentTbrState.tbr.timestamp.toEpochMilliseconds() +
-                            currentTbrState.tbr.durationInMinutes * 60 * 1000
-                        )
+                    if (!tbrInfoShownOnMainScreen) {
+                        // Handle case #1.
+
+                        val endTbrTimestamp = currentTbrState.tbr.timestamp +
+                            currentTbrState.tbr.durationInMinutes.toDuration(DurationUnit.MINUTES)
 
                         val tbr = Tbr(
                             timestamp = endTbrTimestamp,
@@ -2086,8 +2090,12 @@ class Pump(
                     }
                 }
 
+                // Do nothing in cases #2 and #3.
+
                 is CurrentTbrState.NoTbrOngoing -> {
-                    if (status.tbrPercentage != 100) {
+                    if (tbrInfoShownOnMainScreen) {
+                        // Handle case #4.
+
                         pumpIO.switchMode(PumpIO.Mode.REMOTE_TERMINAL)
                         setCurrentTbr(percentage = 100, durationInMinutes = 0)
                         throw UnknownTbrDetectedException(status.tbrPercentage)
@@ -2174,22 +2182,20 @@ class Pump(
         // (b) setting datetime takes a while because it has to be done
         // via the RT mode. Having this threshold avoids too frequent
         // pump datetime updates (which, as said, are rather slow).
-        // TODO: Once kotlinx.datetime is updated to version 0.3.2 or later,
-        // replace this epochSeconds based arithmetic with a Duration based one,
-        // which is marked as stable starting from that version.
-        if ((currentSystemDateTime.epochSeconds - currentPumpDateTime.epochSeconds).absoluteValue >= 120) {
+        if ((currentSystemDateTime - currentPumpDateTime).absoluteValue >= 2.toDuration(DurationUnit.MINUTES)) {
             logger(LogLevel.INFO) {
                 "Current system datetime differs from pump's: system datetime: $currentSystemDateTime; " +
                 "pump datetime: $currentPumpDateTime; updating pump datetime"
             }
-            // TODO: If the difference between currentSystemDateTime and currentPumpDateTime
-            // is such that the updatePumpDateTime() is likely to take a while, add an
-            // offset to currentSystemDateTime in the updatePumpDateTime() call to
-            // account for that while and reduce the likelihood of having to adjust
-            // the datetime later on again. Try to do this after kotlinx.datetime is
-            // updated to version 0.3.2 or later, since doing that with Duration
-            // based arithmetic is the best and simplest approach.
-            updatePumpDateTime(currentSystemDateTime.toLocalDateTime(currentSystemTimeZone))
+            // When updating the datetime, add 30 seconds. This is done because the
+            // updatePumpDateTime() is likely to take a while. Without an offset,
+            // it is possible that by the time the set datetime operation is finished,
+            // the pump's current datetime is already too far or at least almost
+            // too far in the past. The offset tries to take the duration of the
+            // datetime operation itself into account.
+            updatePumpDateTime(
+                (currentSystemDateTime + 30.toDuration(DurationUnit.SECONDS)).toLocalDateTime(currentSystemTimeZone)
+            )
         }
 
         // Check if the pump's current UTC offset matches that of the system.
@@ -2375,14 +2381,11 @@ class Pump(
             // is _shorter_ than durationInMinutes, it means that we stopped TBR
             // before its planned end, so using the current time as timestamp
             // is the correct approach then.
-            //
-            // TODO: Once kotlinx.datetime is updated to version 0.3.2 or later,
-            // replace this with duration based arithmetic to calculate the
-            // end TBR timestamp.
             val now = Clock.System.now()
             val tbr = currentTbrState.tbr
-            val timestamp = if ((now.epochSeconds - tbr.timestamp.epochSeconds) > (tbr.durationInMinutes * 60))
-                Instant.fromEpochMilliseconds(tbr.timestamp.toEpochMilliseconds() + tbr.durationInMinutes * 60 * 1000)
+            val tbrDuration = tbr.durationInMinutes.toDuration(DurationUnit.MINUTES)
+            val timestamp = if ((now - tbr.timestamp) > tbrDuration)
+                tbr.timestamp + tbrDuration
             else
                 now
 
