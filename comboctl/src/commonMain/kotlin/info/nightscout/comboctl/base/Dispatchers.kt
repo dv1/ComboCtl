@@ -27,10 +27,9 @@ internal expect fun ioDispatcher(): CoroutineDispatcher
 //
 // Note that the functions must not throw.
 //
-// TODO: Once we move to Kotlin 1.6, replace platform specific
-// code with the new "limitedParallelism" feature in dispatchers.
-//
-// See: https://github.com/Kotlin/kotlinx.coroutines/issues/2919
+// TODO: Observe the development of the "limitedParallelism"
+// Dispatcher feature. Currently (Kotlin 1.6.10), it is marked
+// as experimental. Once it is stable, reevaluate it.
 internal expect class SequencedDispatcherManager() {
     fun acquireDispatcher()
     fun releaseDispatcher()

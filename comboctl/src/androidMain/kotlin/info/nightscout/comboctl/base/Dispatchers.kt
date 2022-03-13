@@ -17,7 +17,7 @@ internal actual class SequencedDispatcherManager {
     actual fun acquireDispatcher() {
         assert(internalDispatcher == null) { "Dispatcher was already acquired" }
 
-        internalExecutor = Executors.newSingleThreadExecutor()
+        internalExecutor = Executors.newSingleThreadExecutor { r -> Thread(r, "comboCtlThread") }
         assert(internalExecutor != null) { "Could not get single thread executor" }
 
         internalDispatcher = internalExecutor!!.asCoroutineDispatcher()
