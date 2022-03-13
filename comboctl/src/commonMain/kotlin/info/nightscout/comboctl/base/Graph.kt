@@ -98,27 +98,38 @@ data class PathSegment<NodeValue, EdgeValue>(val targetNodeValue: NodeValue, val
  */
 fun <NodeValue, EdgeValue> Graph<NodeValue, EdgeValue>.findShortestPath(
     from: NodeValue,
-    to: NodeValue
+    to: NodeValue,
+    edgePredicate: (edgeValue: EdgeValue) -> Boolean = { true }
 ): List<PathSegment<NodeValue, EdgeValue>>? {
     val fromNode = nodes[from] ?: throw IllegalArgumentException()
     val toNode = nodes[to] ?: throw IllegalArgumentException()
-    return findShortestPath(fromNode, toNode)
+    return findShortestPath(fromNode, toNode, edgePredicate)
 }
 
 /**
  * Finds the shortest path between two nodes.
  *
- * The path starts at [from] and ends at [to]. If no path between these two
- * nodes can be found, null is returned. If [from] and [to] are the same,
- * an empty list is returned. If no path can be found, null is returned.
+ * The path starts at [fromNode] and ends at [toNode]. If no path between
+ * these two nodes can be found, null is returned. If [fromNode] and
+ * [toNode] are the same, an empty list is returned. If no path can be
+ * found, null is returned.
+ *
+ * The [edgePredicate] decides whether an edge in the graph shall be
+ * traversed as part of the search. If the predicate returns false,
+ * the edge is skipped. This is useful for filtering out edges if the
+ * node they lead to is disabled/invalid for some reason. The predicate
+ * takes as its argument the value of the edge. The default predicate
+ * always returns true and thus allows all edges to be traversed.
  *
  * @param fromNode Start node of the shortest path.
  * @param toNode End node of the shortest path.
+ * @param edgePredicate Predicate to apply to each edge during the search.
  * @return Shortest path, or null if no such path exists.
  */
 fun <NodeValue, EdgeValue> Graph<NodeValue, EdgeValue>.findShortestPath(
     fromNode: Graph<NodeValue, EdgeValue>.Node,
-    toNode: Graph<NodeValue, EdgeValue>.Node
+    toNode: Graph<NodeValue, EdgeValue>.Node,
+    edgePredicate: (edgeValue: EdgeValue) -> Boolean = { true }
 ): List<PathSegment<NodeValue, EdgeValue>>? {
     if (fromNode === toNode)
         return listOf()
@@ -131,7 +142,7 @@ fun <NodeValue, EdgeValue> Graph<NodeValue, EdgeValue>.findShortestPath(
             return false
 
         for (edge in node.edges) {
-            if (edge.targetNode === toNode) {
+            if (edgePredicate(edge.value) && (edge.targetNode === toNode)) {
                 path.add(0, PathSegment(edge.targetNode.value, edge.value))
                 return true
             }
@@ -140,7 +151,7 @@ fun <NodeValue, EdgeValue> Graph<NodeValue, EdgeValue>.findShortestPath(
         visitedNodes.add(node)
 
         for (edge in node.edges) {
-            if (visitAdjacentNodes(edge.targetNode)) {
+            if (edgePredicate(edge.value) && visitAdjacentNodes(edge.targetNode)) {
                 path.add(0, PathSegment(edge.targetNode.value, edge.value))
                 return true
             }

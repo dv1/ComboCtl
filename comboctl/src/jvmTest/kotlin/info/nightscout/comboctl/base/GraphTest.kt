@@ -2,6 +2,7 @@ package info.nightscout.comboctl.base
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 
@@ -114,6 +115,39 @@ class GraphTest {
 
             val path = findShortestPath(2, 3)
             assertNull(path)
+        }
+    }
+
+    @Test
+    fun checkShortestPathSearchEdgePredicate() {
+        // Check the effect of an edge predicate. Establisch a small
+        // 3-node graph with nodes 1,2,3 and add a shortcut from
+        // node 1 to node 3. Try to find the shortest path from
+        // 1 to 3, without and with a predicate. We expect the
+        // predicate to skip the edge that goes from node 1 to 3.
+
+        Graph<Int, String>().apply {
+            val n1 = node(1)
+            val n2 = node(2)
+            val n3 = node(3)
+
+            n1.connectTo(n2, "e12")
+            n2.connectTo(n3, "e23")
+            n1.connectTo(n3, "e13")
+
+            val pathWithoutPredicate = findShortestPath(1, 3)
+            assertNotNull(pathWithoutPredicate)
+            assertEquals(1, pathWithoutPredicate.size)
+            assertEquals("e13", pathWithoutPredicate[0].edgeValue)
+            assertEquals(3, pathWithoutPredicate[0].targetNodeValue)
+
+            val pathWithPredicate = findShortestPath(1, 3) { it != "e13" }
+            assertNotNull(pathWithPredicate)
+            assertEquals(2, pathWithPredicate.size)
+            assertEquals("e12", pathWithPredicate[0].edgeValue)
+            assertEquals(2, pathWithPredicate[0].targetNodeValue)
+            assertEquals("e23", pathWithPredicate[1].edgeValue)
+            assertEquals(3, pathWithPredicate[1].targetNodeValue)
         }
     }
 }
