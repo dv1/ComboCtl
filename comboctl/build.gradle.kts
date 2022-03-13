@@ -2,8 +2,8 @@ import org.jetbrains.dokka.gradle.DokkaTask
 
 buildscript {
     extra.apply {
-        set("kotlinx_coroutines_version", "1.6.0")
-        set("kotlinx_datetime_version", "0.3.2")
+        set("kotlinxCoroutinesVersion", "1.6.0")
+        set("kotlinxDatetimeVersion", "0.3.2")
     }
 }
 
@@ -23,10 +23,10 @@ kotlin {
     sourceSets {
         val commonMain by getting {
             dependencies {
-                val kotlinx_coroutines_version = project.extra["kotlinx_coroutines_version"]
-                val kotlinx_datetime_version = project.extra["kotlinx_datetime_version"]
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinx_coroutines_version")
-                implementation("org.jetbrains.kotlinx:kotlinx-datetime:$kotlinx_datetime_version")
+                val kotlinxCoroutinesVersion = project.extra["kotlinxCoroutinesVersion"]
+                val kotlinxDatetimeVersion = project.extra["kotlinxDatetimeVersion"]
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinxCoroutinesVersion")
+                implementation("org.jetbrains.kotlinx:kotlinx-datetime:$kotlinxDatetimeVersion")
                 // Need to use project.dependencies.platform() instead of platform()
                 // due to this bug: https://youtrack.jetbrains.com/issue/KT-40489
                 implementation(project.dependencies.platform("org.jetbrains.kotlin:kotlin-bom"))

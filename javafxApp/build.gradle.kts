@@ -3,8 +3,8 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 // TODO: It is currently unknown how to get these variables from the comboctl module instead
 buildscript {
     extra.apply {
-        set("kotlinx_coroutines_version", "1.6.0")
-        set("kotlinx_datetime_version", "0.3.2")
+        set("kotlinxCoroutinesVersion", "1.6.0")
+        set("kotlinxDatetimeVersion", "0.3.2")
     }
 }
 
@@ -38,14 +38,14 @@ javafx {
 }
 
 dependencies {
-    val kotlinx_coroutines_version = project.extra["kotlinx_coroutines_version"]
-    val kotlinx_datetime_version = project.extra["kotlinx_datetime_version"]
+    val kotlinxCoroutinesVersion = project.extra["kotlinxCoroutinesVersion"]
+    val kotlinxDatetimeVersion = project.extra["kotlinxDatetimeVersion"]
     implementation(platform("org.jetbrains.kotlin:kotlin-bom"))
     implementation(project(":comboctl"))
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinx_coroutines_version")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-javafx:$kotlinx_coroutines_version")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinxCoroutinesVersion")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-javafx:$kotlinxCoroutinesVersion")
     implementation("com.beust:klaxon:5.5")
-    implementation("org.jetbrains.kotlinx:kotlinx-datetime:$kotlinx_datetime_version")
+    implementation("org.jetbrains.kotlinx:kotlinx-datetime:$kotlinxDatetimeVersion")
 }
 
 tasks {
