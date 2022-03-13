@@ -41,11 +41,36 @@ enum class RTNavigationButton(val rtButtonCodes: List<ApplicationLayer.RTButton>
     UP_DOWN(listOf(ApplicationLayer.RTButton.UP, ApplicationLayer.RTButton.DOWN))
 }
 
+internal data class RTEdgeValue(val button: RTNavigationButton, val edgeValidityCondition: EdgeValidityCondition = EdgeValidityCondition.ALWAYS) {
+    enum class EdgeValidityCondition {
+        ONLY_IF_COMBO_STOPPED,
+        ONLY_IF_COMBO_RUNNING,
+        ALWAYS
+    }
+
+    // Exclude edgeValidityCondition from comparisons. This is mainly
+    // done to make it easier to test the RT navigation code.
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other == null || this::class != other::class) return false
+
+        other as RTEdgeValue
+
+        if (button != other.button) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        return button.hashCode()
+    }
+}
+
 // Directed cyclic graph for navigating between RT screens. The edge
 // values indicate what button to press to reach the edge's target node
 // (= target screen). The button may have to be pressed more than once
 // until the target screen appears if other screens are in between.
-internal val rtNavigationGraph = Graph<KClassifier, RTNavigationButton>().apply {
+internal val rtNavigationGraph = Graph<KClassifier, RTEdgeValue>().apply {
     // Set up graph nodes for each ParsedScreen, to be able
     // to connect them below.
     val mainNode = node(ParsedScreen.MainScreen::class)
@@ -71,17 +96,55 @@ internal val rtNavigationGraph = Graph<KClassifier, RTNavigationButton>().apply 
     // Below, nodes are connected. Connections are edges in the graph.
 
     // Main screen and quickinfo.
-    connectBidirectionally(RTNavigationButton.CHECK, RTNavigationButton.BACK, mainNode, quickinfoNode)
+    connectBidirectionally(RTEdgeValue(RTNavigationButton.CHECK), RTEdgeValue(RTNavigationButton.BACK), mainNode, quickinfoNode)
 
-    // These are connections between "major" menu screens that lead to the
-    // various submenus such as the TBR submenus, myData submenus etc.
-    // Forward cycling through these menus is done by repeatedly pressing
-    // MENU, backwards cycling by repeatedly pressing BACK.
     connectBidirectionally(
-        RTNavigationButton.MENU, RTNavigationButton.BACK,
-        mainNode, tbrMenuNode, myDataMenuNode, basalRate1MenuNode, timeDateSettingsMenuNode
+        RTEdgeValue(RTNavigationButton.MENU), RTEdgeValue(RTNavigationButton.BACK),
+        myDataMenuNode, basalRate1MenuNode
     )
-    connectBidirectionally(RTNavigationButton.BACK, RTNavigationButton.MENU, mainNode, timeDateSettingsMenuNode)
+
+    // Connection between main menu and time and date settings menu. Note that there
+    // is only this one connection to the time and date settings menu, even though it
+    // is actually possible to reach that menu from for example the basal rate 1
+    // programming one by pressing MENU several times. That's because depending on
+    // the Combo's configuration, significantly more menus may actually lie between
+    // basal rate 1 and time and date settings, causing the navigation to take
+    // significantly longer. Also, in pretty much all cases, any access to the time
+    // and date settings menu starts from the main menu, so it makes sense to establish
+    // only one connection between the main menu and the time and date settings menu.
+    connectBidirectionally(
+        RTEdgeValue(RTNavigationButton.BACK), RTEdgeValue(RTNavigationButton.MENU),
+        mainNode,
+        timeDateSettingsMenuNode
+    )
+
+    // Connections to the TBR menu do not always exist - if the Combo
+    // is stopped, the TBR menu is disabled, so create separate connections
+    // for it and mark them as being invalid if the Combo is stopped to
+    // prevent the RTNavigation code from traversing them if the Combo
+    // is currently in the stopped state.
+
+    // These are the TBR menu connections. In the running state, the
+    // TBR menu is then directly reachable from the main menu and is
+    // placed in between the main and the My Data menu.
+    connectBidirectionally(
+        RTEdgeValue(RTNavigationButton.MENU, RTEdgeValue.EdgeValidityCondition.ONLY_IF_COMBO_RUNNING),
+        RTEdgeValue(RTNavigationButton.BACK, RTEdgeValue.EdgeValidityCondition.ONLY_IF_COMBO_RUNNING),
+        mainNode, tbrMenuNode
+    )
+    connectBidirectionally(
+        RTEdgeValue(RTNavigationButton.MENU, RTEdgeValue.EdgeValidityCondition.ONLY_IF_COMBO_RUNNING),
+        RTEdgeValue(RTNavigationButton.BACK, RTEdgeValue.EdgeValidityCondition.ONLY_IF_COMBO_RUNNING),
+        tbrMenuNode, myDataMenuNode
+    )
+
+    // In the stopped state, the My Data menu can directly be reached from the
+    // main mode, since the TBR menu that is in between is turned off.
+    connectBidirectionally(
+        RTEdgeValue(RTNavigationButton.MENU, RTEdgeValue.EdgeValidityCondition.ONLY_IF_COMBO_STOPPED),
+        RTEdgeValue(RTNavigationButton.BACK, RTEdgeValue.EdgeValidityCondition.ONLY_IF_COMBO_STOPPED),
+        mainNode, myDataMenuNode
+    )
 
     // These are the connections between TBR screens. A specialty of these
     // screens is that transitioning between the percentage and duration
@@ -91,16 +154,16 @@ internal val rtNavigationGraph = Graph<KClassifier, RTNavigationButton>().apply 
     // duration screen cannot be reached directly from the TBR menu screen,
     // which is why there's a direct edge from the duration to the menu
     // screen but not one in the other direction.
-    connectBidirectionally(RTNavigationButton.CHECK, RTNavigationButton.BACK, tbrMenuNode, tbrPercentageNode)
-    connectBidirectionally(RTNavigationButton.MENU, RTNavigationButton.MENU, tbrPercentageNode, tbrDurationNode)
-    connectDirectionally(RTNavigationButton.BACK, tbrDurationNode, tbrMenuNode)
+    connectBidirectionally(RTEdgeValue(RTNavigationButton.CHECK), RTEdgeValue(RTNavigationButton.BACK), tbrMenuNode, tbrPercentageNode)
+    connectBidirectionally(RTEdgeValue(RTNavigationButton.MENU), RTEdgeValue(RTNavigationButton.MENU), tbrPercentageNode, tbrDurationNode)
+    connectDirectionally(RTEdgeValue(RTNavigationButton.BACK), tbrDurationNode, tbrMenuNode)
 
     // The basal rate programming screens. Going to the basal rate factors requires
     // two transitions (basal rate 1 -> basal rate total -> basal rate factor).
     // Going back requires one, but directly goes back to basal rate 1.
-    connectBidirectionally(RTNavigationButton.CHECK, RTNavigationButton.BACK, basalRate1MenuNode, basalRateTotalNode)
-    connectDirectionally(RTNavigationButton.MENU, basalRateTotalNode, basalRateFactorSettingNode)
-    connectDirectionally(RTNavigationButton.BACK, basalRateFactorSettingNode, basalRate1MenuNode)
+    connectBidirectionally(RTEdgeValue(RTNavigationButton.CHECK), RTEdgeValue(RTNavigationButton.BACK), basalRate1MenuNode, basalRateTotalNode)
+    connectDirectionally(RTEdgeValue(RTNavigationButton.MENU), basalRateTotalNode, basalRateFactorSettingNode)
+    connectDirectionally(RTEdgeValue(RTNavigationButton.BACK), basalRateFactorSettingNode, basalRate1MenuNode)
 
     // Connections between myData screens. Navigation through these screens
     // is rather straightforward. Pressing CHECK when at the my data menu
@@ -109,34 +172,34 @@ internal val rtNavigationGraph = Graph<KClassifier, RTNavigationButton>().apply 
     // data, daily totals, TBR data. Pressing MENU when at the TBR data
     // screen cycles back to the bolus data screen. Pressing BACK in any
     // of these screens transitions back to the my data menu screen.
-    connectDirectionally(RTNavigationButton.CHECK, myDataMenuNode, myDataBolusDataMenuNode)
+    connectDirectionally(RTEdgeValue(RTNavigationButton.CHECK), myDataMenuNode, myDataBolusDataMenuNode)
     connectDirectionally(
-        RTNavigationButton.MENU,
+        RTEdgeValue(RTNavigationButton.MENU),
         myDataBolusDataMenuNode, myDataErrorDataMenuNode, myDataDailyTotalsMenuNode, myDataTbrDataMenuNode
     )
-    connectDirectionally(RTNavigationButton.MENU, myDataTbrDataMenuNode, myDataBolusDataMenuNode)
-    connectDirectionally(RTNavigationButton.BACK, myDataBolusDataMenuNode, myDataMenuNode)
-    connectDirectionally(RTNavigationButton.BACK, myDataErrorDataMenuNode, myDataMenuNode)
-    connectDirectionally(RTNavigationButton.BACK, myDataDailyTotalsMenuNode, myDataMenuNode)
-    connectDirectionally(RTNavigationButton.BACK, myDataTbrDataMenuNode, myDataMenuNode)
+    connectDirectionally(RTEdgeValue(RTNavigationButton.MENU), myDataTbrDataMenuNode, myDataBolusDataMenuNode)
+    connectDirectionally(RTEdgeValue(RTNavigationButton.BACK), myDataBolusDataMenuNode, myDataMenuNode)
+    connectDirectionally(RTEdgeValue(RTNavigationButton.BACK), myDataErrorDataMenuNode, myDataMenuNode)
+    connectDirectionally(RTEdgeValue(RTNavigationButton.BACK), myDataDailyTotalsMenuNode, myDataMenuNode)
+    connectDirectionally(RTEdgeValue(RTNavigationButton.BACK), myDataTbrDataMenuNode, myDataMenuNode)
 
     // Time and date settings screen. These work just like the my data screens.
     // That is: Navigating between the "inner" time and date screens works
     // by pressing MENU, and when pressing MENU at the last of these screens,
     // navigation transitions back to the first of these screens. Pressing
     // BACK transitions back to the time and date settings menu screen.
-    connectDirectionally(RTNavigationButton.CHECK, timeDateSettingsMenuNode, timeDateSettingsHourNode)
+    connectDirectionally(RTEdgeValue(RTNavigationButton.CHECK), timeDateSettingsMenuNode, timeDateSettingsHourNode)
     connectDirectionally(
-        RTNavigationButton.MENU,
+        RTEdgeValue(RTNavigationButton.MENU),
         timeDateSettingsHourNode, timeDateSettingsMinuteNode, timeDateSettingsYearNode,
         timeDateSettingsMonthNode, timeDateSettingsDayNode
     )
-    connectDirectionally(RTNavigationButton.MENU, timeDateSettingsDayNode, timeDateSettingsHourNode)
-    connectDirectionally(RTNavigationButton.BACK, timeDateSettingsHourNode, timeDateSettingsMenuNode)
-    connectDirectionally(RTNavigationButton.BACK, timeDateSettingsMinuteNode, timeDateSettingsMenuNode)
-    connectDirectionally(RTNavigationButton.BACK, timeDateSettingsYearNode, timeDateSettingsMenuNode)
-    connectDirectionally(RTNavigationButton.BACK, timeDateSettingsMonthNode, timeDateSettingsMenuNode)
-    connectDirectionally(RTNavigationButton.BACK, timeDateSettingsDayNode, timeDateSettingsMenuNode)
+    connectDirectionally(RTEdgeValue(RTNavigationButton.MENU), timeDateSettingsDayNode, timeDateSettingsHourNode)
+    connectDirectionally(RTEdgeValue(RTNavigationButton.BACK), timeDateSettingsHourNode, timeDateSettingsMenuNode)
+    connectDirectionally(RTEdgeValue(RTNavigationButton.BACK), timeDateSettingsMinuteNode, timeDateSettingsMenuNode)
+    connectDirectionally(RTEdgeValue(RTNavigationButton.BACK), timeDateSettingsYearNode, timeDateSettingsMenuNode)
+    connectDirectionally(RTEdgeValue(RTNavigationButton.BACK), timeDateSettingsMonthNode, timeDateSettingsMenuNode)
+    connectDirectionally(RTEdgeValue(RTNavigationButton.BACK), timeDateSettingsDayNode, timeDateSettingsMenuNode)
 }
 
 /**
@@ -697,7 +760,8 @@ suspend fun adjustQuantityOnScreen(
  */
 suspend fun navigateToRTScreen(
     rtNavigationContext: RTNavigationContext,
-    targetScreenType: KClassifier
+    targetScreenType: KClassifier,
+    isComboStopped: Boolean = false
 ): ParsedScreen {
     logger(LogLevel.DEBUG) { "About to navigate to RT screen of type $targetScreenType" }
 
@@ -726,7 +790,7 @@ suspend fun navigateToRTScreen(
 
     // Figure out the shortest path.
     var path = try {
-        rtNavigationGraph.findShortestPath(currentParsedScreen::class, targetScreenType)
+        findShortestRtPath(currentParsedScreen::class, targetScreenType, isComboStopped)
     } catch (e: IllegalArgumentException) {
         // Happens when currentParsedScreen::class or targetScreenType are not found in the navigation tree.
         null
@@ -754,7 +818,7 @@ suspend fun navigateToRTScreen(
         // Now try again to find a path. We should get a valid path now. We would
         // not be here otherwise, since cycleToRTScreen() throws an exception then.
         path = try {
-            rtNavigationGraph.findShortestPath(currentParsedScreen::class, targetScreenType)
+            findShortestRtPath(currentParsedScreen::class, targetScreenType, isComboStopped)
         } catch (e: IllegalArgumentException) {
             listOf()
         }
@@ -811,7 +875,7 @@ suspend fun navigateToRTScreen(
                 }
             }
 
-            val navButtonToPress = nextPathItem.edgeValue
+            val navButtonToPress = nextPathItem.edgeValue.button
             logger(LogLevel.DEBUG) { "Pressing button $navButtonToPress to navigate further" }
             rtNavigationContext.shortPressButton(navButtonToPress)
 
@@ -819,3 +883,12 @@ suspend fun navigateToRTScreen(
             return@first false
         }
 }
+
+internal fun findShortestRtPath(from: KClassifier, to: KClassifier, isComboStopped: Boolean) =
+    rtNavigationGraph.findShortestPath(from, to) {
+        when (it.edgeValidityCondition) {
+            RTEdgeValue.EdgeValidityCondition.ALWAYS -> true
+            RTEdgeValue.EdgeValidityCondition.ONLY_IF_COMBO_RUNNING -> !isComboStopped
+            RTEdgeValue.EdgeValidityCondition.ONLY_IF_COMBO_STOPPED -> isComboStopped
+        }
+    }

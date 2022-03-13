@@ -167,23 +167,48 @@ class RTNavigationTest {
 
     @Test
     fun checkRTNavigationGraphPathFromMainScreenToBasalRateFactorSettingScreen() {
-        val path = rtNavigationGraph.findShortestPath(
+        val path = findShortestRtPath(
             ParsedScreen.MainScreen::class,
-            ParsedScreen.BasalRateFactorSettingScreen::class
+            ParsedScreen.BasalRateFactorSettingScreen::class,
+            isComboStopped = false
         )
 
         assertNotNull(path)
         assertEquals(5, path.size)
-        assertEquals(PathSegment<KClassifier, RTNavigationButton>(
-            ParsedScreen.TemporaryBasalRateMenuScreen::class, RTNavigationButton.MENU), path[0])
-        assertEquals(PathSegment<KClassifier, RTNavigationButton>(
-            ParsedScreen.MyDataMenuScreen::class, RTNavigationButton.MENU), path[1])
-        assertEquals(PathSegment<KClassifier, RTNavigationButton>(
-            ParsedScreen.BasalRate1ProgrammingMenuScreen::class, RTNavigationButton.MENU), path[2])
-        assertEquals(PathSegment<KClassifier, RTNavigationButton>(
-            ParsedScreen.BasalRateTotalScreen::class, RTNavigationButton.CHECK), path[3])
-        assertEquals(PathSegment<KClassifier, RTNavigationButton>(
-            ParsedScreen.BasalRateFactorSettingScreen::class, RTNavigationButton.MENU), path[4])
+        assertEquals(PathSegment<KClassifier, RTEdgeValue>(
+            ParsedScreen.TemporaryBasalRateMenuScreen::class, RTEdgeValue(RTNavigationButton.MENU)), path[0])
+        assertEquals(PathSegment<KClassifier, RTEdgeValue>(
+            ParsedScreen.MyDataMenuScreen::class, RTEdgeValue(RTNavigationButton.MENU)), path[1])
+        assertEquals(PathSegment<KClassifier, RTEdgeValue>(
+            ParsedScreen.BasalRate1ProgrammingMenuScreen::class, RTEdgeValue(RTNavigationButton.MENU)), path[2])
+        assertEquals(PathSegment<KClassifier, RTEdgeValue>(
+            ParsedScreen.BasalRateTotalScreen::class, RTEdgeValue(RTNavigationButton.CHECK)), path[3])
+        assertEquals(PathSegment<KClassifier, RTEdgeValue>(
+            ParsedScreen.BasalRateFactorSettingScreen::class, RTEdgeValue(RTNavigationButton.MENU)), path[4])
+    }
+
+    @Test
+    fun checkRTNavigationGraphPathFromMainScreenToBasalRateFactorSettingScreenWhenStopped() {
+        // The TBR menu is disabled when the Combo is stopped. We expect the
+        // RT navigation to take that into account and find a shortest path
+        // that does not include the TBR menu screen.
+
+        val path = findShortestRtPath(
+            ParsedScreen.MainScreen::class,
+            ParsedScreen.BasalRateFactorSettingScreen::class,
+            isComboStopped = true
+        )
+
+        assertNotNull(path)
+        assertEquals(4, path.size)
+        assertEquals(PathSegment<KClassifier, RTEdgeValue>(
+            ParsedScreen.MyDataMenuScreen::class, RTEdgeValue(RTNavigationButton.MENU)), path[0])
+        assertEquals(PathSegment<KClassifier, RTEdgeValue>(
+            ParsedScreen.BasalRate1ProgrammingMenuScreen::class, RTEdgeValue(RTNavigationButton.MENU)), path[1])
+        assertEquals(PathSegment<KClassifier, RTEdgeValue>(
+            ParsedScreen.BasalRateTotalScreen::class, RTEdgeValue(RTNavigationButton.CHECK)), path[2])
+        assertEquals(PathSegment<KClassifier, RTEdgeValue>(
+            ParsedScreen.BasalRateFactorSettingScreen::class, RTEdgeValue(RTNavigationButton.MENU)), path[3])
     }
 
     @Test
