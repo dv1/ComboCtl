@@ -1248,7 +1248,21 @@ class Pump(
 
         // Check that there's enough insulin in the reservoir.
         statusFlow.value?.let { status ->
-            if (status.availableUnitsInReservoir < bolusAmount)
+            // Round the bolus amount. The reservoir fill level is given in whole IUs
+            // by the Combo, but the bolus amount is given in 0.1 IU units. By rounding
+            // up, we make sure that the check never misses a case where the bolus
+            // request exceeds the fill level. For example, bolus of 1.3 IU, fill
+            // level 1 IU, if we just divided by 10 to convert the bolus to whole
+            // IU units, we'd truncate the 0.3 IU from the bolus, and the check
+            // would think that it's OK, because the reservoir has 1 IU. If we instead
+            // round up, any fractional IU will be taken into account correctly.
+            val roundedBolusIU = (bolusAmount + 9) / 10
+            logger(LogLevel.DEBUG) {
+                "Checking if there is enough insulin in reservoir; reservoir fill level: " +
+                "${status.availableUnitsInReservoir} IU; bolus amount: ${bolusAmount.toStringWithDecimal(1)} IU" +
+                "(rounded: $roundedBolusIU IU)"
+            }
+            if (status.availableUnitsInReservoir < roundedBolusIU)
                 throw InsufficientInsulinAvailableException(bolusAmount, status.availableUnitsInReservoir)
         } ?: throw IllegalStateException("Cannot deliver bolus without a known pump status")
 
