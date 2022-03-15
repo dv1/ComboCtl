@@ -230,7 +230,7 @@ class RTNavigationTest {
         ))
 
         runBlockingWithWatchdog(6000) {
-            navigateToRTScreen(rtNavigationContext, ParsedScreen.QuickinfoMainScreen::class)
+            navigateToRTScreen(rtNavigationContext, ParsedScreen.QuickinfoMainScreen::class, isComboStopped = false)
         }
     }
 
@@ -249,7 +249,7 @@ class RTNavigationTest {
         ))
 
         runBlockingWithWatchdog(6000) {
-            navigateToRTScreen(rtNavigationContext, ParsedScreen.MainScreen::class)
+            navigateToRTScreen(rtNavigationContext, ParsedScreen.MainScreen::class, isComboStopped = false)
         }
     }
 
@@ -282,7 +282,11 @@ class RTNavigationTest {
         ))
 
         runBlockingWithWatchdog(6000) {
-            val targetScreen = navigateToRTScreen(rtNavigationContext, ParsedScreen.BasalRateFactorSettingScreen::class)
+            val targetScreen = navigateToRTScreen(
+                rtNavigationContext,
+                ParsedScreen.BasalRateFactorSettingScreen::class,
+                isComboStopped = false
+            )
             assertIs<ParsedScreen.BasalRateFactorSettingScreen>(targetScreen)
         }
 

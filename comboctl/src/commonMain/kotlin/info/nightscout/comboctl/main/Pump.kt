@@ -932,7 +932,7 @@ class Pump(
         setBasalProfileReporter.setCurrentProgressStage(RTCommandProgressStage.SettingBasalProfile(0))
 
         try {
-            navigateToRTScreen(rtNavigationContext, ParsedScreen.BasalRateFactorSettingScreen::class)
+            navigateToRTScreen(rtNavigationContext, ParsedScreen.BasalRateFactorSettingScreen::class, pumpSuspended)
 
             // Store the hours at which the current basal rate factor
             // begins to ensure that during screen cycling we
@@ -1446,7 +1446,7 @@ class Pump(
         try {
             val tddHistoryEntries = mutableListOf<TDDHistoryEntry>()
 
-            navigateToRTScreen(rtNavigationContext, ParsedScreen.MyDataDailyTotalsScreen::class)
+            navigateToRTScreen(rtNavigationContext, ParsedScreen.MyDataDailyTotalsScreen::class, pumpSuspended)
 
             longPressRTButtonUntil(rtNavigationContext, RTNavigationButton.DOWN) { parsedScreen ->
                 if (parsedScreen !is ParsedScreen.MyDataDailyTotalsScreen) {
@@ -2229,7 +2229,7 @@ class Pump(
         try {
             val basalProfileFactors = MutableList(NUM_COMBO_BASAL_PROFILE_FACTORS) { -1 }
 
-            navigateToRTScreen(rtNavigationContext, ParsedScreen.BasalRateFactorSettingScreen::class)
+            navigateToRTScreen(rtNavigationContext, ParsedScreen.BasalRateFactorSettingScreen::class, pumpSuspended)
 
             var numObservedScreens = 0
             var numRetrievedFactors = 0
@@ -2412,7 +2412,7 @@ class Pump(
             setDateTimeProgressReporter.setCurrentProgressStage(RTCommandProgressStage.SettingDateTimeHour)
 
             // Navigate from our current location to the first screen - the hour screen.
-            navigateToRTScreen(rtNavigationContext, ParsedScreen.TimeAndDateSettingsHourScreen::class)
+            navigateToRTScreen(rtNavigationContext, ParsedScreen.TimeAndDateSettingsHourScreen::class, pumpSuspended)
             adjustQuantityOnScreen(rtNavigationContext, newPumpLocalDateTime.hour, cyclicQuantityRange = 24) { parsedScreen ->
                 (parsedScreen as ParsedScreen.TimeAndDateSettingsHourScreen).hour
             }
@@ -2469,7 +2469,7 @@ class Pump(
             var initialQuantityDistance: Int? = null
 
             // First, set the TBR percentage.
-            navigateToRTScreen(rtNavigationContext, ParsedScreen.TemporaryBasalRatePercentageScreen::class)
+            navigateToRTScreen(rtNavigationContext, ParsedScreen.TemporaryBasalRatePercentageScreen::class, pumpSuspended)
             adjustQuantityOnScreen(rtNavigationContext, percentage) {
                 val currentPercentage = (it as ParsedScreen.TemporaryBasalRatePercentageScreen).percentage
 
@@ -2505,7 +2505,7 @@ class Pump(
 
                 setTbrProgressReporter.setCurrentProgressStage(RTCommandProgressStage.SettingTBRDuration(0))
 
-                navigateToRTScreen(rtNavigationContext, ParsedScreen.TemporaryBasalRateDurationScreen::class)
+                navigateToRTScreen(rtNavigationContext, ParsedScreen.TemporaryBasalRateDurationScreen::class, pumpSuspended)
 
                 adjustQuantityOnScreen(rtNavigationContext, durationInMinutes) {
                     val currentDuration = (it as ParsedScreen.TemporaryBasalRateDurationScreen).durationInMinutes
@@ -2542,14 +2542,14 @@ class Pump(
     }
 
     private suspend fun updateStatusByReadingMainAndQuickinfoScreens(switchStatesIfNecessary: Boolean) {
-        val mainScreen = navigateToRTScreen(rtNavigationContext, ParsedScreen.MainScreen::class)
+        val mainScreen = navigateToRTScreen(rtNavigationContext, ParsedScreen.MainScreen::class, pumpSuspended)
 
         val mainScreenContent = when (mainScreen) {
             is ParsedScreen.MainScreen -> mainScreen.content
             else -> throw NoUsableRTScreenException()
         }
 
-        val quickinfoScreen = navigateToRTScreen(rtNavigationContext, ParsedScreen.QuickinfoMainScreen::class)
+        val quickinfoScreen = navigateToRTScreen(rtNavigationContext, ParsedScreen.QuickinfoMainScreen::class, pumpSuspended)
 
         val quickinfo = when (quickinfoScreen) {
             is ParsedScreen.QuickinfoMainScreen -> {

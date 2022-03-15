@@ -745,8 +745,13 @@ suspend fun adjustQuantityOnScreen(
  * to the target screen. If no path to the target screen can be found,
  * [CouldNotFindRTScreenException] is thrown.
  *
+ * Depending on the value of [isComboStopped], the pathfinding algorithm may
+ * take different routes, since some screens are only enabled when the pump
+ * is running/stopped.
+ *
  * @param rtNavigationContext Context to use for navigating.
  * @param targetScreenType Type of the target screen.
+ * @param isComboStopped True if the Combo is currently stopped.
  * @return The target screen.
  * @throws CouldNotFindRTScreenException if the screen was not seen even after
  *   this function observed [RTNavigationContext.maxNumCycleAttempts]
@@ -761,7 +766,7 @@ suspend fun adjustQuantityOnScreen(
 suspend fun navigateToRTScreen(
     rtNavigationContext: RTNavigationContext,
     targetScreenType: KClassifier,
-    isComboStopped: Boolean = false
+    isComboStopped: Boolean
 ): ParsedScreen {
     logger(LogLevel.DEBUG) { "About to navigate to RT screen of type $targetScreenType" }
 
@@ -839,8 +844,6 @@ suspend fun navigateToRTScreen(
             if (cycleCount >= rtNavigationContext.maxNumCycleAttempts)
                 throw CouldNotFindRTScreenException(targetScreenType)
 
-            logger(LogLevel.DEBUG) { "We are currently at screen $parsedScreen" }
-
             // A path item's targetNodeValue is the screen type we are trying
             // to reach, and the edgeValue is the RT button to press to reach it.
             // We stay at the same path item until we reach the screen type that
@@ -858,6 +861,8 @@ suspend fun navigateToRTScreen(
             // CHECK until type B is reached.
 
             val nextTargetScreenTypeInPath = nextPathItem.targetNodeValue
+
+            logger(LogLevel.DEBUG) { "We are currently at screen $parsedScreen; next target screen type: $nextTargetScreenTypeInPath" }
 
             if (parsedScreen::class == nextTargetScreenTypeInPath) {
                 cycleCount = 0
