@@ -530,63 +530,74 @@ class Pump(
     /**
      * Possible states the pump can be in.
      */
-    enum class State {
+    sealed class State {
         /**
          * There is no connection to the pump. This is the initial state.
          */
-        DISCONNECTED,
+        object Disconnected : State()
 
         /**
          * Connection to the pump is being established. This state is set
          * while [connect] is running. If connecting fails, the state
-         * is set to [ERROR], otherwise it is set to [CHECKING_PUMP],
-         * [SUSPENDED], or [READY_FOR_COMMANDS].
+         * is set to [Error], otherwise it is set to [CheckingPump],
+         * [Suspended], or [ReadyForCommands].
          */
-        CONNECTING,
+        object Connecting : State()
 
         /**
          * After connection was established, [connect] performs checks
          * (if [performOnConnectChecks] is set to true). The pump state
          * is set to this one while these checks are running.
          * If [performOnConnectChecks] is set to false, this state
-         * is never set. Instead, after [CONNECTING], the state transitions
-         * directly to [READY_FOR_COMMANDS], [SUSPENDED], or [ERROR].
+         * is never set. Instead, after [Connecting], the state transitions
+         * directly to [ReadyForCommands], [Suspended], or [Error].
          */
-        CHECKING_PUMP,
+        object CheckingPump : State()
 
         /**
          * After successfully connecting and performing the checks, this
          * becomes the current state. Commands can be run in this state.
          * If the Combo is stopped (also known as "suspended"), the
-         * state is set to [SUSPENDED] instead (see below).
+         * state is set to [Suspended] instead (see below).
          */
-        READY_FOR_COMMANDS,
+        object ReadyForCommands : State()
 
         /**
          * A command is currently being executed. This state remains set
          * until the command execution finishes. If it finishes successfully,
-         * it is set back to [READY_FOR_COMMANDS]. If an error occurs,
-         * it is set to [ERROR].
+         * it is set back to [ReadyForCommands]. If an error occurs,
+         * it is set to [Error].
          */
-        EXECUTING_COMMAND,
+        object ExecutingCommand : State()
 
         /**
          * The Combo is currently stopped (= suspended). No commands can
          * be executed. This is not an error, but the user has to resume
          * pump operation manually.
          */
-        SUSPENDED,
+        object Suspended : State()
 
         /**
          * An error occurred during connection setup or command execution.
          * Said error was non-recoverable. The only valid operation that
          * can be performed in this state is to call [disconnect].
          * Commands cannot be executed in this state.
+         *
+         * @property throwable Optional reference to a Throwable that triggered this error state.
+         * @property message Optional human-readable message describing the error.
+         *   This is meant for logging purposes.
          */
-        ERROR
+        data class Error(val throwable: Throwable? = null, val message: String? = null) : State() {
+            override fun toString(): String {
+                return if (throwable != null)
+                        "Error (\"$message\"); throwable: ${throwable.stackTraceToString()}"
+                    else
+                        "Error (\"$message\")"
+            }
+        }
     }
 
-    private val _stateFlow = MutableStateFlow(State.DISCONNECTED)
+    private val _stateFlow = MutableStateFlow<State>(State.Disconnected)
 
     /**
      * [StateFlow] that notifies about the pump's current state.
@@ -624,7 +635,7 @@ class Pump(
      *
      * There is no field that specifies whether the Combo is running
      * or stopped. That's because that information is already covered
-     * by [State.SUSPENDED].
+     * by [State.Suspended].
      *
      * A [currentBasalRateFactor] is special in that it indicates
      * that [updateStatus] could not get the current factor. This
@@ -729,18 +740,18 @@ class Pump(
      *
      * This changes the current state multiple times. These
      * updates are accessible through [stateFlow]. Initially,
-     * the state is set to [State.CONNECTING]. Once the underlying
+     * the state is set to [State.Connecting]. Once the underlying
      * Bluetooth device is connected, this function transitions to
-     * the [State.CHECKING_PUMP] state and performs checks on the
+     * the [State.CheckingPump] state and performs checks on the
      * pump (described below). As part of these checks, if the Combo
      * is found to be currently stopped (= suspended), the state is
-     * set to [State.SUSPENDED], otherwise it is set to
-     * [State.READY_FOR_COMMANDS]. At this point, this function
+     * set to [State.Suspended], otherwise it is set to
+     * [State.ReadyForCommands]. At this point, this function
      * finishes successfully.
      *
      * If any error occurs while this function runs, the state
-     * is set to [State.ERROR]. If the calling coroutine is cancelled,
-     * the state is instead set to [State.DISCONNECTED] because
+     * is set to [State.Error]. If the calling coroutine is cancelled,
+     * the state is instead set to [State.Disconnected] because
      * cancellation rolls back any partial connection setup that
      * might have been done by the time the cancellation occurs.
      *
@@ -754,7 +765,7 @@ class Pump(
      * Otherwise, unaccounted boluses happened. These are announced via [onEvent].
      * Afterwards, this function throws an [UnaccountedBolusDetectedException].
      * 3. The current pump status is evaluated. If the pump is found to be
-     * suspended, the [stateFlow] switches to [State.SUSPENDED], the checks
+     * suspended, the [stateFlow] switches to [State.Suspended], the checks
      * end, and so does this function. Otherwise, it continues.
      * 4. The TBR state is evaluated according to the information from
      * [PumpStateStore] and what is displayed on the main Combo screen
@@ -792,7 +803,7 @@ class Pump(
      * isn't working.
      *
      * @throws IllegalStateException if the current state is not
-     *   [State.DISCONNECTED] (calling [connect] while a connection is present
+     *   [State.Disconnected] (calling [connect] while a connection is present
      *   makes no sense).
      * @throws ConnectionRequestIsNotBeingAcceptedException if connecting the
      *   actual Bluetooth socket succeeds, but the Combo does not accept the
@@ -812,10 +823,10 @@ class Pump(
      *   to ComboCtl.
      */
     suspend fun connect() {
-        check(stateFlow.value == State.DISCONNECTED) { "Attempted to connect to pump in a the ${stateFlow.value} state" }
+        check(stateFlow.value == State.Disconnected) { "Attempted to connect to pump in a the ${stateFlow.value} state" }
 
         try {
-            setState(State.CONNECTING)
+            setState(State.Connecting)
 
             // Get the current pump state UTC offset to translate localtime
             // timestamps from the history delta to Instant timestamps.
@@ -826,16 +837,16 @@ class Pump(
             // CMD_READ_PUMP_STATUS command.
             pumpIO.connect(initialMode = PumpIO.Mode.COMMAND, runHeartbeat = true)
 
-            setState(State.CHECKING_PUMP)
+            setState(State.CheckingPump)
             performOnConnectChecks()
 
-            setState(if (pumpSuspended) State.SUSPENDED else State.READY_FOR_COMMANDS)
+            setState(if (pumpSuspended) State.Suspended else State.ReadyForCommands)
         } catch (e: CancellationException) {
             _statusFlow.value = null
-            setState(State.DISCONNECTED)
+            setState(State.Disconnected)
             throw e
         } catch (t: Throwable) {
-            setState(State.ERROR)
+            setState(State.Error(throwable = t, "Connection error"))
             throw t
         }
     }
@@ -845,22 +856,22 @@ class Pump(
      *
      * If no connection is ongoing, this does nothing.
      *
-     * This function resets the pump state and undoes a [State.ERROR] state.
+     * This function resets the pump state and undoes a [State.Error] state.
      * In case of an error, the user has to call [disconnect] to reset back
-     * to the [State.DISCONNECTED] state. Afterwards, the user can try again
+     * to the [State.Disconnected] state. Afterwards, the user can try again
      * to establish a new connection.
      *
-     * This sets [statusFlow] to null and [stateFlow] to [State.DISCONNECTED].
+     * This sets [statusFlow] to null and [stateFlow] to [State.Disconnected].
      */
     suspend fun disconnect() {
-        if (stateFlow.value == State.DISCONNECTED) {
+        if (stateFlow.value == State.Disconnected) {
             logger(LogLevel.DEBUG) { "Ignoring disconnect() call since pump is already disconnected" }
             return
         }
 
         pumpIO.disconnect()
         _statusFlow.value = null
-        setState(State.DISCONNECTED)
+        setState(State.Disconnected)
     }
 
     /**
@@ -916,7 +927,7 @@ class Pump(
      * @return true if the profile was actually set, false otherwise.
      * @throws AlertScreenException if an alert occurs during this call.
      * @throws IllegalStateException if the current state is not
-     *   [State.READY_FOR_COMMANDS].
+     *   [State.ReadyForCommands].
      */
     suspend fun setBasalProfile(basalProfile: BasalProfile, carryOverLastFactor: Boolean = true) = executeCommand<Boolean>(
         pumpMode = PumpIO.Mode.REMOTE_TERMINAL,
@@ -1050,7 +1061,7 @@ class Pump(
      *   after this function finishes does not match the specified percentage
      *   and duration.
      * @throws IllegalStateException if the current state is not
-     *   [State.READY_FOR_COMMANDS], or if the pump is suspended after setting the TBR.
+     *   [State.ReadyForCommands], or if the pump is suspended after setting the TBR.
      * @throws AlertScreenException if alerts occurs during this call, and they
      *   aren't a W6 warning (those are handled by this function).
      */
@@ -1228,7 +1239,7 @@ class Pump(
      * @throws IllegalArgumentException if [bolusAmount] is not in the 0-250 range,
      *   or if [bolusStatusUpdateIntervalInMs] is less than 1.
      * @throws IllegalStateException if the current state is not
-     *   [State.READY_FOR_COMMANDS].
+     *   [State.ReadyForCommands].
      * @throws AlertScreenException if alerts occurs during this call, and they
      *   aren't a W6 warning (those are handled by this function).
      */
@@ -1447,7 +1458,7 @@ class Pump(
      * is fetched, an error occurs, or the coroutine is cancelled.
      *
      * @throws IllegalStateException if the current state is not
-     *   [State.READY_FOR_COMMANDS].
+     *   [State.ReadyForCommands].
      * @throws AlertScreenException if alerts occurs during this call, and
      *   they aren't a W6 warning (those are handled by this function).
      */
@@ -1501,7 +1512,7 @@ class Pump(
     /**
      * Updates the value of [statusFlow].
      *
-     * This can be called by the user in the [State.SUSPENDED] and [State.READY_FOR_COMMANDS]
+     * This can be called by the user in the [State.Suspended] and [State.ReadyForCommands]
      * states. Additionally, the status is automatically updated by [connect]
      * and after [deliverBolus] finishes (both if bolus delivery succeeds and
      * if an exception is thrown by that function). This reads information from
@@ -1509,7 +1520,7 @@ class Pump(
      * than necessary, since reading remote terminal screens takes some time.
      *
      * @throws IllegalStateException if the current state is not
-     *   [State.SUSPENDED] or [State.READY_FOR_COMMANDS].
+     *   [State.Suspended] or [State.ReadyForCommands].
      * @throws AlertScreenException if alerts occurs during this call, and
      *   they aren't a W6 warning (those are handled by this function).
      */
@@ -1596,14 +1607,14 @@ class Pump(
         block: suspend CoroutineScope.() -> T
     ): T {
         check(
-            (stateFlow.value == State.READY_FOR_COMMANDS) ||
-            (allowExecutionWhileSuspended && (stateFlow.value == State.SUSPENDED)) ||
-            (allowExecutionWhileChecking && (stateFlow.value == State.CHECKING_PUMP))
+            (stateFlow.value == State.ReadyForCommands) ||
+            (allowExecutionWhileSuspended && (stateFlow.value == State.Suspended)) ||
+            (allowExecutionWhileChecking && (stateFlow.value == State.CheckingPump))
         ) { "Cannot execute command in the ${stateFlow.value} state" }
 
         val previousState = stateFlow.value
-        if (stateFlow.value != State.CHECKING_PUMP)
-            setState(State.EXECUTING_COMMAND)
+        if (stateFlow.value != State.CheckingPump)
+            setState(State.ExecutingCommand)
 
         try {
             // Verify that there have been no errors/warnings since the last time
@@ -1750,10 +1761,10 @@ class Pump(
                 // via onEvent().
                 reportPumpSuspendedTbr()
             }
-            setState(State.ERROR)
+            setState(State.Error(throwable = e, "Unhandled alert screen during command execution"))
             throw e
         } catch (t: Throwable) {
-            setState(State.ERROR)
+            setState(State.Error(throwable = t, "Command execution error"))
             throw t
         }
     }
@@ -2632,10 +2643,10 @@ class Pump(
         if (switchStatesIfNecessary) {
             // See if the pump was suspended and now isn't anymore, or vice versa.
             // In these cases, we must update the current state.
-            if (pumpSuspended && (stateFlow.value == State.READY_FOR_COMMANDS))
-                setState(State.SUSPENDED)
-            else if (!pumpSuspended && (stateFlow.value == State.SUSPENDED))
-                setState(State.READY_FOR_COMMANDS)
+            if (pumpSuspended && (stateFlow.value == State.ReadyForCommands))
+                setState(State.Suspended)
+            else if (!pumpSuspended && (stateFlow.value == State.Suspended))
+                setState(State.ReadyForCommands)
         }
     }
 }
