@@ -1,7 +1,9 @@
 package info.nightscout.comboctl.main
 
+import info.nightscout.comboctl.base.DisplayFrame
 import info.nightscout.comboctl.base.LogLevel
 import info.nightscout.comboctl.base.Logger
+import info.nightscout.comboctl.base.NullDisplayFrame
 import info.nightscout.comboctl.base.PathSegment
 import info.nightscout.comboctl.base.findShortestPath
 import info.nightscout.comboctl.base.testUtils.runBlockingWithWatchdog
@@ -22,11 +24,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalDateTime
 import org.junit.jupiter.api.BeforeAll
@@ -60,8 +59,9 @@ class RTNavigationTest {
         private val mainScope = CoroutineScope(mainJob)
         private val testParsedScreenListIter = testParsedScreenList.listIterator()
         private var currentParsedScreen = testParsedScreenListIter.next()
-        private val parsedScreenFlow = MutableSharedFlow<ParsedScreen>()
+        private val parsedScreenChannel = Channel<ParsedScreen?>(capacity = Channel.RENDEZVOUS)
         private var longButtonJob: Job? = null
+        private var lastParsedScreen: ParsedScreen? = null
 
         val shortPressedRTButtons = mutableListOf<RTNavigationButton>()
 
@@ -69,7 +69,7 @@ class RTNavigationTest {
             mainScope.launch {
                 while (true) {
                     System.err.println("Emitting test screen $currentParsedScreen")
-                    parsedScreenFlow.emit(currentParsedScreen)
+                    parsedScreenChannel.send(currentParsedScreen)
                     delay(100)
                     if (automaticallyAdvanceScreens) {
                         if (testParsedScreenListIter.hasNext())
@@ -83,21 +83,30 @@ class RTNavigationTest {
 
         override val maxNumCycleAttempts: Int = 20
 
-        override fun getParsedScreenFlow(filterDuplicates: Boolean, processAlertScreens: Boolean): Flow<ParsedScreen> {
-            val upperFlow =
-                if (filterDuplicates)
-                    parsedScreenFlow
-                        .distinctUntilChanged { firstParsedScreen, secondParsedScreen -> firstParsedScreen == secondParsedScreen }
-                else
-                    parsedScreenFlow
+        override fun resetDuplicate() {
+            lastParsedScreen = null
+        }
 
-            return upperFlow
-                .filter { parsedScreen ->
-                    if (processAlertScreens && (parsedScreen is ParsedScreen.AlertScreen))
-                        throw AlertScreenException(parsedScreen.content)
-                    else
-                        true
+        override suspend fun getParsedDisplayFrame(filterDuplicates: Boolean, processAlertScreens: Boolean): ParsedDisplayFrame? {
+            while (true) {
+                val thisParsedScreen = parsedScreenChannel.receive()
+
+                if (filterDuplicates && (lastParsedScreen != null) && (thisParsedScreen != null)) {
+                    if (lastParsedScreen == thisParsedScreen) {
+                        currentParsedScreen = testParsedScreenListIter.next()
+                        continue
+                    }
                 }
+
+                lastParsedScreen = thisParsedScreen
+
+                if (processAlertScreens && (thisParsedScreen != null)) {
+                    if (thisParsedScreen is ParsedScreen.AlertScreen)
+                        throw AlertScreenException(thisParsedScreen.content)
+                }
+
+                return thisParsedScreen?.let { ParsedDisplayFrame(NullDisplayFrame, it) }
+            }
         }
 
         override suspend fun startLongButtonPress(button: RTNavigationButton, keepGoing: (suspend () -> Boolean)?) {

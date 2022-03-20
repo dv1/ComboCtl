@@ -142,8 +142,8 @@ class PumpViewController {
         }
         updateDisplayFrameImage()
 
-        pump.displayFrameFlow
-            .onEach { displayFrame -> setDisplayFrame(displayFrame) }
+        pump.parsedDisplayFrameFlow
+            .onEach { parsedDisplayFrame -> parsedDisplayFrame?.let { setDisplayFrame(it.displayFrame) } }
             .launchIn(mainScope)
     }
 

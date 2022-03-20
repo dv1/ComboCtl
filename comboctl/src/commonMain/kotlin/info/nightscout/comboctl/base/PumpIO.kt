@@ -9,14 +9,11 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -75,7 +72,12 @@ typealias PairingPINCallback = suspend (previousAttemptFailed: Boolean) -> Pairi
  * RT_DISPLAY packets. This class reads those packets and extracts the
  * partial frames (the packets only contain portions of a frame, not
  * a full frame). Once enough parts were gathered to assemble a full
- * frame, the frame is emitted via the [displayFrameFlow].
+ * frame, the frame is emitted via [onNewDisplayFrame]. This callback
+ * must not block, since this would otherwise block the dataflow in the
+ * internal IO code. This callback is mainly meant for passing the
+ * frame to something like a flow or a channel. If its argument is
+ * null, it means that there's no frame available. This happens at
+ * the beginning in [connect] and during the [switchMode] call.
  *
  * To handle IO at the transport layer, this uses [TransportLayer.IO]
  * internally.
@@ -109,10 +111,13 @@ typealias PairingPINCallback = suspend (previousAttemptFailed: Boolean) -> Pairi
  * @param bluetoothDevice [BluetoothDevice] object to use for
  *   Bluetooth I/O. Must be in a disconnected state when
  *   assigned to this instance.
+ * @param onNewDisplayFrame Callback to invoke whenever a new RT
+ *   [DisplayFrame] was received.
  */
 class PumpIO(
     private val pumpStateStore: PumpStateStore,
-    private val bluetoothDevice: BluetoothDevice
+    private val bluetoothDevice: BluetoothDevice,
+    private val onNewDisplayFrame: (displayFrame: DisplayFrame?) -> Unit
 ) {
     // Mutex to synchronize sendPacketWithResponse and sendPacketWithoutResponse calls.
     private val sendPacketMutex = Mutex()
@@ -171,20 +176,6 @@ class PumpIO(
     // overflow behavior).
     private var rtButtonConfirmationBarrier = newRtButtonConfirmationBarrier()
 
-    // Members associated with display frame generation.
-    // The mutable version of the displayFrameFlow is used internally
-    // when a new frame is available. This is a SharedFlow, since
-    // the display frame emission is independent of the presence of
-    // collectors. This means that flow collection never ends. (See
-    // the Kotlin SharedFlow documentation for details.) It is set
-    // up to not suspend emission calls, instead dropping the oldest
-    // frames. That way, the display frame producer is not blocked
-    // by backpressure. To allow subscribers to immediately get data
-    // (the last received display frame), the replay cache is set to 1.
-    private var _displayFrameFlow = MutableSharedFlow<DisplayFrame>(
-        onBufferOverflow = BufferOverflow.DROP_OLDEST,
-        replay = 1
-    )
     private val displayFrameAssembler = DisplayFrameAssembler()
 
     // Whether we are in RT or COMMAND mode, or null at startup
@@ -239,13 +230,6 @@ class PumpIO(
      * The pump's Bluetooth address.
      */
     val address: BluetoothAddress = bluetoothDevice.address
-
-    /**
-     * Read-only [SharedFlow] property that delivers newly assembled display frames.
-     *
-     * See [DisplayFrame] for details about these frames.
-     */
-    val displayFrameFlow = _displayFrameFlow.asSharedFlow()
 
     /**
      * Read-only [StateFlow] property that announces when the current [Mode] changes.
@@ -652,13 +636,8 @@ class PumpIO(
         // partial frames from an earlier connection.
         displayFrameAssembler.reset()
 
-        // Get rid of any existing frame in the replay cache.
-        // Otherwise, subscribers will always be one frame
-        // behind what the Combo is _actually_ currently showing,
-        // which can cause serious errors while programmatically
-        // navigating through RT screens.
-        @Suppress("EXPERIMENTAL_API_USAGE")
-        _displayFrameFlow.resetReplayCache()
+        // Tell the callback that there's currently no frame available.
+        onNewDisplayFrame(null)
 
         // Reinitialize the barrier, since it may have been closed
         // earlier due to an exception in the packet receiver.
@@ -1288,16 +1267,10 @@ class PumpIO(
             stopCMDPingHeartbeat()
             stopRTKeepAliveHeartbeat()
 
-            // Get rid of any existing frame in the replay cache. The displayFrameFlow
-            // contains the last frame that was received in the remote terminal mode
-            // if the pump had been running in the remote terminal mode earlier and
-            // was then switched to command mode. If we are now switching back to
-            // remote terminal mode, then that last frame is still lingering around,
-            // and we must flush it out of the flow to prevent mismatches between
-            // what the flow thinks the current screen is and what the current screen
-            // actually is.
-            @Suppress("EXPERIMENTAL_API_USAGE")
-            _displayFrameFlow.resetReplayCache()
+            // Inform the callback that there's no frame available after the
+            // switch. This is particularly important when switching from the
+            // RT to the command mode.
+            onNewDisplayFrame(null)
 
             // Send the command to switch the mode.
 
@@ -1570,7 +1543,7 @@ class PumpIO(
                 rtDisplayPayload.rowBytes
             )
             if (displayFrame != null)
-                _displayFrameFlow.tryEmit(displayFrame)
+                onNewDisplayFrame(displayFrame)
         } catch (t: Throwable) {
             logger(LogLevel.ERROR) { "Could not process RT_DISPLAY payload: $t" }
             throw t

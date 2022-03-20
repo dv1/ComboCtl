@@ -224,7 +224,7 @@ class Pump(
     initialBasalProfile: BasalProfile? = null,
     private val onEvent: (event: Event) -> Unit = { }
 ) {
-    private val pumpIO = PumpIO(pumpStateStore, bluetoothDevice)
+    private val pumpIO = PumpIO(pumpStateStore, bluetoothDevice, this::processDisplayFrame)
     // Updated by updateStatusImpl(). true if the Combo
     // is currently in the stop mode. If true, commands
     // are not executed, and an exception is thrown instead.
@@ -234,8 +234,8 @@ class Pump(
     // States for navigating through remote terminal (RT) screens. Needed by
     // all commands that simulate user interactions in the RT mode, like
     // setBasalProfile(). Not used by command-mode commands like [deliverBolus].
-    private val rtNavigationContext = RTNavigationContextProduction(pumpIO)
-    private var parsedScreenFlow = rtNavigationContext.getParsedScreenFlow()
+    private val parsedDisplayFrameStream = ParsedDisplayFrameStream()
+    private val rtNavigationContext = RTNavigationContextProduction(pumpIO, parsedDisplayFrameStream)
 
     // Used for counting how many times an RT alert screen was dismissed by a button press.
     private var dismissalCount = 0
@@ -512,11 +512,11 @@ class Pump(
     val address: BluetoothAddress = bluetoothDevice.address
 
     /**
-     * Read-only [SharedFlow] property that delivers newly assembled display frames.
+     * Read-only [SharedFlow] property that delivers newly assembled and parsed display frames.
      *
-     * See [DisplayFrame] for details about these frames.
+     * See [ParsedDisplayFrame] for details about these frames.
      */
-    val displayFrameFlow: SharedFlow<DisplayFrame> = pumpIO.displayFrameFlow
+    val parsedDisplayFrameFlow: SharedFlow<ParsedDisplayFrame?> = parsedDisplayFrameStream.flow
 
     /**
      * Read-only [StateFlow] property that announces when the current [PumpIO.Mode] changed.
@@ -943,13 +943,14 @@ class Pump(
         setBasalProfileReporter.setCurrentProgressStage(RTCommandProgressStage.SettingBasalProfile(0))
 
         try {
-            navigateToRTScreen(rtNavigationContext, ParsedScreen.BasalRateFactorSettingScreen::class, pumpSuspended)
+            val firstBasalRateFactorScreen =
+                navigateToRTScreen(rtNavigationContext, ParsedScreen.BasalRateFactorSettingScreen::class, pumpSuspended)
 
             // Store the hours at which the current basal rate factor
             // begins to ensure that during screen cycling we
             // actually get to the next factor (which begins at
             // different hours).
-            var previousBeginHour = (parsedScreenFlow.first() as ParsedScreen.BasalRateFactorSettingScreen).beginTime.hour
+            var previousBeginHour = (firstBasalRateFactorScreen as ParsedScreen.BasalRateFactorSettingScreen).beginTime.hour
 
             for (index in 0 until basalProfile.size) {
                 val basalFactor = basalProfile[index]
@@ -970,20 +971,22 @@ class Pump(
                         RTNavigationButton.MENU
                 )
 
+                rtNavigationContext.resetDuplicate()
+
                 // Wait until we actually get a different BasalRateFactorSettingScreen.
                 // The pump might send us the same screen multiple times, because it
                 // might be blinking, so it is important to wait until the button press
                 // above actually resulted in a change to the screen with the next factor.
-                parsedScreenFlow
-                    .first { parsedScreen ->
-                        parsedScreen as ParsedScreen.BasalRateFactorSettingScreen
-                        if (parsedScreen.beginTime.hour == previousBeginHour) {
-                            false
-                        } else {
-                            previousBeginHour = parsedScreen.beginTime.hour
-                            true
-                        }
+                while (true) {
+                    val parsedDisplayFrame = rtNavigationContext.getParsedDisplayFrame(filterDuplicates = true) ?: continue
+                    val parsedScreen = parsedDisplayFrame.parsedScreen
+
+                    parsedScreen as ParsedScreen.BasalRateFactorSettingScreen
+                    if (parsedScreen.beginTime.hour != previousBeginHour) {
+                        previousBeginHour = parsedScreen.beginTime.hour
+                        break
                     }
+                }
             }
 
             // All factors are set. Press CHECK once to get back to the total
@@ -1564,6 +1567,9 @@ class Pump(
      *** PRIVATE FUNCTIONS AND CLASSES ***
      *************************************/
 
+    private fun processDisplayFrame(displayFrame: DisplayFrame?) =
+        parsedDisplayFrameStream.feedDisplayFrame(displayFrame)
+
     private inline fun <reified ProgressStageSubtype : ProgressStage> createBasalProgressReporter() =
         ProgressReporter(
             listOf(
@@ -1688,7 +1694,7 @@ class Pump(
                     // that appears after setting a 100% TBR.) In such a case,
                     // the command is considered aborted, and we have to try again
                     // (if isIdempotent is set to true).
-                    handleAlertScreen(e.alertScreenContent)
+                    handleAlertScreenContent(e.alertScreenContent)
                 } catch (e: TransportLayer.PacketReceiverException) {
                     val pumpTerminatedConnection = (e.cause is ApplicationLayer.ErrorCodeException) &&
                             (e.cause.appLayerPacket.command == ApplicationLayer.Command.CTRL_DISCONNECT)
@@ -1808,33 +1814,24 @@ class Pump(
     }
 
     private suspend fun handleAlertScreen() {
-        // Recreate the parsedScreenFlow for duration of this function. This
-        // is done to (a) make sure the parsedScreenFlow does not process
-        // alert screens (since we are processing one here already) and (b)
-        // prevent another flow from processing those. That's why we don't
-        // just create a custom parsedScreenFlow in parallel to the normal
-        // one, and instead temporarily replace the normal parsedScreenFlow.
-        parsedScreenFlow = rtNavigationContext.getParsedScreenFlow(processAlertScreens = false)
+        while (true) {
+            val parsedDisplayFrame = rtNavigationContext.getParsedDisplayFrame(
+                filterDuplicates = true,
+                processAlertScreens = false
+            ) ?: continue
+            val parsedScreen = parsedDisplayFrame.parsedScreen
 
-        try {
-            parsedScreenFlow.first { parsedScreen ->
-                when (parsedScreen) {
-                    is ParsedScreen.AlertScreen -> {
-                        logger(LogLevel.DEBUG) {
-                            "Got alert screen with content ${parsedScreen.content}"
-                        }
-                        handleAlertScreen(parsedScreen.content)
-                        false
-                    }
-                    else -> true
-                }
+            if (parsedScreen !is ParsedScreen.AlertScreen)
+                break
+
+            logger(LogLevel.DEBUG) {
+                "Got alert screen with content ${parsedScreen.content}"
             }
-        } finally {
-            parsedScreenFlow = rtNavigationContext.getParsedScreenFlow()
+            handleAlertScreenContent(parsedScreen.content)
         }
     }
 
-    private suspend fun handleAlertScreen(alertScreenContent: AlertScreenContent) {
+    private suspend fun handleAlertScreenContent(alertScreenContent: AlertScreenContent) {
         when (alertScreenContent) {
             // Alert screens blink. When the content is "blinked out",
             // the warning/error code is hidden, and the screen contents

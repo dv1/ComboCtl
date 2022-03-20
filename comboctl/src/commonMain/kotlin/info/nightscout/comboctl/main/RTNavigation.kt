@@ -10,13 +10,11 @@ import info.nightscout.comboctl.base.connectBidirectionally
 import info.nightscout.comboctl.base.connectDirectionally
 import info.nightscout.comboctl.base.findShortestPath
 import info.nightscout.comboctl.parser.ParsedScreen
-import info.nightscout.comboctl.parser.parsedScreenFlow
 import kotlin.math.abs
 import kotlin.reflect.KClassifier
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -249,9 +247,9 @@ class NoUsableRTScreenException : RTNavigationException("No usable RT screen ava
  * Remote terminal (RT) navigation context.
  *
  * This provides the necessary functionality for functions that navigate through RT screens
- * like [cycleToRTScreen]. These functions analyze incoming [ParsedScreen] instances with
- * the corresponding flow, and apply changes & transitions with the provided abstract
- * button actions.
+ * like [cycleToRTScreen]. These functions analyze [ParsedScreen] instances contained
+ * in incoming [ParsedDisplayFrame] ones, and apply changes & transitions with the provided
+ * abstract button actions.
  *
  * The button press functions are almost exactly like the ones from [PumpIO]. The only
  * difference is how buttons are specified - the underlying PumpIO functions get the
@@ -271,16 +269,9 @@ interface RTNavigationContext {
      */
     val maxNumCycleAttempts: Int
 
-    /**
-     * Returns a new flow of [ParsedScreen] instances.
-     *
-     * See the [parsedScreenFlow] documentation for details about the flow itself.
-     *
-     * @param filterDuplicates Whether to filter out duplicates. Filtering is
-     *   enabled by default.
-     * @return The [ParsedScreen] flow.
-     */
-    fun getParsedScreenFlow(filterDuplicates: Boolean = true, processAlertScreens: Boolean = true): Flow<ParsedScreen>
+    fun resetDuplicate()
+
+    suspend fun getParsedDisplayFrame(filterDuplicates: Boolean, processAlertScreens: Boolean = true): ParsedDisplayFrame?
 
     suspend fun startLongButtonPress(button: RTNavigationButton, keepGoing: (suspend () -> Boolean)? = null)
     suspend fun stopLongButtonPress()
@@ -291,24 +282,23 @@ interface RTNavigationContext {
 /**
  * [PumpIO] based implementation of [RTNavigationContext].
  *
- * This uses a [PumpIO] instance to pass button actions to, and provides a [ParsedScreen]
- * flow by parsing the [PumpIO.displayFrameFlow]. It is the implementation suited for
+ * This uses a [PumpIO] instance to pass button actions to, and provides a stream
+ * of [ParsedDisplayFrame] instances. It is the implementation suited for
  * production use. [maxNumCycleAttempts] is set to 20 by default.
  */
 class RTNavigationContextProduction(
     private val pumpIO: PumpIO,
+    private val parsedDisplayFrameStream: ParsedDisplayFrameStream,
     override val maxNumCycleAttempts: Int = 20
 ) : RTNavigationContext {
     init {
         require(maxNumCycleAttempts > 0)
     }
 
-    override fun getParsedScreenFlow(filterDuplicates: Boolean, processAlertScreens: Boolean) =
-        parsedScreenFlow(
-            pumpIO.displayFrameFlow,
-            filterDuplicates = filterDuplicates,
-            processAlertScreens = processAlertScreens
-        )
+    override fun resetDuplicate() = parsedDisplayFrameStream.resetDuplicate()
+
+    override suspend fun getParsedDisplayFrame(filterDuplicates: Boolean, processAlertScreens: Boolean) =
+        parsedDisplayFrameStream.getParsedDisplayFrame(filterDuplicates, processAlertScreens)
 
     override suspend fun startLongButtonPress(button: RTNavigationButton, keepGoing: (suspend () -> Boolean)?) =
         pumpIO.startLongRTButtonPress(button.rtButtonCodes, keepGoing)
@@ -352,24 +342,29 @@ suspend fun longPressRTButtonUntil(
     checkScreen: (parsedScreen: ParsedScreen) -> LongPressRTButtonsCommand
 ): ParsedScreen {
     val channel = Channel<Boolean>(capacity = Channel.CONFLATED)
-    val screenFlow = rtNavigationContext.getParsedScreenFlow()
 
     lateinit var lastParsedScreen: ParsedScreen
 
     logger(LogLevel.DEBUG) { "Long-pressing RT button $button until predicate indicates otherwise" }
 
+    rtNavigationContext.resetDuplicate()
+
     coroutineScope {
         launch {
-            lastParsedScreen = screenFlow
-                .first { parsedScreen ->
-                    val predicateResult = checkScreen(parsedScreen)
-                    val releaseButton = (predicateResult == LongPressRTButtonsCommand.ReleaseButton)
-                    logger(LogLevel.VERBOSE) {
-                        "Observed parsed screen $parsedScreen while long-pressing RT button; predicate result = $predicateResult"
-                    }
-                    channel.send(releaseButton)
-                    return@first releaseButton
+            while (true) {
+                val parsedDisplayFrame = rtNavigationContext.getParsedDisplayFrame(filterDuplicates = true) ?: continue
+                val parsedScreen = parsedDisplayFrame.parsedScreen
+                val predicateResult = checkScreen(parsedScreen)
+                val releaseButton = (predicateResult == LongPressRTButtonsCommand.ReleaseButton)
+                logger(LogLevel.VERBOSE) {
+                    "Observed parsed screen $parsedScreen while long-pressing RT button; predicate result = $predicateResult"
                 }
+                channel.send(releaseButton)
+                if (releaseButton) {
+                    lastParsedScreen = parsedScreen
+                    break
+                }
+            }
         }
 
         launch {
@@ -459,21 +454,24 @@ suspend fun shortPressRTButtonsUntil(
     processScreen: (parsedScreen: ParsedScreen) -> ShortPressRTButtonsCommand
 ): ParsedScreen {
     logger(LogLevel.DEBUG) { "Repeatedly short-pressing RT button according to callback commands" }
-    return rtNavigationContext.getParsedScreenFlow(filterDuplicates = false)
-        .first { parsedScreen ->
-            logger(LogLevel.VERBOSE) { "Got new screen $parsedScreen" }
 
-            val command = processScreen(parsedScreen)
-            logger(LogLevel.VERBOSE) { "Short-press RT button callback returned $command" }
+    rtNavigationContext.resetDuplicate()
 
-            when (command) {
-                ShortPressRTButtonsCommand.DoNothing -> Unit
-                ShortPressRTButtonsCommand.Stop -> return@first true
-                is ShortPressRTButtonsCommand.PressButton -> rtNavigationContext.shortPressButton(command.button)
-            }
+    while (true) {
+        val parsedDisplayFrame = rtNavigationContext.getParsedDisplayFrame(filterDuplicates = true) ?: continue
+        val parsedScreen = parsedDisplayFrame.parsedScreen
 
-            false
+        logger(LogLevel.VERBOSE) { "Got new screen $parsedScreen" }
+
+        val command = processScreen(parsedScreen)
+        logger(LogLevel.VERBOSE) { "Short-press RT button callback returned $command" }
+
+        when (command) {
+            ShortPressRTButtonsCommand.DoNothing -> Unit
+            ShortPressRTButtonsCommand.Stop -> return parsedScreen
+            is ShortPressRTButtonsCommand.PressButton -> rtNavigationContext.shortPressButton(command.button)
         }
+    }
 }
 
 /**
@@ -531,20 +529,24 @@ suspend fun waitUntilScreenAppears(
 ): ParsedScreen {
     logger(LogLevel.DEBUG) { "Observing incoming parsed screens and waiting for screen of type $targetScreenType to appear" }
     var cycleCount = 0
-    return rtNavigationContext.getParsedScreenFlow()
-        .first { parsedScreen ->
-            if (cycleCount >= rtNavigationContext.maxNumCycleAttempts)
-                throw CouldNotFindRTScreenException(targetScreenType)
 
-            if (parsedScreen::class == targetScreenType) {
-                logger(LogLevel.DEBUG) { "Target screen of type $targetScreenType appeared; cycleCount = $cycleCount" }
-                true
-            } else {
-                logger(LogLevel.VERBOSE) { "Target screen type did not appear yet; cycleCount increased to $cycleCount" }
-                cycleCount++
-                false
-            }
+    rtNavigationContext.resetDuplicate()
+
+    while (true) {
+        if (cycleCount >= rtNavigationContext.maxNumCycleAttempts)
+            throw CouldNotFindRTScreenException(targetScreenType)
+
+        val parsedDisplayFrame = rtNavigationContext.getParsedDisplayFrame(filterDuplicates = true) ?: continue
+        val parsedScreen = parsedDisplayFrame.parsedScreen
+
+        if (parsedScreen::class == targetScreenType) {
+            logger(LogLevel.DEBUG) { "Target screen of type $targetScreenType appeared; cycleCount = $cycleCount" }
+            return parsedScreen
+        } else {
+            logger(LogLevel.VERBOSE) { "Target screen type did not appear yet; cycleCount increased to $cycleCount" }
+            cycleCount++
         }
+    }
 }
 
 /**
@@ -602,20 +604,21 @@ suspend fun adjustQuantityOnScreen(
     }
 
     var initialQuantity = 0
+    rtNavigationContext.resetDuplicate()
 
     // Get the quantity that is initially shown on screen.
     // This is necessary to (a) check if anything needs to
     // be done at all and (b) decide what button to long-press
     // in the code block below.
-    rtNavigationContext.getParsedScreenFlow()
-        .first { parsedScreen ->
-            val quantity = getQuantity(parsedScreen)
-            if (quantity != null) {
-                initialQuantity = quantity
-                true
-            } else
-                false
+    while (true) {
+        val parsedDisplayFrame = rtNavigationContext.getParsedDisplayFrame(filterDuplicates = true) ?: continue
+        val parsedScreen = parsedDisplayFrame.parsedScreen
+        val quantity = getQuantity(parsedScreen)
+        if (quantity != null) {
+            initialQuantity = quantity
+            break
         }
+    }
 
     logger(LogLevel.DEBUG) { "Initial observed quantity: $initialQuantity" }
 
@@ -672,6 +675,7 @@ suspend fun adjustQuantityOnScreen(
     }
 
     var lastQuantity: Int? = null
+    rtNavigationContext.resetDuplicate()
 
     // Observe the screens until we see a screen whose quantity
     // is the same as the previous screen's. This "debouncing" is
@@ -682,24 +686,25 @@ suspend fun adjustQuantityOnScreen(
     // quantity may still be in/decremented. We need to wait until
     // that in/decrementing is over before we can do any corrections
     // with short RT button presses.
-    rtNavigationContext.getParsedScreenFlow(filterDuplicates = false)
-        .first { parsedScreen ->
-            val currentQuantity = getQuantity(parsedScreen)
+    while (true) {
+        // Do not filter for duplicates, since a duplicate
+        // is pretty much what we are waiting for.
+        val parsedDisplayFrame = rtNavigationContext.getParsedDisplayFrame(filterDuplicates = false) ?: continue
+        val parsedScreen = parsedDisplayFrame.parsedScreen
+        val currentQuantity = getQuantity(parsedScreen)
 
-            logger(LogLevel.DEBUG) {
-                "Observed quantity after long-pressing RT button: " +
-                "last / current quantity: $lastQuantity / $currentQuantity"
-            }
-
-            if (currentQuantity != null) {
-                if (currentQuantity == lastQuantity)
-                    return@first true
-                else
-                    lastQuantity = currentQuantity
-            }
-
-            false
+        logger(LogLevel.DEBUG) {
+            "Observed quantity after long-pressing RT button: " +
+            "last / current quantity: $lastQuantity / $currentQuantity"
         }
+
+        if (currentQuantity != null) {
+            if (currentQuantity == lastQuantity)
+                break
+            else
+                lastQuantity = currentQuantity
+        }
+    }
 
     if (lastQuantity == targetQuantity) {
         logger(LogLevel.DEBUG) { "Last seen quantity $lastQuantity is the target quantity; adjustment finished" }
@@ -713,7 +718,7 @@ suspend fun adjustQuantityOnScreen(
 
     // If the on-screen quantity is not the target quantity, we may
     // have overshot, or the in/decrement factor may have been increased
-    // over time by the Combo. Perform short RT button  presses to nudge
+    // over time by the Combo. Perform short RT button presses to nudge
     // the quantity until it reaches the target value.
     shortPressRTButtonsUntil(rtNavigationContext) { parsedScreen ->
         val currentQuantity = getQuantity(parsedScreen)
@@ -773,18 +778,24 @@ suspend fun navigateToRTScreen(
     // Get the current screen to know the starting point. If it is an
     // unrecognized screen, press BACK until we are at the main screen.
     var numAttemptsToRecognizeScreen = 0
-    var currentParsedScreen = rtNavigationContext.getParsedScreenFlow()
-        .first { parsedScreen ->
-            if (parsedScreen is ParsedScreen.UnrecognizedScreen) {
-                numAttemptsToRecognizeScreen++
-                if (numAttemptsToRecognizeScreen >= rtNavigationContext.maxNumCycleAttempts)
-                    throw CouldNotRecognizeAnyRTScreenException()
-                rtNavigationContext.shortPressButton(RTNavigationButton.BACK)
-                false
-            } else {
-                true
-            }
+    lateinit var currentParsedScreen: ParsedScreen
+
+    rtNavigationContext.resetDuplicate()
+
+    while (true) {
+        val parsedDisplayFrame = rtNavigationContext.getParsedDisplayFrame(filterDuplicates = true) ?: continue
+        val parsedScreen = parsedDisplayFrame.parsedScreen
+
+        if (parsedScreen is ParsedScreen.UnrecognizedScreen) {
+            numAttemptsToRecognizeScreen++
+            if (numAttemptsToRecognizeScreen >= rtNavigationContext.maxNumCycleAttempts)
+                throw CouldNotRecognizeAnyRTScreenException()
+            rtNavigationContext.shortPressButton(RTNavigationButton.BACK)
+        } else {
+            currentParsedScreen = parsedScreen
+            break
         }
+    }
 
     if (currentParsedScreen::class == targetScreenType) {
         logger(LogLevel.DEBUG) { "Already at target; exiting" }
@@ -835,58 +846,61 @@ suspend fun navigateToRTScreen(
         }
     }
 
+    rtNavigationContext.resetDuplicate()
+
     // Navigate from the current to the target screen.
     var cycleCount = 0
     val pathIt = path.iterator()
     var nextPathItem = pathIt.next()
-    return rtNavigationContext.getParsedScreenFlow()
-        .first { parsedScreen ->
-            if (cycleCount >= rtNavigationContext.maxNumCycleAttempts)
-                throw CouldNotFindRTScreenException(targetScreenType)
+    while (true) {
+        if (cycleCount >= rtNavigationContext.maxNumCycleAttempts)
+            throw CouldNotFindRTScreenException(targetScreenType)
 
-            // A path item's targetNodeValue is the screen type we are trying
-            // to reach, and the edgeValue is the RT button to press to reach it.
-            // We stay at the same path item until we reach the screen type that
-            // is specified by targetNodeValue. When that happens, we move on
-            // to the next path item. Importantly, we _first_ move on to the next
-            // item, and _then_ send the short RT button press based on that next
-            // item, to avoid sending the RT button from the incorrect path item.
-            // Example: Path item 1 contains target screen type A and RT button
-            // MENU. Path item 2 contains target screen type B and RT button CHECK.
-            // On every iteration, we first check if the current screen is of type
-            // A. If it isn't, we need to press MENU again and check in the next
-            // iteration again. If it is of type A however, then pressing MENU
-            // would be incorrect, since we already are at A. Instead, we _first_
-            // must move on to the next path item, and _that_ one says to press
-            // CHECK until type B is reached.
+        val parsedDisplayFrame = rtNavigationContext.getParsedDisplayFrame(filterDuplicates = true) ?: continue
+        val parsedScreen = parsedDisplayFrame.parsedScreen
 
-            val nextTargetScreenTypeInPath = nextPathItem.targetNodeValue
+        // A path item's targetNodeValue is the screen type we are trying
+        // to reach, and the edgeValue is the RT button to press to reach it.
+        // We stay at the same path item until we reach the screen type that
+        // is specified by targetNodeValue. When that happens, we move on
+        // to the next path item. Importantly, we _first_ move on to the next
+        // item, and _then_ send the short RT button press based on that next
+        // item, to avoid sending the RT button from the incorrect path item.
+        // Example: Path item 1 contains target screen type A and RT button
+        // MENU. Path item 2 contains target screen type B and RT button CHECK.
+        // On every iteration, we first check if the current screen is of type
+        // A. If it isn't, we need to press MENU again and check in the next
+        // iteration again. If it is of type A however, then pressing MENU
+        // would be incorrect, since we already are at A. Instead, we _first_
+        // must move on to the next path item, and _that_ one says to press
+        // CHECK until type B is reached.
 
-            logger(LogLevel.DEBUG) { "We are currently at screen $parsedScreen; next target screen type: $nextTargetScreenTypeInPath" }
+        val nextTargetScreenTypeInPath = nextPathItem.targetNodeValue
 
-            if (parsedScreen::class == nextTargetScreenTypeInPath) {
-                cycleCount = 0
-                if (pathIt.hasNext()) {
-                    nextPathItem = pathIt.next()
-                    logger(LogLevel.DEBUG) {
-                        "Reached screen type $nextTargetScreenTypeInPath in path; " +
-                        "continuing to ${nextPathItem.targetNodeValue}"
-                    }
-                } else {
-                    // If this is the last path item, it implies
-                    // that we reached our destination.
-                    logger(LogLevel.DEBUG) { "Target screen type $targetScreenType reached" }
-                    return@first true
+        logger(LogLevel.DEBUG) { "We are currently at screen $parsedScreen; next target screen type: $nextTargetScreenTypeInPath" }
+
+        if (parsedScreen::class == nextTargetScreenTypeInPath) {
+            cycleCount = 0
+            if (pathIt.hasNext()) {
+                nextPathItem = pathIt.next()
+                logger(LogLevel.DEBUG) {
+                    "Reached screen type $nextTargetScreenTypeInPath in path; " +
+                            "continuing to ${nextPathItem.targetNodeValue}"
                 }
+            } else {
+                // If this is the last path item, it implies
+                // that we reached our destination.
+                logger(LogLevel.DEBUG) { "Target screen type $targetScreenType reached" }
+                return parsedScreen
             }
-
-            val navButtonToPress = nextPathItem.edgeValue.button
-            logger(LogLevel.DEBUG) { "Pressing button $navButtonToPress to navigate further" }
-            rtNavigationContext.shortPressButton(navButtonToPress)
-
-            cycleCount++
-            return@first false
         }
+
+        val navButtonToPress = nextPathItem.edgeValue.button
+        logger(LogLevel.DEBUG) { "Pressing button $navButtonToPress to navigate further" }
+        rtNavigationContext.shortPressButton(navButtonToPress)
+
+        cycleCount++
+    }
 }
 
 internal fun findShortestRtPath(from: KClassifier, to: KClassifier, isComboStopped: Boolean) =

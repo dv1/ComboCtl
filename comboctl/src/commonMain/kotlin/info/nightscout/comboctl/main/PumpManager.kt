@@ -440,7 +440,7 @@ class PumpManager(
         val bluetoothDevice = bluetoothInterface.getDevice(pumpAddress)
         logger(LogLevel.DEBUG) { "Got Bluetooth device instance for pump" }
 
-        val pumpIO = PumpIO(pumpStateStore, bluetoothDevice)
+        val pumpIO = PumpIO(pumpStateStore, bluetoothDevice) { }
 
         if (pumpIO.isPaired()) {
             logger(LogLevel.INFO) { "Not pairing discovered pump $pumpAddress since it is already paired" }

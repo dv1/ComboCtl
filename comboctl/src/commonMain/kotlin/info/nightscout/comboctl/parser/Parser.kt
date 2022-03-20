@@ -1,5 +1,6 @@
 package info.nightscout.comboctl.parser
 
+import info.nightscout.comboctl.base.ComboException
 import info.nightscout.comboctl.base.DisplayFrame
 import info.nightscout.comboctl.base.combinedDateTime
 import info.nightscout.comboctl.base.timeWithoutDate
@@ -77,6 +78,14 @@ sealed class AlertScreenContent {
      */
     object None : AlertScreenContent()
 }
+
+/**
+ * Exception thrown when an alert screens appear.
+ *
+ * @property alertScreenContent The content of the alert screen(s).
+ */
+class AlertScreenException(val alertScreenContent: AlertScreenContent) :
+    ComboException("RT alert screen appeared with content: $alertScreenContent")
 
 /**
  * Result of a successful [ToplevelScreenParser] run.

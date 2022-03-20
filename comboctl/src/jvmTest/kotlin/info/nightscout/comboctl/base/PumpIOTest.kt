@@ -49,7 +49,7 @@ class PumpIOTest {
                 testIO.pumpClientCipher = invariantPumpData.pumpClientCipher
             }
 
-            pumpIO = PumpIO(testPumpStateStore, testBluetoothDevice)
+            pumpIO = PumpIO(testPumpStateStore, testBluetoothDevice) { }
         }
 
         // Tests that a long button press is handled correctly.
