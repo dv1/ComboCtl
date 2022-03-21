@@ -4,20 +4,17 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import info.nightscout.comboctl.base.ApplicationLayer
 import info.nightscout.comboctl.base.DisplayFrame
 import info.nightscout.comboctl.base.PumpIO
+import info.nightscout.comboctl.base.Tbr
 import info.nightscout.comboctl.comboandroid.App
 import info.nightscout.comboctl.comboandroid.utils.SingleLiveData
-import info.nightscout.comboctl.main.NUM_BASAL_PROFILE_FACTORS
-import info.nightscout.comboctl.main.Pump
-import info.nightscout.comboctl.main.PumpCommandDispatcher
-import info.nightscout.comboctl.parser.parsedScreenFlow
+import info.nightscout.comboctl.main.*
 import kotlin.random.Random
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.plus
 
 class SessionViewModel : ViewModel() {
 
@@ -46,105 +43,65 @@ class SessionViewModel : ViewModel() {
 
     fun onMenuClicked() {
         viewModelScope.launch {
-            pump?.sendShortRTButtonPress(PumpIO.Button.MENU)
+            pump?.sendShortRTButtonPress(ApplicationLayer.RTButton.MENU)
         }
     }
 
     fun onCheckClicked() {
         viewModelScope.launch {
-            pump?.sendShortRTButtonPress(PumpIO.Button.CHECK)
+            pump?.sendShortRTButtonPress(ApplicationLayer.RTButton.CHECK)
         }
     }
 
     fun onUpClicked() {
         viewModelScope.launch {
-            pump?.sendShortRTButtonPress(PumpIO.Button.UP)
+            pump?.sendShortRTButtonPress(ApplicationLayer.RTButton.UP)
         }
     }
 
     fun onDownClicked() {
         viewModelScope.launch {
-            pump?.sendShortRTButtonPress(PumpIO.Button.DOWN)
+            pump?.sendShortRTButtonPress(ApplicationLayer.RTButton.DOWN)
         }
     }
 
     fun onBackClicked() {
         viewModelScope.launch {
-            pump?.sendShortRTButtonPress(listOf(PumpIO.Button.UP, PumpIO.Button.MENU))
+            pump?.sendShortRTButtonPress(listOf(ApplicationLayer.RTButton.UP, ApplicationLayer.RTButton.MENU))
         }
     }
 
     fun onUpDownClicked() {
         viewModelScope.launch {
-            pump?.sendShortRTButtonPress(listOf(PumpIO.Button.UP, PumpIO.Button.DOWN))
+            pump?.sendShortRTButtonPress(listOf(ApplicationLayer.RTButton.UP, ApplicationLayer.RTButton.DOWN))
         }
     }
 
     fun onCMBolusClicked(amount: String) {
         amount.toIntOrNull()?.let { amount ->
             viewModelScope.launch {
-                pump?.let(::PumpCommandDispatcher)?.deliverBolus(amount)
+                pump?.deliverBolus(amount, Pump.StandardBolusReason.NORMAL)
                 exitCommandMode()
             }
         }
     }
 
     private suspend fun exitCommandMode() {
-        pump?.switchMode(newMode = PumpIO.Mode.REMOTE_TERMINAL)
-    }
-
-    fun onHistoryDeltaReadClicked() {
-        viewModelScope.launch {
-            pump
-                ?.let(::PumpCommandDispatcher)
-                ?.fetchHistory(setOf(PumpCommandDispatcher.HistoryPart.HISTORY_DELTA))?.historyDeltaEvents?.joinToString("\n")
-                ?.let { _historyDeltaLiveData.postValue(it) }
-            exitCommandMode()
-        }
-    }
-
-    fun onReadBasalProfileClicked() {
-        viewModelScope.launch {
-            pump
-                ?.let(::PumpCommandDispatcher)
-                ?.getBasalProfile()?.mapIndexed { index, basal -> "$index: $basal" }?.joinToString(", ")
-                ?.let { _historyDeltaLiveData.postValue(it) }
-            exitCommandMode()
-        }
+        pump?.switchMode(PumpIO.Mode.REMOTE_TERMINAL)
     }
 
     fun onSetRandomBasalProfileClicked() {
         viewModelScope.launch {
 
             var current = Random.nextInt(2500, 3000)
-            val randomBasalProfile = List(NUM_BASAL_PROFILE_FACTORS) {
+            val randomBasalProfile = List(NUM_COMBO_BASAL_PROFILE_FACTORS) {
                 current += Random.nextInt(-100, 200)
                 when (current) {
                     in 50..1000 -> ((current + 5) / 10) * 10 // round to the next integer 0.01 IU multiple
                     else -> ((current + 25) / 50) * 50 // round to the next integer 0.05 IU multiple
                 }
             }
-            pump
-                ?.let(::PumpCommandDispatcher)
-                ?.setBasalProfile(randomBasalProfile)
-            exitCommandMode()
-        }
-    }
-
-    fun onReadTimeClicked() {
-        viewModelScope.launch {
-            pump?.let(::PumpCommandDispatcher)
-                ?.getDateTime()
-                ?.let { _timeLiveData.postValue(it.toString()) }
-            exitCommandMode()
-        }
-    }
-
-    fun onReadQuickInfoClicked() {
-        viewModelScope.launch {
-            pump?.let(::PumpCommandDispatcher)
-                ?.readQuickinfo()
-                ?.let { _historyDeltaLiveData.postValue(it.toString()) }
+            pump?.setBasalProfile(BasalProfile(randomBasalProfile))
             exitCommandMode()
         }
     }
@@ -166,15 +123,18 @@ class SessionViewModel : ViewModel() {
                 pumpLocal.connectProgressFlow.onEach {
                     _progressLiveData.value = it.overallProgress.toFloat()
                 }.launchIn(viewModelScope)
-                pumpLocal.connectAsync(viewModelScope + Dispatchers.Default).join()
+                pumpLocal.connect()
             } catch (e: Exception) {
                 _state.value = State.NO_PUMP_FOUND
             }
 
             _state.value = State.CONNECTED
 
-            pumpLocal.displayFrameFlow.onEach {
-                _frameLiveData.postValue(it)
+            pumpLocal.parsedDisplayFrameFlow.onEach { parsedDisplayFrame ->
+                parsedDisplayFrame?.let {
+                    _frameLiveData.postValue(it.displayFrame)
+                    _parsedScreenLiveData.value = it.parsedScreen.toString()
+                }
             }.launchIn(viewModelScope)
 
             pumpLocal.currentModeFlow.onEach {
@@ -184,16 +144,12 @@ class SessionViewModel : ViewModel() {
                     null -> Mode.TERMINAL
                 }.let { _modeLiveData.value = it }
             }.launchIn(viewModelScope)
-
-            parsedScreenFlow(pumpLocal.displayFrameFlow, processAlertScreens = false)
-                .onEach { _parsedScreenLiveData.value = it.toString() }
-                .launchIn(viewModelScope)
         }
     }
 
     fun setTbrClicked() {
         viewModelScope.launch {
-            pump?.let(::PumpCommandDispatcher)?.setTemporaryBasalRate(180, 15)
+            pump?.setTbr(120, 45, type = Tbr.Type.NORMAL, force100Percent = true)
             exitCommandMode()
         }
     }

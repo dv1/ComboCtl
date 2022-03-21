@@ -5,16 +5,12 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import info.nightscout.comboctl.base.PairingPIN
-import info.nightscout.comboctl.base.TransportLayerIO
 import info.nightscout.comboctl.comboandroid.App
 import info.nightscout.comboctl.main.PumpManager
+import kotlinx.coroutines.*
 import kotlin.math.roundToInt
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 class PairingViewModel : ViewModel() {
     private val _state = MutableLiveData<State>(State.UNINITIALIZED)
@@ -49,15 +45,16 @@ class PairingViewModel : ViewModel() {
             App.pumpManager.pairingProgressFlow.onEach {
                 _progressLiveData.value = (it.overallProgress * 100).roundToInt()
             }.launchIn(viewModelScope)
+
             val result = App.pumpManager.pairWithNewPump(
-                discoveryDuration = 300,
-                pumpPairingPINCallback = { _, _ ->
-                    withContext(viewModelScope.coroutineContext) {
-                        _state.value = State.PIN_ENTRY
-                        pairingPINDeferred!!.await()
-                    }
+                discoveryDuration = 300
+            ) { _, _ ->
+                withContext(Dispatchers.Main) {
+                    _state.value = State.PIN_ENTRY
+                    pairingPINDeferred!!.await()
                 }
-            )
+            }
+
             if (result !is PumpManager.PairingResult.Success)
                 _state.postValue(State.DISCOVERY_STOPPED)
             else
@@ -71,12 +68,11 @@ class PairingViewModel : ViewModel() {
     }
 
     fun onCancelClicked() {
-        pairingPINDeferred!!.completeExceptionally(TransportLayerIO.PairingAbortedException())
+        pairingJob?.cancel()
         _state.postValue(State.PAIRING_CANCELLED)
     }
 
     fun stopLifeCycle() {
-        pairingPINDeferred!!.completeExceptionally(TransportLayerIO.PairingAbortedException())
         pairingJob?.cancel()
     }
 

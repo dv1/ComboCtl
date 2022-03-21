@@ -227,20 +227,8 @@ class SessionFragment : BaseFragment<SessionViewModel>() {
         Button(onClick = { viewModel.onCMBolusClicked("1") }) {
             Text(text = "Deliver Bolus")
         }
-        Button(onClick = viewModel::onReadTimeClicked) {
-            Text(text = "Get Date & Time")
-        }
-        Button(onClick = viewModel::onHistoryDeltaReadClicked) {
-            Text(text = "Read History")
-        }
-        Button(onClick = viewModel::onReadQuickInfoClicked) {
-            Text(text = "Read QuickInfo")
-        }
         Button(onClick = viewModel::onSetRandomBasalProfileClicked) {
             Text(text = "Set Random Basal Profile")
-        }
-        Button(onClick = viewModel::onReadBasalProfileClicked) {
-            Text(text = "Read Basal Profile")
         }
     }
 }

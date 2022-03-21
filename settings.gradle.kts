@@ -10,5 +10,5 @@ if (env["idea.platform.prefix"] != "AndroidStudio") {
     include(":comboctl:src:jvmMain:cpp:linuxBlueZCppJNI")
 } else {
     logger.lifecycle("Building with Android Studio; disabling javafxApp, enabling androidApp")
-    // include(":androidApp")
+    include(":androidApp")
 }
