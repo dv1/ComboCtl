@@ -1272,31 +1272,65 @@ class PumpIO(
             // RT to the command mode.
             onNewDisplayFrame(null)
 
-            // Send the command to switch the mode.
-
-            _currentModeFlow.value?.let { modeToDeactivate ->
-                logger(LogLevel.DEBUG) { "Deactivating current service" }
-                sendPacketWithResponse(
-                    ApplicationLayer.createCTRLDeactivateServicePacket(
-                        when (modeToDeactivate) {
-                            Mode.REMOTE_TERMINAL -> ApplicationLayer.ServiceID.RT_MODE
-                            Mode.COMMAND -> ApplicationLayer.ServiceID.COMMAND_MODE
+            // Do the entire mode switch with the lock held and do it inside a NonCancellable
+            // context. We must make sure that _nothing_ else is communicated with the
+            // Combo during the mode switch. Using these blocks guarantees that. That's why
+            // we don't use sendPacketWithResponse() here and instead handle this manually.
+            sendPacketMutex.withLock {
+                withContext(NonCancellable) {
+                    _currentModeFlow.value?.let { modeToDeactivate ->
+                        logger(LogLevel.DEBUG) { "Deactivating current service" }
+                        sendAppLayerPacket(
+                            ApplicationLayer.createCTRLDeactivateServicePacket(
+                                when (modeToDeactivate) {
+                                    Mode.REMOTE_TERMINAL -> ApplicationLayer.ServiceID.RT_MODE
+                                    Mode.COMMAND -> ApplicationLayer.ServiceID.COMMAND_MODE
+                                }
+                            )
+                        )
+                        logger(LogLevel.DEBUG) { "Sent CTRL_DEACTIVATE packet; waiting for CTRL_DEACTIVATE_SERVICE_RESPONSE packet" }
+                        val receivedAppLayerPacket = transportLayerIO.receive(TransportLayer.Command.DATA).toAppLayerPacket()
+                        if (receivedAppLayerPacket.command != ApplicationLayer.Command.CTRL_DEACTIVATE_SERVICE_RESPONSE) {
+                            throw ApplicationLayer.IncorrectPacketException(
+                                receivedAppLayerPacket,
+                                ApplicationLayer.Command.CTRL_DEACTIVATE_SERVICE_RESPONSE
+                            )
                         }
-                    ),
-                    ApplicationLayer.Command.CTRL_DEACTIVATE_SERVICE_RESPONSE
-                )
-            }
-
-            logger(LogLevel.DEBUG) { "Activating new service" }
-            sendPacketWithResponse(
-                ApplicationLayer.createCTRLActivateServicePacket(
-                    when (newMode) {
-                        Mode.REMOTE_TERMINAL -> ApplicationLayer.ServiceID.RT_MODE
-                        Mode.COMMAND -> ApplicationLayer.ServiceID.COMMAND_MODE
                     }
-                ),
-                ApplicationLayer.Command.CTRL_ACTIVATE_SERVICE_RESPONSE
-            )
+
+                    logger(LogLevel.DEBUG) { "Activating new service" }
+                    sendAppLayerPacket(
+                        ApplicationLayer.createCTRLActivateServicePacket(
+                            when (newMode) {
+                                Mode.REMOTE_TERMINAL -> ApplicationLayer.ServiceID.RT_MODE
+                                Mode.COMMAND -> ApplicationLayer.ServiceID.COMMAND_MODE
+                            }
+                        )
+                    )
+                    logger(LogLevel.DEBUG) { "Sent CTRL_ACTIVATE packet; waiting for CTRL_ACTIVATE_SERVICE_RESPONSE packet" }
+                    var receivedAppLayerPacket = transportLayerIO.receive(TransportLayer.Command.DATA).toAppLayerPacket()
+
+                    // XXX: In a few cases, we get this response instead. This seems to be a Combo bug -
+                    // an extra CTRL_DEACTIVATE_SERVICE_RESPONSE packet is inserted before the actual
+                    // response. The workaround appears to be to read and drop that extra response packet
+                    // and then proceed as usual (since correct response packets follow that one).
+                    if (receivedAppLayerPacket.command == ApplicationLayer.Command.CTRL_DEACTIVATE_SERVICE_RESPONSE) {
+                        logger(LogLevel.INFO) {
+                            "Got CTRL_DEACTIVATE_SERVICE_RESPONSE packet even though CTRL_ACTIVATE_SERVICE_RESPONSE was expected; " +
+                            "suspected to be a Combo bug; trying to receive packet again as a workaround"
+                        }
+                        // Retry receiving.
+                        receivedAppLayerPacket = transportLayerIO.receive(TransportLayer.Command.DATA).toAppLayerPacket()
+                    }
+
+                    if (receivedAppLayerPacket.command != ApplicationLayer.Command.CTRL_ACTIVATE_SERVICE_RESPONSE) {
+                        throw ApplicationLayer.IncorrectPacketException(
+                            receivedAppLayerPacket,
+                            ApplicationLayer.Command.CTRL_ACTIVATE_SERVICE_RESPONSE
+                        )
+                    }
+                }
+            }
 
             _currentModeFlow.value = newMode
 
