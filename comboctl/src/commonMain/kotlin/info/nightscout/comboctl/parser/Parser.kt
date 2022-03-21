@@ -97,8 +97,12 @@ class AlertScreenException(val alertScreenContent: AlertScreenContent) :
  * Insulin units use an integer-encoded-decimal scheme. The last 3 digits of
  * the integer make up the 3 most significant fractional digits of a decimal.
  * For example, "37.5" is encoded as 37500, "10" as 10000, "0.02" as 20 etc.
+ *
+ * If [isBlinkedOut] is true, then the actual contents of the screen are
+ * currently "blinked out", that is, the screen is blinking, and it is
+ * at the moment in the phase when the contents aren't shown.
  */
-sealed class ParsedScreen {
+sealed class ParsedScreen(val isBlinkedOut: Boolean = false) {
     object UnrecognizedScreen : ParsedScreen()
 
     data class MainScreen(val content: MainScreenContent) : ParsedScreen()
@@ -122,7 +126,8 @@ sealed class ParsedScreen {
     object TemporaryBasalRateMenuScreen : ParsedScreen()
     object TherapySettingsMenuScreen : ParsedScreen()
 
-    data class AlertScreen(val content: AlertScreenContent) : ParsedScreen()
+    data class AlertScreen(val content: AlertScreenContent) :
+        ParsedScreen(isBlinkedOut = (content is AlertScreenContent.None))
 
     data class BasalRateTotalScreen(val totalNumUnits: Int, val basalRateNumber: Int) : ParsedScreen()
     data class BasalRateFactorSettingScreen(
@@ -130,18 +135,25 @@ sealed class ParsedScreen {
         val endTime: LocalDateTime,
         val numUnits: Int?,
         val basalRateNumber: Int
-    ) : ParsedScreen()
+    ) : ParsedScreen(isBlinkedOut = (numUnits == null))
 
-    data class TemporaryBasalRatePercentageScreen(val percentage: Int?) : ParsedScreen()
-    data class TemporaryBasalRateDurationScreen(val durationInMinutes: Int?) : ParsedScreen()
+    data class TemporaryBasalRatePercentageScreen(val percentage: Int?) :
+        ParsedScreen(isBlinkedOut = (percentage == null))
+    data class TemporaryBasalRateDurationScreen(val durationInMinutes: Int?) :
+        ParsedScreen(isBlinkedOut = (durationInMinutes == null))
 
     data class QuickinfoMainScreen(val quickinfo: Quickinfo) : ParsedScreen()
 
-    data class TimeAndDateSettingsHourScreen(val hour: Int?) : ParsedScreen()
-    data class TimeAndDateSettingsMinuteScreen(val minute: Int?) : ParsedScreen()
-    data class TimeAndDateSettingsYearScreen(val year: Int?) : ParsedScreen()
-    data class TimeAndDateSettingsMonthScreen(val month: Int?) : ParsedScreen()
-    data class TimeAndDateSettingsDayScreen(val day: Int?) : ParsedScreen()
+    data class TimeAndDateSettingsHourScreen(val hour: Int?) :
+        ParsedScreen(isBlinkedOut = (hour == null))
+    data class TimeAndDateSettingsMinuteScreen(val minute: Int?) :
+        ParsedScreen(isBlinkedOut = (minute == null))
+    data class TimeAndDateSettingsYearScreen(val year: Int?) :
+        ParsedScreen(isBlinkedOut = (year == null))
+    data class TimeAndDateSettingsMonthScreen(val month: Int?) :
+        ParsedScreen(isBlinkedOut = (month == null))
+    data class TimeAndDateSettingsDayScreen(val day: Int?) :
+        ParsedScreen(isBlinkedOut = (day == null))
 
     /**
      * Bolus history entry in the "My Data" section.

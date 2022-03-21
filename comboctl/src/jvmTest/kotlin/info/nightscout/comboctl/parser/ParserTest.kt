@@ -587,6 +587,7 @@ class ParserTest {
             val result = BasalRateFactorSettingScreenParser().parse(testContext.parseContext)
             assertEquals(ParseResult.Value::class, result::class)
             val screen = (result as ParseResult.Value<*>).value as ParsedScreen.BasalRateFactorSettingScreen
+            assertEquals(testScreen.second.numUnits == null, screen.isBlinkedOut)
             assertEquals(testScreen.second, screen)
         }
     }
@@ -683,6 +684,7 @@ class ParserTest {
             val result = TemporaryBasalRatePercentageScreenParser().parse(testContext.parseContext)
             assertEquals(ParseResult.Value::class, result::class)
             val screen = (result as ParseResult.Value<*>).value as ParsedScreen.TemporaryBasalRatePercentageScreen
+            assertEquals(testScreen.second == null, screen.isBlinkedOut)
             assertEquals(testScreen.second, screen.percentage)
         }
     }
@@ -718,6 +720,7 @@ class ParserTest {
             val result = TemporaryBasalRateDurationScreenParser().parse(testContext.parseContext)
             assertEquals(ParseResult.Value::class, result::class)
             val screen = (result as ParseResult.Value<*>).value as ParsedScreen.TemporaryBasalRateDurationScreen
+            assertEquals(testScreen.second == null, screen.isBlinkedOut)
             assertEquals(testScreen.second, screen.durationInMinutes)
         }
     }
