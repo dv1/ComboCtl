@@ -1,6 +1,8 @@
 package info.nightscout.comboctl.main
 
 import info.nightscout.comboctl.base.DisplayFrame
+import info.nightscout.comboctl.base.LogLevel
+import info.nightscout.comboctl.base.Logger
 import info.nightscout.comboctl.parser.AlertScreenException
 import info.nightscout.comboctl.parser.ParsedScreen
 import info.nightscout.comboctl.parser.parseDisplayFrame
@@ -9,6 +11,8 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+
+private val logger = Logger.get("ParsedDisplayFrameStream")
 
 /**
  * Combination of a [DisplayFrame] and the [ParsedScreen] that is the result of parsing that frame.
@@ -179,6 +183,13 @@ class ParsedDisplayFrameStream {
             }
 
             lastRetrievedParsedDisplayFrame = thisParsedDisplayFrame
+
+            // Blinked-out screens are unusable; skip them, otherwise
+            // they may mess up RT navigation.
+            if ((thisParsedDisplayFrame != null) && thisParsedDisplayFrame.parsedScreen.isBlinkedOut) {
+                logger(LogLevel.DEBUG) { "Screen is blinked out (contents: thisParsedDisplayFrame.parsedScreen); skipping" }
+                continue
+            }
 
             if (processAlertScreens && (thisParsedDisplayFrame != null)) {
                 if (thisParsedDisplayFrame.parsedScreen is ParsedScreen.AlertScreen)

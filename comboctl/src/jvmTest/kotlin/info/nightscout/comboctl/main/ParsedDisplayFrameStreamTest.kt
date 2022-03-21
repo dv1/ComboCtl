@@ -13,6 +13,9 @@ import info.nightscout.comboctl.parser.ParsedScreen
 import info.nightscout.comboctl.parser.testFrameMainScreenWithTimeSeparator
 import info.nightscout.comboctl.parser.testFrameMainScreenWithoutTimeSeparator
 import info.nightscout.comboctl.parser.testFrameStandardBolusMenuScreen
+import info.nightscout.comboctl.parser.testFrameTbrDurationEnglishScreen
+import info.nightscout.comboctl.parser.testFrameTemporaryBasalRateNoPercentageScreen
+import info.nightscout.comboctl.parser.testFrameTemporaryBasalRatePercentage110Screen
 import info.nightscout.comboctl.parser.testFrameW6CancelTbrWarningScreen
 import info.nightscout.comboctl.parser.testTimeAndDateSettingsHourPolishScreen
 import info.nightscout.comboctl.parser.testTimeAndDateSettingsHourRussianScreen
@@ -315,4 +318,50 @@ class ParsedDisplayFrameStreamTest {
         val parsedLastFrame = stream.getParsedDisplayFrame()
         assertEquals(ParsedScreen.TimeAndDateSettingsHourScreen(hour = 13), parsedLastFrame!!.parsedScreen)
     }
+
+    @Test
+    fun checkSkippingBlinkedOutScreens() = runBlocking {
+        // Test that the stream correctly skips blinked-out screens.
+
+        // Produce a test feed of 3 frames, with the second frame being blinked out.
+        // We expect the stream to filter that blinked-out frame.
+        val displayFrameList = listOf(
+            testFrameTemporaryBasalRatePercentage110Screen,
+            testFrameTemporaryBasalRateNoPercentageScreen,
+            testFrameTbrDurationEnglishScreen
+        )
+
+        val parsedFrameList = mutableListOf<ParsedDisplayFrame>()
+        val stream = ParsedDisplayFrameStream()
+
+        coroutineScope {
+            val producerJob = launch {
+                for (displayFrame in displayFrameList) {
+                    // Wait here until the frame has been retrieved, since otherwise,
+                    // the feedDisplayFrame() call below would overwrite the already
+                    // stored frame.
+                    while (stream.hasStoredDisplayFrame())
+                        delay(100)
+                    stream.feedDisplayFrame(displayFrame)
+                }
+            }
+            launch {
+                while (true) {
+                    val parsedFrame = stream.getParsedDisplayFrame(filterDuplicates = false)
+                    assertNotNull(parsedFrame)
+                    parsedFrameList.add(parsedFrame)
+                    if (parsedFrameList.size >= 2)
+                        break
+                }
+                producerJob.cancel()
+            }
+        }
+
+        val parsedFrameIter = parsedFrameList.listIterator()
+
+        assertEquals(2, parsedFrameList.size)
+        assertEquals(ParsedScreen.TemporaryBasalRatePercentageScreen(percentage = 110), parsedFrameIter.next().parsedScreen)
+        assertEquals(ParsedScreen.TemporaryBasalRateDurationScreen(durationInMinutes = 30), parsedFrameIter.next().parsedScreen)
+    }
+
 }

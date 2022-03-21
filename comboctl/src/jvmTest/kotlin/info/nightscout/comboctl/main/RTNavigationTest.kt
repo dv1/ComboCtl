@@ -100,6 +100,9 @@ class RTNavigationTest {
 
                 lastParsedScreen = thisParsedScreen
 
+                if ((thisParsedScreen != null) && thisParsedScreen.isBlinkedOut)
+                    continue
+
                 if (processAlertScreens && (thisParsedScreen != null)) {
                     if (thisParsedScreen is ParsedScreen.AlertScreen)
                         throw AlertScreenException(thisParsedScreen.content)
@@ -241,6 +244,39 @@ class RTNavigationTest {
         runBlockingWithWatchdog(6000) {
             navigateToRTScreen(rtNavigationContext, ParsedScreen.QuickinfoMainScreen::class, isComboStopped = false)
         }
+    }
+
+    @Test
+    fun checkRTNavigationWithBlinkedOutScreens() {
+        // During navigation, the stream must skip screens that are blinked out,
+        // otherwise the navigation may incorrectly press RT buttons more often
+        // than necessary.
+
+        val rtNavigationContext = TestRTNavigationContext(listOf(
+            ParsedScreen.MainScreen(MainScreenContent.Normal(
+                currentTime = LocalDateTime(year = 2020, monthNumber = 10, dayOfMonth = 4, hour = 0, minute = 0),
+                activeBasalRateNumber = 1,
+                currentBasalRateFactor = 300,
+                batteryState = BatteryState.FULL_BATTERY
+            )),
+            ParsedScreen.TemporaryBasalRateMenuScreen,
+            ParsedScreen.TemporaryBasalRatePercentageScreen(percentage = 110),
+            ParsedScreen.TemporaryBasalRatePercentageScreen(percentage = null),
+            ParsedScreen.TemporaryBasalRateDurationScreen(durationInMinutes = 45)
+        ))
+
+        runBlockingWithWatchdog(6000) {
+            navigateToRTScreen(rtNavigationContext, ParsedScreen.TemporaryBasalRateDurationScreen::class, isComboStopped = false)
+        }
+
+        assertContentEquals(
+            listOf(
+                RTNavigationButton.MENU,
+                RTNavigationButton.CHECK,
+                RTNavigationButton.MENU
+            ),
+            rtNavigationContext.shortPressedRTButtons
+        )
     }
 
     @Test
