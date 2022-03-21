@@ -1,6 +1,5 @@
 package info.nightscout.comboctl.main
 
-import info.nightscout.comboctl.base.DisplayFrame
 import info.nightscout.comboctl.base.LogLevel
 import info.nightscout.comboctl.base.Logger
 import info.nightscout.comboctl.base.NullDisplayFrame

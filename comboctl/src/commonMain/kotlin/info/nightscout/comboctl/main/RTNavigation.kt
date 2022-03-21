@@ -15,7 +15,6 @@ import kotlin.reflect.KClassifier
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 private val logger = Logger.get("RTNavigation")
@@ -603,7 +602,7 @@ suspend fun adjustQuantityOnScreen(
         "cyclicQuantityRange = $cyclicQuantityRange"
     }
 
-    var initialQuantity = 0
+    var initialQuantity: Int
     rtNavigationContext.resetDuplicate()
 
     // Get the quantity that is initially shown on screen.
