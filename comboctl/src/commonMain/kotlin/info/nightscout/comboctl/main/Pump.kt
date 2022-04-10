@@ -341,9 +341,6 @@ class Pump(
     class UnaccountedBolusDetectedException :
         ComboException("Unaccounted bolus(es) detected")
 
-    class UnknownTbrDetectedException(val tbrPercentage: Int) :
-        ComboException("Unknown TBR with $tbrPercentage% detected")
-
     /**
      * Exception thrown when something goes wrong with a bolus delivery.
      *
@@ -503,6 +500,10 @@ class Pump(
         ) : Event()
         data class TbrStarted(val tbr: Tbr) : Event()
         data class TbrEnded(val tbr: Tbr) : Event()
+        data class UnknownTbrDetected(
+            val tbrPercentage: Int,
+            val remainingTbrDurationInMinutes: Int
+        ) : Event()
     }
 
     /**
@@ -770,7 +771,7 @@ class Pump(
      * [PumpStateStore] and what is displayed on the main Combo screen
      * (this is retrieved by [updateStatus] in the remote terminal mode).
      * If an unknown TBR is detected, then that unknown TBR is cancelled,
-     * and [UnknownTbrDetectedException] is thrown.
+     * and [Event.UnknownTbrDetected] is emitted via [onEvent].
      * 5. If [currentBasalProfile] is null, or if the current basal rate
      * that is shown on the main Combo RT screen does not match the current
      * basal rate from the profile at this hour, the basal profile is read
@@ -817,9 +818,6 @@ class Pump(
      * @throws UnaccountedBolusDetectedException if during the pump checks
      *   a bolus is found in the pump's history delta that wasn't delivered
      *   by ComboCtl.
-     * @throws UnknownTbrDetectedException if during the pump checks
-     *   the pump is found to be currently delivering a TBR that is unknown
-     *   to ComboCtl.
      */
     suspend fun connect() {
         check(stateFlow.value == State.Disconnected) { "Attempted to connect to pump in a the ${stateFlow.value} state" }
@@ -2082,10 +2080,10 @@ class Pump(
             //    Do nothing in that case, since we already know that no TBR was ongoing.
             // 4. currentTbrState is NoTbrOngoing, and TBR information is shown on the main screen.
             //    This is an error - a TBR is ongoing that we don't know about. We did not start it!
-            //    End it immediately, then throw an UnknownTbrDetectedException, since we cannot
-            //    just continue due to the situation now being unclear. Ideally, this exception leads
-            //    to an alert shown on the UI. Also, in this case, we do a hard TBR cancel, which
-            //    triggers W6, but this is an unusual situation, so the extra vibration is okay.
+            //    End it immediately, then emit an UnknownTbrDetected event to inform the user about
+            //    this unexpected TBR. Ideally, this exception leads to an alert shown on the UI.
+            //    Also, in this case, we do a hard TBR cancel, which triggers W6, but this is an unusual
+            //    situation, so the extra vibration is okay.
             //
             // NOTE: When no TBR information is shown on the main screen, the status.tbrPercentage is
             // always set to 100. When there's TBR information, it is always something other than 100.
@@ -2119,7 +2117,11 @@ class Pump(
 
                         pumpIO.switchMode(PumpIO.Mode.REMOTE_TERMINAL)
                         setCurrentTbr(percentage = 100, durationInMinutes = 0)
-                        throw UnknownTbrDetectedException(status.tbrPercentage)
+
+                        onEvent(Event.UnknownTbrDetected(
+                            tbrPercentage = status.tbrPercentage,
+                            remainingTbrDurationInMinutes = status.remainingTbrDurationInMinutes
+                        ))
                     }
                 }
             }
