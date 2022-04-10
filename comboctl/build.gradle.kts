@@ -19,7 +19,11 @@ kotlin {
             kotlinOptions.jvmTarget = "11"
         }
     }
-    android()
+    android {
+        compilations.all {
+            kotlinOptions.jvmTarget = "11"
+        }
+    }
     sourceSets {
         val commonMain by getting {
             dependencies {
@@ -61,14 +65,18 @@ tasks {
 }
 
 android {
-    compileSdk = 29
+    compileSdk = 31
     defaultConfig {
-        minSdk = 26
-        targetSdk = 29
+        minSdk = 28
+        targetSdk = 28
     }
     sourceSets {
         getByName("main") {
             manifest.srcFile("src/androidMain/AndroidManifest.xml")
         }
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
     }
 }
