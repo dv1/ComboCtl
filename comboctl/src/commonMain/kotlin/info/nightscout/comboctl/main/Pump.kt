@@ -928,7 +928,8 @@ class Pump(
      */
     suspend fun setBasalProfile(basalProfile: BasalProfile, carryOverLastFactor: Boolean = true) = executeCommand<Boolean>(
         pumpMode = PumpIO.Mode.REMOTE_TERMINAL,
-        isIdempotent = true
+        isIdempotent = true,
+        allowExecutionWhileSuspended = true
     ) {
         if (basalProfile == currentBasalProfile) {
             logger(LogLevel.DEBUG) { "Current basal profile equals the profile that is to be set; ignoring redundant call" }
