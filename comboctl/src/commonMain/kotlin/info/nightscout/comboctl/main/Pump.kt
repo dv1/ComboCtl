@@ -1111,6 +1111,13 @@ class Pump(
                     expectedTbrPercentage = newPercentage
                     expectedTbrDuration = 15
                 }
+            } else {
+                // Current status shows that there is no TBR ongoing. This is
+                // therefore a redunant call. Handle this by expecting a 100%
+                // basal rate to make sure the checks below don't throw anything.
+                expectedTbrPercentage = 100
+                expectedTbrDuration = 0
+                logger(LogLevel.INFO) { "TBR was already cancelled" }
             }
         } else {
             val tbr = Tbr(
