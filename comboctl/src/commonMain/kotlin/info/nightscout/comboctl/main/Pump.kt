@@ -1701,8 +1701,9 @@ class Pump(
                     // (if isIdempotent is set to true).
                     handleAlertScreenContent(e.alertScreenContent)
                 } catch (e: TransportLayer.PacketReceiverException) {
-                    val pumpTerminatedConnection = (e.cause is ApplicationLayer.ErrorCodeException) &&
-                            (e.cause.appLayerPacket.command == ApplicationLayer.Command.CTRL_DISCONNECT)
+                    val pumpTerminatedConnection = (e.cause as? ApplicationLayer.ErrorCodeException)?.let {
+                        it.appLayerPacket.command == ApplicationLayer.Command.CTRL_DISCONNECT
+                    } ?: false
 
                     // Packet receiver exceptions can happen for a number of reasons.
                     // To be on the safe side, we only try to reconnect if the exception
