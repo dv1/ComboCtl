@@ -5,23 +5,25 @@ version = "1.0-SNAPSHOT"
 
 buildscript {
     extra.apply {
-        set("kotlinVersion", "1.6.10")
+        set("kotlin_version", "1.6.10")
+        set("kotlinx_coroutines_version", "1.6.0")
+        set("kotlinx_datetime_version", "0.3.2")
     }
     repositories {
         mavenCentral()
         google()
     }
     dependencies {
+        val kotlin_version = rootProject.extra["kotlin_version"]
         classpath("com.android.tools.build:gradle:7.1.2")
-        val kotlinVersion = rootProject.extra["kotlinVersion"]
-        logger.info("Building using Kotlin $kotlinVersion")
-        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion")
+        logger.info("Building using Kotlin $kotlin_version")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version")
     }
 }
 
 plugins {
-    val kotlinVersion = rootProject.extra["kotlinVersion"]
-    kotlin("multiplatform") version "$kotlinVersion" apply false
+    val kotlin_version = rootProject.extra["kotlin_version"]
+    kotlin("multiplatform") version "$kotlin_version" apply false
     id("org.jlleitschuh.gradle.ktlint") version "9.2.1"
 }
 

@@ -4,24 +4,15 @@ plugins {
     id("kotlin-kapt")
 }
 
-// TODO: It is currently unknown how to get these variables from the comboctl module instead
-buildscript {
-    extra.apply {
-        set("kotlinxCoroutinesVersion", "1.6.0")
-        set("kotlinxDatetimeVersion", "0.3.2")
-    }
-}
-
-val composeVersion = "1.1.1"
+val kotlinx_datetime_version = rootProject.extra["kotlinx_datetime_version"]
+val compose_version = "1.1.1"
 
 dependencies {
-    val kotlinxCoroutinesVersion = project.extra["kotlinxCoroutinesVersion"]
-    val kotlinxDatetimeVersion = project.extra["kotlinxDatetimeVersion"]
     implementation(platform("org.jetbrains.kotlin:kotlin-bom"))
 
     implementation(project(":comboctl"))
 
-    implementation("org.jetbrains.kotlinx:kotlinx-datetime:$kotlinxDatetimeVersion")
+    implementation("org.jetbrains.kotlinx:kotlinx-datetime:$kotlinx_datetime_version")
     // This is necessary to avoid errors like these which otherwise come up often at runtime:
     // "WARNING: Failed to transform class kotlinx/datetime/TimeZone$Companion
     // java.lang.NoClassDefFoundError: kotlinx/serialization/KSerializer"
@@ -48,16 +39,16 @@ dependencies {
     implementation("androidx.navigation:navigation-ui-ktx:2.4.1")
     implementation("com.google.android.material:material:1.5.0")
 
-    implementation("androidx.compose.ui:ui:$composeVersion")
-    implementation("androidx.compose.material:material:$composeVersion")
-    implementation("androidx.compose.ui:ui-tooling-preview:$composeVersion")
-    implementation("androidx.compose.runtime:runtime-livedata:$composeVersion")
+    implementation("androidx.compose.ui:ui:$compose_version")
+    implementation("androidx.compose.material:material:$compose_version")
+    implementation("androidx.compose.ui:ui-tooling-preview:$compose_version")
+    implementation("androidx.compose.runtime:runtime-livedata:$compose_version")
     implementation("com.google.accompanist:accompanist-flowlayout:0.21.2-beta")
     implementation("androidx.navigation:navigation-compose:2.5.0-alpha03")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.4.1")
     implementation("androidx.activity:activity-compose:1.4.0")
     implementation("com.google.accompanist:accompanist-flowlayout:0.21.2-beta")
-    debugImplementation("androidx.compose.ui:ui-tooling:$composeVersion")
+    debugImplementation("androidx.compose.ui:ui-tooling:$compose_version")
 }
 
 android {
@@ -93,7 +84,7 @@ android {
     }
 
     composeOptions {
-        kotlinCompilerExtensionVersion = composeVersion
+        kotlinCompilerExtensionVersion = compose_version
     }
 
     sourceSets {
