@@ -138,6 +138,8 @@ interface BluetoothInterface {
      *         discovery has been started already, or if the interface
      *         is in a state in which discovery is not possible, such as
      *         a Bluetooth subsystem that has been shut down.
+     * @throws BluetoothPermissionException if discovery fails because
+     *         scanning and connection permissions are missing.
      * @throws BluetoothException if discovery fails due to an underlying
      *         Bluetooth issue.
      */
@@ -178,6 +180,11 @@ interface BluetoothInterface {
 
     /**
      * Returns the friendly (= human-readable) name for the adapter.
+     *
+     * @throws BluetoothPermissionException if getting the adapter name
+     *         fails because connection permissions are missing.
+     * @throws BluetoothException if getting the adapter name fails
+     *         due to an underlying Bluetooth issue.
      */
     fun getAdapterFriendlyName(): String
 
