@@ -2,6 +2,7 @@ import org.jetbrains.dokka.gradle.DokkaTask
 
 val kotlinx_coroutines_version = rootProject.extra["kotlinx_coroutines_version"]
 val kotlinx_datetime_version = rootProject.extra["kotlinx_datetime_version"]
+val androidx_core_version = rootProject.extra["androidx_core_version"]
 
 plugins {
     kotlin("multiplatform")
@@ -36,7 +37,11 @@ kotlin {
                 implementation(kotlin("test-annotations-common"))
             }
         }
-        val androidMain by getting
+        val androidMain by getting {
+            dependencies {
+                implementation("androidx.core:core-ktx:$androidx_core_version")
+            }
+        }
         val jvmMain by getting
         val jvmTest by getting {
             dependencies {

@@ -88,7 +88,9 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
     override var deviceFilterCallback: (deviceAddress: BluetoothAddress) -> Boolean = { true }
 
     fun setup() {
-        val bondedDevices = bluetoothAdapter.bondedDevices
+        val bondedDevices = checkForConnectPermission(androidContext) {
+            bluetoothAdapter.bondedDevices
+        }
 
         logger(LogLevel.DEBUG) { "Found ${bondedDevices.size} bonded Bluetooth device(s)" }
 
@@ -156,10 +158,12 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
         // sdpServiceProvider and sdpServiceDescription values? (This is not
         // necessary for correct function, just a detail for sake of completeness.)
         logger(LogLevel.DEBUG) { "Setting up RFCOMM listener socket" }
-        rfcommServerSocket = bluetoothAdapter.listenUsingInsecureRfcommWithServiceRecord(
-            sdpServiceName,
-            Constants.sdpSerialPortUUID
-        )
+        rfcommServerSocket = checkForConnectPermission(androidContext) {
+            bluetoothAdapter.listenUsingInsecureRfcommWithServiceRecord(
+                sdpServiceName,
+                Constants.sdpSerialPortUUID
+            )
+        }
 
         // Run a separate thread to accept and throw away incoming RFCOMM connections.
         // We do not actually use those; the RFCOMM listener socket only exists to be
@@ -240,10 +244,11 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
     }
 
     override fun getDevice(deviceAddress: BluetoothAddress): BluetoothDevice =
-        AndroidBluetoothDevice(bluetoothAdapter, deviceAddress)
+        AndroidBluetoothDevice(androidContext, bluetoothAdapter, deviceAddress)
 
     override fun getAdapterFriendlyName() =
-        bluetoothAdapter.name ?: throw BluetoothException("Could not get Bluetooth adapter friendly name")
+        checkForConnectPermission(androidContext) { bluetoothAdapter.name }
+        ?: throw BluetoothException("Could not get Bluetooth adapter friendly name")
 
     override fun getPairedDeviceAddresses(): Set<BluetoothAddress> =
         try {
@@ -282,9 +287,12 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
             discoveryBroadcastReceiver = null
         }
 
-        if (bluetoothAdapter.isDiscovering) {
-            logger(LogLevel.DEBUG) { "Stopping discovery" }
-            bluetoothAdapter.cancelDiscovery()
+        runIfScanPermissionGranted(androidContext) {
+            @SuppressLint("MissingPermission")
+            if (bluetoothAdapter.isDiscovering) {
+                logger(LogLevel.DEBUG) { "Stopping discovery" }
+                bluetoothAdapter.cancelDiscovery()
+            }
         }
 
         if (discoveryStarted) {
@@ -483,11 +491,29 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
             " Device with address $androidBtAddressString is a Combo pump; accepting Bluetooth pairing request"
         }
 
-        // TODO: The following calls can fail, and yet,
-        // the pairing is established successfully.
-        // This requires further clarification.
+        // NOTE: The setPin(), createBond(), and setPairingConfirmation()
+        // calls *must* be made, no matter if the permissions were given
+        // or not. Otherwise, pairing fails. This is because the Combo's
+        // pairing mechanism is unusual; the Bluetooth PIN is hardcoded
+        // (see the BT_PAIRING_PIN constant), and the application enters
+        // it programmatically. For security reasons, this isn't normally
+        // doable. But, with the calls below, it seems to work. This sort
+        // of bends what is possible in Android, and is the cause for
+        // pairing difficulties, but cannot be worked around.
+        //
+        // This means that setPin(), createBond(), and setPairingConfirmation()
+        // _must not_ be called with functions like checkForConnectPermission(),
+        // since those functions would always detect the missing permissions
+        // and refuse to invoke these functions.
+        //
+        // Furthermore, setPairingConfirmation requires the BLUETOOTH_PRIVILEGED
+        // permission. However, this permission is only accessible to system
+        // apps. But again, without it, pairing fails, and we are probably
+        // using undocumented behavior here. The call does fail with a
+        // SecurityException, but still seems to do _something_.
 
         try {
+            @SuppressLint("MissingPermission")
             if (!androidBtDevice.setPin(btPairingPin.encodeToByteArray())) {
                 logger(LogLevel.WARN) { "Could not set Bluetooth pairing PIN" }
             }
@@ -496,6 +522,7 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
         }
 
         try {
+            @SuppressLint("MissingPermission")
             if (!androidBtDevice.createBond()) {
                 logger(LogLevel.WARN) { "Could not create bond" }
             }
@@ -503,11 +530,6 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
             logger(LogLevel.WARN) { "Caught error while creating bond: $t" }
         }
 
-        // TODO: setPairingConfirmation requires the BLUETOOTH_PRIVILEGED
-        // permission. However, this permission is only accessible to
-        // system apps. Leaving this call here in case this can be resolved
-        // somehow in the future, but this most likely throws a
-        // SecurityException on most Android devices.
         try {
             @SuppressLint("MissingPermission")
             if (!androidBtDevice.setPairingConfirmation(true)) {

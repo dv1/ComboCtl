@@ -3,6 +3,7 @@ package info.nightscout.comboctl.android
 import android.bluetooth.BluetoothAdapter as SystemBluetoothAdapter
 import android.bluetooth.BluetoothDevice as SystemBluetoothDevice
 import android.bluetooth.BluetoothSocket as SystemBluetoothSocket
+import android.content.Context
 import info.nightscout.comboctl.base.BasicProgressStage
 import info.nightscout.comboctl.base.BluetoothAddress
 import info.nightscout.comboctl.base.BluetoothDevice
@@ -28,6 +29,7 @@ private val logger = Logger.get("AndroidBluetoothDevice")
  * instantiates and returns this (as a [BluetoothDevice]).
  */
 class AndroidBluetoothDevice(
+    private val androidContext: Context,
     private val systemBluetoothAdapter: SystemBluetoothAdapter,
     override val address: BluetoothAddress
 ) : BluetoothDevice() {
@@ -86,20 +88,22 @@ class AndroidBluetoothDevice(
                 } catch (ignored: InterruptedException) {
                 }
 
-                systemBluetoothSocket = device.createInsecureRfcommSocketToServiceRecord(Constants.sdpSerialPortUUID)
+                checkForConnectPermission(androidContext) {
+                    systemBluetoothSocket = device.createInsecureRfcommSocketToServiceRecord(Constants.sdpSerialPortUUID)
 
-                // connect() must be explicitly called. Just creating the socket via
-                // createInsecureRfcommSocketToServiceRecord() does not implicitly
-                // establish the connection. This is important to keep in mind, since
-                // otherwise, the calls below get input and output streams appear at
-                // first to be OK until their read/write functions are actually used.
-                // At that point, very confusing NullPointerExceptions are thrown from
-                // seemingly nowhere. These NPEs happen because *inside* the streams
-                // there are internal Input/OutputStreams, and *these* are set to null
-                // if the connection wasn't established. See also:
-                // https://stackoverflow.com/questions/24267671/inputstream-read-causes-nullpointerexception-after-having-checked-inputstream#comment37491136_24267671
-                // and: https://stackoverflow.com/a/24269255/560774
-                systemBluetoothSocket!!.connect()
+                    // connect() must be explicitly called. Just creating the socket via
+                    // createInsecureRfcommSocketToServiceRecord() does not implicitly
+                    // establish the connection. This is important to keep in mind, since
+                    // otherwise, the calls below get input and output streams which appear
+                    // at first to be OK until their read/write functions are actually used.
+                    // At that point, very confusing NullPointerExceptions are thrown from
+                    // seemingly nowhere. These NPEs happen because *inside* the streams
+                    // there are internal Input/OutputStreams, and *these* are set to null
+                    // if the connection wasn't established. See also:
+                    // https://stackoverflow.com/questions/24267671/inputstream-read-causes-nullpointerexception-after-having-checked-inputstream#comment37491136_24267671
+                    // and: https://stackoverflow.com/a/24269255/560774
+                    systemBluetoothSocket!!.connect()
+                }
             }
         } catch (t: Throwable) {
             throw BluetoothException("Could not establish an RFCOMM client connection to device with address $address", t)

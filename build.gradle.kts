@@ -8,6 +8,7 @@ buildscript {
         set("kotlin_version", "1.6.10")
         set("kotlinx_coroutines_version", "1.6.0")
         set("kotlinx_datetime_version", "0.3.2")
+        set("androidx_core_version", "1.8.0")
     }
     repositories {
         mavenCentral()
