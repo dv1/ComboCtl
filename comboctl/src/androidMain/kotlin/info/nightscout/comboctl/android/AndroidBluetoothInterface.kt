@@ -1,8 +1,9 @@
 package info.nightscout.comboctl.android
 
 import android.annotation.SuppressLint
-import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothAdapter as SystemBluetoothAdapter
 import android.bluetooth.BluetoothDevice as SystemBluetoothDevice
+import android.bluetooth.BluetoothManager as SystemBluetoothManager
 import android.bluetooth.BluetoothServerSocket as SystemBluetoothServerSocket
 import android.bluetooth.BluetoothSocket as SystemBluetoothSocket
 import android.content.BroadcastReceiver
@@ -34,7 +35,7 @@ private val logger = Logger.get("AndroidBluetoothInterface")
  * instance is an ideal choice.
  */
 class AndroidBluetoothInterface(private val androidContext: Context) : BluetoothInterface {
-    private val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
+    private var bluetoothAdapter: SystemBluetoothAdapter? = null
     private var rfcommServerSocket: SystemBluetoothServerSocket? = null
     private var discoveryStarted = false
     private var discoveryBroadcastReceiver: BroadcastReceiver? = null
@@ -88,8 +89,11 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
     override var deviceFilterCallback: (deviceAddress: BluetoothAddress) -> Boolean = { true }
 
     fun setup() {
+        val bluetoothManager = androidContext.getSystemService(Context.BLUETOOTH_SERVICE) as SystemBluetoothManager
+        bluetoothAdapter = bluetoothManager.adapter
+
         val bondedDevices = checkForConnectPermission(androidContext) {
-            bluetoothAdapter.bondedDevices
+            bluetoothAdapter!!.bondedDevices
         }
 
         logger(LogLevel.DEBUG) { "Found ${bondedDevices.size} bonded Bluetooth device(s)" }
@@ -159,7 +163,7 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
         // necessary for correct function, just a detail for sake of completeness.)
         logger(LogLevel.DEBUG) { "Setting up RFCOMM listener socket" }
         rfcommServerSocket = checkForConnectPermission(androidContext) {
-            bluetoothAdapter.listenUsingInsecureRfcommWithServiceRecord(
+            bluetoothAdapter!!.listenUsingInsecureRfcommWithServiceRecord(
                 sdpServiceName,
                 Constants.sdpSerialPortUUID
             )
@@ -203,7 +207,7 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
         val intentFilter = IntentFilter()
         intentFilter.addAction(SystemBluetoothDevice.ACTION_ACL_CONNECTED)
         intentFilter.addAction(SystemBluetoothDevice.ACTION_PAIRING_REQUEST)
-        intentFilter.addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED)
+        intentFilter.addAction(SystemBluetoothAdapter.ACTION_DISCOVERY_FINISHED)
 
         discoveryBroadcastReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
@@ -212,7 +216,7 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
                 when (intent.action) {
                     SystemBluetoothDevice.ACTION_ACL_CONNECTED -> onAclConnected(intent, onFoundNewPairedDevice)
                     SystemBluetoothDevice.ACTION_PAIRING_REQUEST -> onPairingRequest(intent, btPairingPin)
-                    BluetoothAdapter.ACTION_DISCOVERY_FINISHED -> onDiscoveryFinished()
+                    SystemBluetoothAdapter.ACTION_DISCOVERY_FINISHED -> onDiscoveryFinished()
                     else -> Unit
                 }
             }
@@ -222,9 +226,9 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
 
         logger(LogLevel.DEBUG) { "Starting activity for making this Android device discoverable" }
 
-        val discoverableIntent = Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE).apply {
-            putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, discoveryDuration)
-            putExtra(BluetoothAdapter.EXTRA_SCAN_MODE, BluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE)
+        val discoverableIntent = Intent(SystemBluetoothAdapter.ACTION_REQUEST_DISCOVERABLE).apply {
+            putExtra(SystemBluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, discoveryDuration)
+            putExtra(SystemBluetoothAdapter.EXTRA_SCAN_MODE, SystemBluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE)
             // Necessary since we want to be able to start scans from any
             // context, not just from activities. In fact, starting scans
             // from activities would be a back pick, since they can  can
@@ -244,10 +248,10 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
     }
 
     override fun getDevice(deviceAddress: BluetoothAddress): BluetoothDevice =
-        AndroidBluetoothDevice(androidContext, bluetoothAdapter, deviceAddress)
+        AndroidBluetoothDevice(androidContext, bluetoothAdapter!!, deviceAddress)
 
     override fun getAdapterFriendlyName() =
-        checkForConnectPermission(androidContext) { bluetoothAdapter.name }
+        checkForConnectPermission(androidContext) { bluetoothAdapter!!.name }
         ?: throw BluetoothException("Could not get Bluetooth adapter friendly name")
 
     override fun getPairedDeviceAddresses(): Set<BluetoothAddress> =
@@ -289,9 +293,9 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
 
         runIfScanPermissionGranted(androidContext) {
             @SuppressLint("MissingPermission")
-            if (bluetoothAdapter.isDiscovering) {
+            if (bluetoothAdapter!!.isDiscovering) {
                 logger(LogLevel.DEBUG) { "Stopping discovery" }
-                bluetoothAdapter.cancelDiscovery()
+                bluetoothAdapter!!.cancelDiscovery()
             }
         }
 
