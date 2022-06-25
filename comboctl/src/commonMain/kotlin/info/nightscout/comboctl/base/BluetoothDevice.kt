@@ -20,6 +20,8 @@ abstract class BluetoothDevice : BlockingComboIO() {
      * This function blocks until the connection is set up or an error occurs.
      *
      * @param progressReporter [ProgressReporter] for tracking connect progress.
+     * @throws BluetoothPermissionException if connecting fails
+     *         because connection permissions are missing.
      * @throws BluetoothException if connection fails due to an underlying
      *         Bluetooth issue.
      * @throws ComboIOException if connection fails due to an underlying
