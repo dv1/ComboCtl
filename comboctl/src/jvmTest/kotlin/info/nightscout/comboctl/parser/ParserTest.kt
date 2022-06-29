@@ -849,7 +849,12 @@ class ParserTest {
             Pair(testTimeAndDateSettingsMinuteGermanScreen, ParsedScreen.TimeAndDateSettingsMinuteScreen(22)),
             Pair(testTimeAndDateSettingsYearGermanScreen, ParsedScreen.TimeAndDateSettingsYearScreen(2015)),
             Pair(testTimeAndDateSettingsMonthGermanScreen, ParsedScreen.TimeAndDateSettingsMonthScreen(4)),
-            Pair(testTimeAndDateSettingsDayGermanScreen, ParsedScreen.TimeAndDateSettingsDayScreen(21))
+            Pair(testTimeAndDateSettingsDayGermanScreen, ParsedScreen.TimeAndDateSettingsDayScreen(21)),
+
+            // Extra test to verify that a *minute* 24 is not incorrectly interpreted
+            // as an *hour* 24 and thus translated to 0 (this is done because the Combo
+            // may show midnight as both hour 0 and hour 24).
+            Pair(testTimeAndDateSettingsMinute24Screen, ParsedScreen.TimeAndDateSettingsMinuteScreen(24))
         )
 
         for (testScreen in testScreens) {

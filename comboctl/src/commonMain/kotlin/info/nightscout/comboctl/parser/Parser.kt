@@ -1445,7 +1445,10 @@ class TimeAndDateSettingsScreenParser(val titleId: TitleID) : Parser() {
         val ampm = parseResult.valueAtOrNull<String>(2)
         var quantity = parseResult.valueAtOrNull<Int>(1)
 
-        if (quantity != null)
+        // The AM/PM -> 24 hour translation must only be attempted if the
+        // quantity is an hour. If it is a minute, this translation might
+        // incorrectly change minute 24 into minute 0 for example.
+        if ((titleId == TitleID.HOUR) && (quantity != null))
             quantity = amPmTo24Hour(quantity, ampm ?: "")
 
         val expectedSymbol = when (titleId) {
