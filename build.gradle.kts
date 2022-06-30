@@ -16,7 +16,7 @@ buildscript {
     }
     dependencies {
         val kotlin_version = rootProject.extra["kotlin_version"]
-        classpath("com.android.tools.build:gradle:7.1.2")
+        classpath("com.android.tools.build:gradle:7.2.1")
         logger.info("Building using Kotlin $kotlin_version")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version")
     }
