@@ -77,7 +77,7 @@ class ParsedDisplayFrameStream {
      * This aborts an ongoing suspending [getParsedDisplayFrame] call.
      */
     fun resetAll() {
-        @Suppress("EXPERIMENTAL_API_USAGE")
+        @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
         _flow.resetReplayCache()
         parsedDisplayFrameChannel.close()
         parsedDisplayFrameChannel = createChannel()
@@ -124,7 +124,7 @@ class ParsedDisplayFrameStream {
      * [getParsedDisplayFrame] simultaneously.
      */
     fun hasStoredDisplayFrame(): Boolean =
-        @Suppress("EXPERIMENTAL_API_USAGE")
+        @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
         !(parsedDisplayFrameChannel.isEmpty)
 
     /**
