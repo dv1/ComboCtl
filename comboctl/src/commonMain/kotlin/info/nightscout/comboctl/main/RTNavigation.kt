@@ -328,6 +328,13 @@ sealed class LongPressRTButtonsCommand {
  * [button] is kept pressed until [checkScreen] returns [LongPressRTButtonsCommand.ReleaseButton],
  * at which point that RT button is released.
  *
+ * NOTE: The RT button may actually be released a little past the time [checkScreen]
+ * indicates that the RT button is to be released. This is due to limitations in how
+ * the RT screen UX works. It is recommended to add checks after running the long RT
+ * button press if the state of the RT screen afterwards is important. For example,
+ * when adjusting a quantity on the RT screen, check afterwards the quantity once it
+ * stops in/decrementing and correct it with short RT button presses if needed.
+ *
  * @param rtNavigationContext Context to use for the long RT button press.
  * @param button Button to long-press.
  * @param checkScreen Callback that returns whether to continue
@@ -367,57 +374,48 @@ suspend fun longPressRTButtonUntil(
         }
 
         launch {
-            var inactivityCompensationStage = 0
+            logger(LogLevel.VERBOSE) { "Starting long press RT button coroutine" }
 
-            logger(LogLevel.VERBOSE) { "Started long press RT button coroutine" }
             rtNavigationContext.startLongButtonPress(button) {
-                // Check if we need to stop. We have to handle a special
-                // case here though because of the way the Combo's UX
-                // works. When holding down a button, there is one update,
-                // followed by a period of inactivity, followed by more
-                // updates. The Combo does this because otherwise it would not
-                // be possible for the user to reliably specify whether a button
-                // press is a short or a long one. During the inactivity
-                // period, there is no information from the Combo, no
-                // RT button confirmation. But we have to keep sending
-                // RT_BUTTON_STATUS packets during this period, otherwise
-                // the inactivity period never ends. We solve this by adding
-                // a special case: During that period, don't suspend until
-                // the channel receives something. Instead, if the channel
-                // did not receive anything, behave as if the channel received
-                // "false". That way, the code below will run, and a new
-                // RT_BUTTON_STATUS will be sent, and this will go on until
-                // the channel actually receives something.
-                val stop = if (inactivityCompensationStage == 2) {
-                    val receiveAttemptResult = channel.tryReceive()
-                    if (!receiveAttemptResult.isSuccess) {
-                        false
-                    } else
-                        receiveAttemptResult.getOrThrow()
-                } else
-                    channel.receive()
-                if (inactivityCompensationStage < 3)
-                    inactivityCompensationStage++
+                // This block is called by startLongButtonPress() every time
+                // before sending an RT button update to the Combo. This is
+                // important, because in RT screens that show a quantity that
+                // is to be in/decrement, said in/decrement will not happen
+                // until that update has been sent.
+                //
+                // We send this update regularly, independently of whether
+                // a new screen arrives. This risks overshooting a bit when
+                // in/decrementing (because we might send more than one
+                // RT button update before the quantity on screen visibly
+                // in/decrements), but is the robust alternative to updating
+                // after a screen update. The latter does not overshoot, but
+                // breaks if screen updates only arrive after an RT button
+                // update (this happens in the TDD screen for example).
+                //
+                // Also, when in/decrementing, the Combo's UX has a special
+                // case - when holding down a button, there is one screen
+                // update, followed by a period of inactivity, followed by
+                // more updates. The Combo does this because otherwise it
+                // would not be possible for the user to reliably specify
+                // whether a button press is a short or a long one. This
+                // inactivity period though breaks the second, less robust
+                // option mentioned above.
+                //
+                // Therefore, just send updates regularly, after the
+                // WAIT_PERIOD_DURING_LONG_RT_BUTTON_PRESS_IN_MS period.
+                val receiveAttemptResult = channel.tryReceive()
+                val stop = if (!receiveAttemptResult.isSuccess)
+                    false
+                else
+                    receiveAttemptResult.getOrThrow()
 
                 if (!stop) {
-                    // In here, we wait for a short while. This is necessary,
-                    // because at each startLongButtonPress callback iteration,
-                    // a command is sent to the Combo that informs it that the
-                    // button is still being held down. This triggers an update
-                    // in the Combo. For example, if the current screen is a
-                    // TBR percentage screen, and the UP button is held down,
-                    // then the percentage will be increased after that command
-                    // is sent to the Combo. These commands cannot be sent too
-                    // rapidly, since it takes the Combo some time to  send a
-                    // new screen (a screen with the incremented percentage in
-                    // this TBR example) to the client. If the commands are sent
-                    // too quickly, then the Combo would keep sending new
-                    // screens even long after the button was released.
                     delay(WAIT_PERIOD_DURING_LONG_RT_BUTTON_PRESS_IN_MS)
                 }
 
                 return@startLongButtonPress !stop
             }
+
             rtNavigationContext.waitForLongButtonPressToFinish()
             logger(LogLevel.VERBOSE) { "Stopped long press RT button coroutine" }
         }
