@@ -999,6 +999,8 @@ class Pump(
 
             setBasalProfileReporter.setCurrentProgressStage(BasicProgressStage.Finished)
 
+            currentBasalProfile = basalProfile
+
             return@executeCommand true
         } catch (t: Throwable) {
             setBasalProfileReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
