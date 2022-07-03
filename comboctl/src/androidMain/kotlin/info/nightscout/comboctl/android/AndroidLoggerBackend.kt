@@ -1,9 +1,11 @@
-package info.nightscout.comboctl.base
+package info.nightscout.comboctl.android
 
 import android.util.Log
+import info.nightscout.comboctl.base.LogLevel
+import info.nightscout.comboctl.base.LoggerBackend
 
-actual class PlatformLoggerBackend actual constructor() : LoggerBackend {
-    actual override fun log(tag: String, level: LogLevel, throwable: Throwable?, message: String?) {
+class AndroidLoggerBackend : LoggerBackend {
+    override fun log(tag: String, level: LogLevel, throwable: Throwable?, message: String?) {
         when (level) {
             LogLevel.VERBOSE -> Log.v(tag, message, throwable)
             LogLevel.DEBUG -> Log.d(tag, message, throwable)

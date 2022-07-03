@@ -3,11 +3,19 @@ package info.nightscout.comboctl.comboandroid
 import android.app.Application
 import android.content.Context
 import info.nightscout.comboctl.android.AndroidBluetoothInterface
+import info.nightscout.comboctl.android.AndroidLoggerBackend
+import info.nightscout.comboctl.base.LogLevel
+import info.nightscout.comboctl.base.Logger
 import info.nightscout.comboctl.comboandroid.persist.SharedPrefsPumpStateStore
 import info.nightscout.comboctl.main.PumpManager
 
 class App : Application() {
     private val bluetoothInterface = AndroidBluetoothInterface(this)
+
+    init {
+        Logger.threshold = LogLevel.DEBUG
+        Logger.backend = AndroidLoggerBackend()
+    }
 
     override fun onCreate() {
         _appContext = this

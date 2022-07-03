@@ -56,10 +56,24 @@ class NullLoggerBackend : LoggerBackend {
 }
 
 /**
- * Backend that prints log lines in a platform specific manner.
+ * Backend that prints log lines to stderr.
  */
-expect class PlatformLoggerBackend() : LoggerBackend {
-    override fun log(tag: String, level: LogLevel, throwable: Throwable?, message: String?)
+class StderrLoggerBackend : LoggerBackend {
+    override fun log(tag: String, level: LogLevel, throwable: Throwable?, message: String?) {
+        val timestamp = getElapsedTimeInMs()
+
+        val stackInfo = Throwable().stackTrace[1]
+        val className = stackInfo.className.substringAfterLast(".")
+        val methodName = stackInfo.methodName
+        val lineNumber = stackInfo.lineNumber
+
+        val fullMessage = "[${timestamp.toStringWithDecimal(3).padStart(10, ' ')}] " +
+            "[${level.str}] [$tag] [$className.$methodName():$lineNumber]" +
+            (if (throwable != null) "  (${throwable::class.qualifiedName}: \"${throwable.message}\")" else "") +
+            (if (message != null) "  $message" else "")
+
+        System.err.println(fullMessage)
+    }
 }
 
 class SingleTagLogger(val tag: String) {
@@ -84,7 +98,7 @@ class SingleTagLogger(val tag: String) {
  *
  * Applications can set a custom logger backend simply by setting
  * the [Logger.backend] variable to a new value. By default, the
- * [PlatformLoggerBackend] is used.
+ * [StderrLoggerBackend] is used.
  *
  * The logger is used by adding a line like this at the top of:
  * a source file:
@@ -110,6 +124,6 @@ class SingleTagLogger(val tag: String) {
  */
 object Logger {
     var threshold = LogLevel.DEBUG
-    var backend: LoggerBackend = PlatformLoggerBackend()
+    var backend: LoggerBackend = StderrLoggerBackend()
     fun get(tag: String) = SingleTagLogger(tag)
 }
