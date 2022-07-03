@@ -2,6 +2,7 @@ package info.nightscout.comboctl.base
 
 import kotlin.math.max
 import kotlin.math.min
+import kotlinx.datetime.Clock
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.atTime
@@ -253,8 +254,9 @@ internal fun Long.toStringWithDecimal(numDecimals: Int): String {
  * Returns the elapsed time in milliseconds.
  *
  * This measures the elapsed time that started at some arbitrary point
- * (typically the moment the system was booted). It does _not_ necessarily
- * return the current wall-clock time, and is intended to be used for
- * calculating intervals.
+ * (typically Epoch, or the moment the system was booted). It does _not_
+ * necessarily return the current wall-clock time, and is only intended
+ * to be used for calculating intervals and to add timestamps to events
+ * such as when log lines are produced.
  */
-internal expect fun getElapsedTimeInMs(): Long
+internal fun getElapsedTimeInMs(): Long = Clock.System.now().toEpochMilliseconds()
