@@ -1084,8 +1084,8 @@ class Pump(
         // class is rather meant for TBR events.
 
         val currentStatus = statusFlow.value ?: throw IllegalStateException("Cannot start TBR without a known pump status")
-        var expectedTbrPercentage = 0
-        var expectedTbrDuration = 0
+        var expectedTbrPercentage: Int
+        var expectedTbrDuration: Int
 
         // In the code below, we always create a Tbr object _before_ calling
         // setCurrentTbr to make use of the checks in the Tbr constructor.
