@@ -6,6 +6,7 @@ import info.nightscout.comboctl.base.BluetoothDevice
 import info.nightscout.comboctl.base.BluetoothInterface
 import info.nightscout.comboctl.base.ProgressReporter
 import java.lang.AutoCloseable
+import kotlinx.coroutines.Dispatchers
 
 /**
  * Class representing a Bluetooth device accessible through BlueZ.
@@ -23,7 +24,7 @@ class BlueZDevice(
     private val bluezInterface: BlueZInterface,
     nativeDevicePtr: Long,
     override val address: BluetoothAddress
-) : BluetoothDevice(), AutoCloseable {
+) : BluetoothDevice(Dispatchers.IO), AutoCloseable {
     init {
         // This calls the constructor of the native C++ class.
         initialize()

@@ -1,6 +1,7 @@
 package info.nightscout.comboctl.base
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 
 /**
@@ -70,16 +71,22 @@ interface ComboIO {
  * them in the IO context to make sure their blocking behavior
  * does not block the coroutine. Subclasses must implement
  * blockingSend and blockingReceive.
+ *
+ * @property ioDispatcher [CoroutineDispatcher] where the
+ *   [blockingSend] and [blockingReceive] calls shall take place.
+ *   These calls may block threads for a nontrivial amount of time,
+ *   so the dispatcher must be suitable for that. On JVM and Android
+ *   platforms, there is an IO dispatcher for this.
  */
-abstract class BlockingComboIO : ComboIO {
+abstract class BlockingComboIO(val ioDispatcher: CoroutineDispatcher) : ComboIO {
     final override suspend fun send(dataToSend: List<Byte>) {
-        withContext(ioDispatcher()) {
+        withContext(ioDispatcher) {
             blockingSend(dataToSend)
         }
     }
 
     final override suspend fun receive(): List<Byte> {
-        return withContext(ioDispatcher()) {
+        return withContext(ioDispatcher) {
             blockingReceive()
         }
     }

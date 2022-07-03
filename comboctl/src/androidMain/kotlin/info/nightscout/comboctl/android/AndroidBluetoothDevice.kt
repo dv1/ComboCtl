@@ -18,6 +18,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
 
 private val logger = Logger.get("AndroidBluetoothDevice")
 
@@ -32,7 +33,7 @@ class AndroidBluetoothDevice(
     private val androidContext: Context,
     private val systemBluetoothAdapter: SystemBluetoothAdapter,
     override val address: BluetoothAddress
-) : BluetoothDevice() {
+) : BluetoothDevice(Dispatchers.IO) {
     private var systemBluetoothSocket: SystemBluetoothSocket? = null
     private var inputStream: InputStream? = null
     private var outputStream: OutputStream? = null

@@ -347,7 +347,7 @@ class PumpIO(
 
                 // Connecting to Bluetooth may block, so run it in
                 // a coroutine with an IO dispatcher.
-                withContext(ioDispatcher()) {
+                withContext(bluetoothDevice.ioDispatcher) {
                     bluetoothDevice.connect(progressReporter)
                 }
 
@@ -537,7 +537,7 @@ class PumpIO(
                 if (doUnpair) {
                     // Unpair in a separate context, since this
                     // can block for up to a second or so.
-                    withContext(ioDispatcher()) {
+                    withContext(bluetoothDevice.ioDispatcher) {
                         bluetoothDevice.unpair()
                     }
                     pumpStateStore.deletePumpState(address)
@@ -684,7 +684,7 @@ class PumpIO(
                 // Suspend the coroutine until Bluetooth is connected.
                 // Do this in a separate coroutine with an IO dispatcher
                 // since the connection setup may block.
-                withContext(ioDispatcher()) {
+                withContext(bluetoothDevice.ioDispatcher) {
                     bluetoothDevice.connect(connectProgressReporter)
                 }
 
@@ -1985,7 +1985,7 @@ class PumpIO(
         try {
             // Use a NonCancellable context in case we are here because
             // the performPairing or connectAsync coroutine got cancelled.
-            withContext(ioDispatcher() + NonCancellable) {
+            withContext(bluetoothDevice.ioDispatcher + NonCancellable) {
                 bluetoothDevice.disconnect()
             }
         } catch (e: CancellationException) {

@@ -21,7 +21,7 @@ import info.nightscout.comboctl.base.PumpIO.ConnectionRequestIsNotBeingAcceptedE
 import info.nightscout.comboctl.base.PumpStateStore
 import info.nightscout.comboctl.base.Tbr
 import info.nightscout.comboctl.base.TransportLayer
-import info.nightscout.comboctl.base.ioDispatcher
+// import info.nightscout.comboctl.base.ioDispatcher
 import info.nightscout.comboctl.base.toStringWithDecimal
 import info.nightscout.comboctl.parser.AlertScreenContent
 import info.nightscout.comboctl.parser.AlertScreenException
@@ -724,7 +724,7 @@ class Pump(
 
         // Unpairing in a coroutine with an IO dispatcher
         // in case unpairing blocks.
-        withContext(ioDispatcher()) {
+        withContext(bluetoothDevice.ioDispatcher) {
             bluetoothDevice.unpair()
         }
 

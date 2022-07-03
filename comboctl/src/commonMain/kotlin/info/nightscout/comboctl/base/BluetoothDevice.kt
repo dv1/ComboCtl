@@ -1,5 +1,7 @@
 package info.nightscout.comboctl.base
 
+import kotlinx.coroutines.CoroutineDispatcher
+
 /**
  * Abstract class for operating Bluetooth devices.
  *
@@ -7,8 +9,14 @@ package info.nightscout.comboctl.base
  * IO with a Bluetooth device.
  *
  * Subclass instances are created by [BluetoothInterface] subclasses.
+ *
+ * @param ioDispatcher [CoroutineDispatcher] where the
+ *   [blockingSend] and [blockingReceive] calls shall take place.
+ *   See the [BlockingComboIO] for details. Typically, this dispatcher
+ *   is sent by the [BluetoothInterface] subclass that creates this
+ *   [BluetoothDevice] instance.
  */
-abstract class BluetoothDevice : BlockingComboIO() {
+abstract class BluetoothDevice(ioDispatcher: CoroutineDispatcher) : BlockingComboIO(ioDispatcher) {
     /**
      * The device's Bluetooth address.
      */

@@ -8,12 +8,13 @@ import info.nightscout.comboctl.base.ProgressReporter
 import info.nightscout.comboctl.base.byteArrayListOfInts
 import info.nightscout.comboctl.base.toComboFrame
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
 
-class TestBluetoothDevice(private val testComboIO: ComboIO) : BluetoothDevice() {
+class TestBluetoothDevice(private val testComboIO: ComboIO) : BluetoothDevice(Dispatchers.IO) {
     private val frameParser = ComboFrameParser()
     private var innerJob = SupervisorJob()
     private var innerScope = CoroutineScope(innerJob)
