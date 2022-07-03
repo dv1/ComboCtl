@@ -1080,7 +1080,7 @@ class PumpIO(
             var delayBeforeNoButton = false
 
             try {
-                withContext(transportLayerIO.sequencedDispatcher()) {
+                withContext(sequencedDispatcher) {
                     sendPacketWithoutResponse(ApplicationLayer.createRTButtonStatusPacket(buttonCodes, true))
                     // Wait by "receiving" a value. We aren't actually interested
                     // in that value, just in receive() suspending this coroutine

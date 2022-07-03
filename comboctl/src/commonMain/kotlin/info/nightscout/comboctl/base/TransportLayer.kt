@@ -631,10 +631,6 @@ object TransportLayer {
             onBufferOverflow = BufferOverflow.SUSPEND
         )
 
-        // The single-threaded dispatcher manager for coordinating the receiver and sender activities.
-        // (Actual, low-level, blocking IO calls are called in the IO dispatcher.)
-        private val sequencedDispatcherManager = SequencedDispatcherManager()
-
         /**
          * Return value used for [start] onPacketReceived callbacks.
          *
@@ -646,15 +642,6 @@ object TransportLayer {
             FORWARD_PACKET,
             DROP_PACKET
         }
-
-        /**
-         * Returns the sequenced dispatcher that is used by this class.
-         *
-         * IMPORTANT: start() must have been called before this can
-         * return a valid value. Also, after this class was stopped
-         * with stop(), don't use this, unless start() was called again.
-         */
-        fun sequencedDispatcher() = sequencedDispatcherManager.dispatcher
 
         /**
          * Manually set the internal cached invariant pump data.
@@ -697,13 +684,11 @@ object TransportLayer {
         ) {
             check(packetReceiverJob == null) { "IO already started" }
 
-            sequencedDispatcherManager.acquireDispatcher()
-
-            // Override the scope's existing dispatcher with the one
-            // from [SequencedDispatcherManager] to ensure our IO
-            // operations never run in parallel and to prevent internal
-            // states to be accessed in parallel by multiple threads.
-            startInternal(packetReceiverScope + sequencedDispatcherManager.dispatcher, onPacketReceived)
+            // Override the scope's existing dispatcher with the
+            // sequencedDispatcher to ensure our IO operations never
+            // run in parallel and to prevent internal states to be
+            // accessed in parallel by multiple threads.
+            startInternal(packetReceiverScope + sequencedDispatcher, onPacketReceived)
         }
 
         /**
@@ -779,8 +764,6 @@ object TransportLayer {
 
                 logger(LogLevel.DEBUG) { "Transport layer IO stopped" }
             }
-
-            sequencedDispatcherManager.releaseDispatcher()
         }
 
         /** Returns true if IO is ongoing (due to a [startIO] call), false otherwise. */
@@ -929,7 +912,7 @@ object TransportLayer {
             }
         }
 
-        private suspend fun sendInternal(packetInfo: OutgoingPacketInfo) = withContext(sequencedDispatcherManager.dispatcher) {
+        private suspend fun sendInternal(packetInfo: OutgoingPacketInfo) = withContext(sequencedDispatcher) {
             // It is important to throttle the output to not overload
             // the Combo's packet ring buffer. Otherwise, old packets
             // get overwritten by new ones, and the Combo begins to
