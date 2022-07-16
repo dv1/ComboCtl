@@ -51,6 +51,7 @@ import kotlinx.datetime.atStartOfDayIn
 import kotlinx.datetime.offsetAt
 import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
+import kotlin.math.absoluteValue
 
 private val logger = Logger.get("Pump")
 
@@ -940,6 +941,29 @@ class Pump(
 
         setBasalProfileReporter.setCurrentProgressStage(RTCommandProgressStage.SettingBasalProfile(0))
 
+        // Refine the adjustment behavior. If the quantity on screen
+        // is only slightly deviating from what we want to configure,
+        // only use short RT button presses.
+        val longRTButtonPressPredicate = fun(targetQuantity: Int, quantityOnScreen: Int): Boolean {
+            val quantityDelta = (targetQuantity - quantityOnScreen).absoluteValue
+            // Distinguish between <1.0 and >= 1.0 IU quantities,
+            // since the granularity of adjustments differs below
+            // and above the 1.0 IU threshold (below, the quantity
+            // is incremented in 0.01 IU steps, above in 0.05 ones).
+            return if ((targetQuantity <= 1000) && (quantityOnScreen <= 1000)) {
+                (quantityDelta >= 150)
+            } else if ((targetQuantity >= 1000) && (quantityOnScreen >= 1000)) {
+                (quantityDelta >= 500)
+            } else {
+                val (quantityBelow1IU, quantityAbove1IU) = if (targetQuantity < quantityOnScreen)
+                    Pair(targetQuantity, quantityOnScreen)
+                else
+                    Pair(quantityOnScreen, targetQuantity)
+
+                ((1000 - quantityBelow1IU) > 150) || ((quantityAbove1IU - 1000) > 500)
+            }
+        }
+
         try {
             val firstBasalRateFactorScreen =
                 navigateToRTScreen(rtNavigationContext, ParsedScreen.BasalRateFactorSettingScreen::class, pumpSuspended)
@@ -952,7 +976,11 @@ class Pump(
 
             for (index in 0 until basalProfile.size) {
                 val basalFactor = basalProfile[index]
-                adjustQuantityOnScreen(rtNavigationContext, basalFactor) {
+                adjustQuantityOnScreen(
+                    rtNavigationContext,
+                    targetQuantity = basalFactor,
+                    longRTButtonPressPredicate = longRTButtonPressPredicate
+                ) {
                     (it as ParsedScreen.BasalRateFactorSettingScreen).numUnits
                 }
 
