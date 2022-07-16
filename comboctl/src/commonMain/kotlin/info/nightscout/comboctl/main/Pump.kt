@@ -1156,6 +1156,7 @@ class Pump(
                 durationInMinutes = durationInMinutes,
                 type
             )
+            tbr.checkDurationForCombo()
             setCurrentTbr(percentage = percentage, durationInMinutes = durationInMinutes)
             reportStartedTbr(tbr)
             expectedTbrPercentage = percentage

@@ -17,6 +17,14 @@ import kotlinx.datetime.Instant
  * argument must be in the 15-1440 range (= 15 minutes to 24 hours), and must
  * be an integer multiple of 15.
  *
+ * The constructor checks that [percentage] is valid. [durationInMinutes] is
+ * not checked, however, since there are cases where this class is used with
+ * TBRs that have a duration that is not an integer multiple of 15. In particular,
+ * this is relevant when cancelled / aborted TBRs are reported; their duration
+ * typically isn't an integer multiple of 15. It is recommended to call
+ * [checkDurationForCombo] before using the values of this TBR for programming
+ * the Combo's TBR.
+ *
  * @property timestamp Timestamp when the TBR started/stopped.
  * @property percentage TBR percentage.
  * @property durationInMinutes Duration of the TBR, in minutes.
@@ -72,11 +80,20 @@ data class Tbr(val timestamp: Instant, val percentage: Int, val durationInMinute
     }
 
     init {
-        require((percentage >= 0) && (percentage <= 500))
-        require((percentage % 10) == 0)
-        require(
-            (percentage == 100) ||
-            ((durationInMinutes >= 15) && (durationInMinutes <= (24 * 60)) && ((durationInMinutes % 15) == 0))
-        )
+        require((percentage >= 0) && (percentage <= 500)) { "Invalid percentage $percentage; must be in the 0-500 range" }
+        require((percentage % 10) == 0) { "Invalid percentage $percentage; must be integer multiple of 10" }
+    }
+
+    /**
+     * Checks the [durationInMinutes] value and throws an [IllegalArgumentException] if it is not suited for the Combo.
+     *
+     * [durationInMinutes] is considered unsuitable if it is not an integer
+     * multiple of 15 and/or if it is not in the 15-1440 range.
+     */
+    fun checkDurationForCombo() {
+        if (percentage == 100)
+            return
+        require((durationInMinutes >= 15) && (durationInMinutes <= (24 * 60))) { "Invalid duration $durationInMinutes; must be in the 15 - ${24 * 60} range" }
+        require((durationInMinutes % 15) == 0) { "Invalid duration $durationInMinutes; must be integer multiple of 15" }
     }
 }
