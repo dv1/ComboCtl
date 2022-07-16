@@ -16,6 +16,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.absoluteValue
 
 private val logger = Logger.get("RTNavigation")
 
@@ -567,11 +568,18 @@ suspend fun waitUntilScreenAppears(
  * This requires a non-null [cyclicQuantityRange] value. If that argument is null, this
  * function will not do such a cyclic logic.
  *
+ * Sometimes, it may be beneficial to _not_ long-press the RT button. This is typically
+ * the case if the quantity on screen is already very close to [targetQuantity]. In such
+ * a case, [longRTButtonPressPredicate] becomes useful. A long RT button press only takes
+ * place if [longRTButtonPressPredicate] returns true. Its arguments are [targetQuantity]
+ * and the quantity on screen. The default predicate always returns true.
+ *
  * @param rtNavigationContext Context to use for adjusting the quantity.
  * @param targetQuantity Quantity to set the on-screen quantity to.
  * @param incrementButton What RT button to press for incrementing the on-screen quantity.
  * @param decrementButton What RT button to press for decrementing the on-screen quantity.
  * @param cyclicQuantityRange The cyclic quantity range, or null if no such range exists.
+ * @param longRTButtonPressPredicate Quantity delta predicate for enabling RT button presses.
  * @param getQuantity Callback for extracting the on-screen quantity.
  * @throws info.nightscout.comboctl.parser.AlertScreenException if alert screens are seen.
  */
@@ -581,6 +589,7 @@ suspend fun adjustQuantityOnScreen(
     incrementButton: RTNavigationButton = RTNavigationButton.UP,
     decrementButton: RTNavigationButton = RTNavigationButton.DOWN,
     cyclicQuantityRange: Int? = null,
+    longRTButtonPressPredicate: (targetQuantity: Int, quantityOnScreen: Int) -> Boolean = { _, _ -> true },
     getQuantity: (parsedScreen: ParsedScreen) -> Int?
 ) {
     fun checkIfNeedsToIncrement(currentQuantity: Int): Boolean {
@@ -600,7 +609,7 @@ suspend fun adjustQuantityOnScreen(
         "cyclicQuantityRange = $cyclicQuantityRange"
     }
 
-    var initialQuantity: Int
+    val initialQuantity: Int
     rtNavigationContext.resetDuplicate()
 
     // Get the quantity that is initially shown on screen.
@@ -624,99 +633,103 @@ suspend fun adjustQuantityOnScreen(
         return
     }
 
-    var needToIncrement = checkIfNeedsToIncrement(initialQuantity)
-    logger(LogLevel.DEBUG) {
-        "First phase; long-pressing RT button to " +
-        "${if (needToIncrement) "increment" else "decrement"} quantity"
-    }
-
-    // First phase: Adjust quantity with a long RT button press.
-    // This is (much) faster than using short RT button presses,
-    // but can overshoot, especially since the Combo increases the
-    // increment/decrement steps over time.
-    longPressRTButtonUntil(
-        rtNavigationContext,
-        if (needToIncrement) incrementButton else decrementButton
-    ) { parsedScreen ->
-        val currentQuantity = getQuantity(parsedScreen)
-        logger(LogLevel.VERBOSE) { "Current quantity in first phase: $currentQuantity; need to increment: $needToIncrement" }
-        if (currentQuantity == null) {
-            LongPressRTButtonsCommand.ContinuePressingButton
-        } else {
-            // If we are incrementing, and did not yet reach the
-            // quantity, then we expect checkIfNeedsToIncrement()
-            // to indicate that further incrementing is required.
-            // The opposite is also true: If we are decrementing,
-            // and didn't reach the quantity yet, we expect
-            // checkIfNeedsToIncrement() to return false. We use
-            // this to determine if we need to continue long-pressing
-            // the RT button. If the current quantity is at the
-            // target, we don't have to anymore. And if we overshot,
-            // checkIfNeedsToIncrement() will return the opposite
-            // of what we expect. In both of these cases, keepPressing
-            // will be set to false, indicating that the long RT
-            // button press needs to stop.
-            val keepPressing =
-                if (currentQuantity == targetQuantity)
-                    false
-                else if (needToIncrement)
-                    checkIfNeedsToIncrement(currentQuantity)
-                else
-                    !checkIfNeedsToIncrement(currentQuantity)
-
-            if (keepPressing)
-                LongPressRTButtonsCommand.ContinuePressingButton
-            else
-                LongPressRTButtonsCommand.ReleaseButton
+    if (longRTButtonPressPredicate(targetQuantity, initialQuantity)) {
+        val needToIncrement = checkIfNeedsToIncrement(initialQuantity)
+        logger(LogLevel.DEBUG) {
+            "First phase; long-pressing RT button to " +
+                "${if (needToIncrement) "increment" else "decrement"} quantity"
         }
-    }
 
-    var lastQuantity: Int? = null
-    rtNavigationContext.resetDuplicate()
+        // First phase: Adjust quantity with a long RT button press.
+        // This is (much) faster than using short RT button presses,
+        // but can overshoot, especially since the Combo increases the
+        // increment/decrement steps over time.
+        longPressRTButtonUntil(
+            rtNavigationContext,
+            if (needToIncrement) incrementButton else decrementButton
+        ) { parsedScreen ->
+            val currentQuantity = getQuantity(parsedScreen)
+            logger(LogLevel.VERBOSE) { "Current quantity in first phase: $currentQuantity; need to increment: $needToIncrement" }
+            if (currentQuantity == null) {
+                LongPressRTButtonsCommand.ContinuePressingButton
+            } else {
+                // If we are incrementing, and did not yet reach the
+                // quantity, then we expect checkIfNeedsToIncrement()
+                // to indicate that further incrementing is required.
+                // The opposite is also true: If we are decrementing,
+                // and didn't reach the quantity yet, we expect
+                // checkIfNeedsToIncrement() to return false. We use
+                // this to determine if we need to continue long-pressing
+                // the RT button. If the current quantity is at the
+                // target, we don't have to anymore. And if we overshot,
+                // checkIfNeedsToIncrement() will return the opposite
+                // of what we expect. In both of these cases, keepPressing
+                // will be set to false, indicating that the long RT
+                // button press needs to stop.
+                val keepPressing =
+                    if (currentQuantity == targetQuantity)
+                        false
+                    else if (needToIncrement)
+                        checkIfNeedsToIncrement(currentQuantity)
+                    else
+                        !checkIfNeedsToIncrement(currentQuantity)
 
-    // Observe the screens until we see a screen whose quantity
-    // is the same as the previous screen's. This "debouncing" is
-    // necessary since the Combo may be somewhat behind with the
-    // display frames it sends to the client. This means that even
-    // after the longPressRTButtonUntil() call above finished, the
-    // Combo may still send several send updates, and the on-screen
-    // quantity may still be in/decremented. We need to wait until
-    // that in/decrementing is over before we can do any corrections
-    // with short RT button presses.
-    while (true) {
-        // Do not filter for duplicates, since a duplicate
-        // is pretty much what we are waiting for.
-        val parsedDisplayFrame = rtNavigationContext.getParsedDisplayFrame(filterDuplicates = false) ?: continue
-        val parsedScreen = parsedDisplayFrame.parsedScreen
-        val currentQuantity = getQuantity(parsedScreen)
+                if (keepPressing)
+                    LongPressRTButtonsCommand.ContinuePressingButton
+                else
+                    LongPressRTButtonsCommand.ReleaseButton
+            }
+        }
+
+        var lastQuantity: Int? = null
+        rtNavigationContext.resetDuplicate()
+
+        // Observe the screens until we see a screen whose quantity
+        // is the same as the previous screen's. This "debouncing" is
+        // necessary since the Combo may be somewhat behind with the
+        // display frames it sends to the client. This means that even
+        // after the longPressRTButtonUntil() call above finished, the
+        // Combo may still send several send updates, and the on-screen
+        // quantity may still be in/decremented. We need to wait until
+        // that in/decrementing is over before we can do any corrections
+        // with short RT button presses.
+        while (true) {
+            // Do not filter for duplicates, since a duplicate
+            // is pretty much what we are waiting for.
+            val parsedDisplayFrame = rtNavigationContext.getParsedDisplayFrame(filterDuplicates = false) ?: continue
+            val parsedScreen = parsedDisplayFrame.parsedScreen
+            val currentQuantity = getQuantity(parsedScreen)
+
+            logger(LogLevel.DEBUG) {
+                "Observed quantity after long-pressing RT button: " +
+                    "last / current quantity: $lastQuantity / $currentQuantity"
+            }
+
+            if (currentQuantity != null) {
+                if (currentQuantity == lastQuantity)
+                    break
+                else
+                    lastQuantity = currentQuantity
+            }
+        }
+
+        if (lastQuantity == targetQuantity) {
+            logger(LogLevel.DEBUG) { "Last seen quantity $lastQuantity is the target quantity; adjustment finished" }
+            return
+        }
 
         logger(LogLevel.DEBUG) {
-            "Observed quantity after long-pressing RT button: " +
-            "last / current quantity: $lastQuantity / $currentQuantity"
+            "Second phase: last seen quantity $lastQuantity is not the target quantity; " +
+                "short-pressing RT button(s) to finetune it"
         }
-
-        if (currentQuantity != null) {
-            if (currentQuantity == lastQuantity)
-                break
-            else
-                lastQuantity = currentQuantity
-        }
-    }
-
-    if (lastQuantity == targetQuantity) {
-        logger(LogLevel.DEBUG) { "Last seen quantity $lastQuantity is the target quantity; adjustment finished" }
-        return
-    }
-
-    logger(LogLevel.DEBUG) {
-        "Second phase: last seen quantity $lastQuantity is not the target quantity; " +
-        "short-pressing RT button(s) to finetune it"
     }
 
     // If the on-screen quantity is not the target quantity, we may
     // have overshot, or the in/decrement factor may have been increased
     // over time by the Combo. Perform short RT button presses to nudge
-    // the quantity until it reaches the target value.
+    // the quantity until it reaches the target value. Alternatively,
+    // the long RT button press was skipped by request. In that case,
+    // we must adjust with short RT button presses.
     shortPressRTButtonsUntil(rtNavigationContext) { parsedScreen ->
         val currentQuantity = getQuantity(parsedScreen)
 
@@ -725,7 +738,7 @@ suspend fun adjustQuantityOnScreen(
         } else if (currentQuantity == targetQuantity) {
             ShortPressRTButtonsCommand.Stop
         } else {
-            needToIncrement = checkIfNeedsToIncrement(currentQuantity)
+            val needToIncrement = checkIfNeedsToIncrement(currentQuantity)
             if (needToIncrement)
                 ShortPressRTButtonsCommand.PressButton(incrementButton)
             else
