@@ -500,7 +500,7 @@ class Pump(
             val totalDurationMinutes: Int
         ) : Event()
         data class TbrStarted(val tbr: Tbr) : Event()
-        data class TbrEnded(val tbr: Tbr) : Event()
+        data class TbrEnded(val tbr: Tbr, val timestampWhenTbrEnded: Instant) : Event()
         data class UnknownTbrDetected(
             val tbrPercentage: Int,
             val remainingTbrDurationInMinutes: Int
@@ -1172,7 +1172,7 @@ class Pump(
             is ParsedScreen.MainScreen -> mainScreen.content
             else -> throw NoUsableRTScreenException()
         }
-        logger(LogLevel.DEBUG) { "Main screen content after setting TBR: $mainScreenContent" }
+        logger(LogLevel.DEBUG) { "Main screen content after setting TBR: $mainScreenContent; expected TBR percentage / duration: $expectedTbrPercentage / $expectedTbrDuration" }
         when (mainScreenContent) {
             is MainScreenContent.Stopped ->
                 throw IllegalStateException("Combo is in the stopped state after setting TBR")
@@ -2135,17 +2135,23 @@ class Pump(
                     if (!tbrInfoShownOnMainScreen) {
                         // Handle case #1.
 
-                        val endTbrTimestamp = currentTbrState.tbr.timestamp +
-                            currentTbrState.tbr.durationInMinutes.toDuration(DurationUnit.MINUTES)
+                        val now = Clock.System.now()
+                        val currentTbr = currentTbrState.tbr
+                        val currentTbrDuration = currentTbr.durationInMinutes.toDuration(DurationUnit.MINUTES)
+                        val (endTbrTimestamp, newDurationInMinutes) = if ((now - currentTbr.timestamp) > currentTbrDuration)
+                            Pair(currentTbr.timestamp + currentTbrDuration, currentTbr.durationInMinutes)
+                        else
+                            Pair(now, (now - currentTbr.timestamp).inWholeMinutes.toInt())
 
-                        val tbr = Tbr(
-                            timestamp = endTbrTimestamp,
-                            percentage = currentTbrState.tbr.percentage,
-                            durationInMinutes = currentTbrState.tbr.durationInMinutes,
-                            currentTbrState.tbr.type
+                        val newTbr = Tbr(
+                            timestamp = currentTbr.timestamp,
+                            percentage = currentTbr.percentage,
+                            durationInMinutes = newDurationInMinutes,
+                            currentTbr.type
                         )
+                        logger(LogLevel.DEBUG) { "Previously started TBR ended; TBR: $newTbr" }
                         pumpStateStore.setCurrentTbrState(bluetoothDevice.address, CurrentTbrState.NoTbrOngoing)
-                        onEvent(Event.TbrEnded(tbr))
+                        onEvent(Event.TbrEnded(newTbr, endTbrTimestamp))
                     }
                 }
 
@@ -2154,6 +2160,12 @@ class Pump(
                 is CurrentTbrState.NoTbrOngoing -> {
                     if (tbrInfoShownOnMainScreen) {
                         // Handle case #4.
+
+                        logger(LogLevel.DEBUG) {
+                            "Unknown TBR detected with percentage ${status.tbrPercentage} " +
+                            "and remaining duration ${status.remainingTbrDurationInMinutes}; " +
+                            "aborting this TBR"
+                        }
 
                         pumpIO.switchMode(PumpIO.Mode.REMOTE_TERMINAL)
                         setCurrentTbr(percentage = 100, durationInMinutes = 0)
@@ -2447,17 +2459,17 @@ class Pump(
             val now = Clock.System.now()
             val tbr = currentTbrState.tbr
             val tbrDuration = tbr.durationInMinutes.toDuration(DurationUnit.MINUTES)
-            val timestamp = if ((now - tbr.timestamp) > tbrDuration)
-                tbr.timestamp + tbrDuration
+            val (endTbrTimestamp, newDurationInMinutes) = if ((now - tbr.timestamp) > tbrDuration)
+                Pair(tbr.timestamp + tbrDuration, tbr.durationInMinutes)
             else
-                now
+                Pair(now, (now - tbr.timestamp).inWholeMinutes.toInt())
 
             onEvent(Event.TbrEnded(Tbr(
-                timestamp = timestamp,
+                timestamp = tbr.timestamp,
                 percentage = tbr.percentage,
-                durationInMinutes = tbr.durationInMinutes,
+                durationInMinutes = newDurationInMinutes,
                 tbr.type
-            )))
+            ), endTbrTimestamp))
         }
     }
 
