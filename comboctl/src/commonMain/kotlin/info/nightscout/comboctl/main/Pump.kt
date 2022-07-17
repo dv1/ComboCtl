@@ -2428,9 +2428,9 @@ class Pump(
     // and do nothing else.
 
     // If the pump is suspended, there is no insulin delivery. Model this
-    // as a 0% TBR that started just now and lasts for 15 minutes.
+    // as a 0% TBR that started just now and lasts for 60 minutes.
     private fun reportPumpSuspendedTbr() =
-        reportStartedTbr(Tbr(timestamp = Clock.System.now(), percentage = 0, durationInMinutes = 15, Tbr.Type.COMBO_STOPPED))
+        reportStartedTbr(Tbr(timestamp = Clock.System.now(), percentage = 0, durationInMinutes = 60, Tbr.Type.COMBO_STOPPED))
 
     private fun reportStartedTbr(tbr: Tbr) {
         // If a TBR is already ongoing, it will be aborted. We have to
