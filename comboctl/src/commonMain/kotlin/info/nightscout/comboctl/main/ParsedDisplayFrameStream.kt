@@ -187,7 +187,7 @@ class ParsedDisplayFrameStream {
             // Blinked-out screens are unusable; skip them, otherwise
             // they may mess up RT navigation.
             if ((thisParsedDisplayFrame != null) && thisParsedDisplayFrame.parsedScreen.isBlinkedOut) {
-                logger(LogLevel.DEBUG) { "Screen is blinked out (contents: thisParsedDisplayFrame.parsedScreen); skipping" }
+                logger(LogLevel.DEBUG) { "Screen is blinked out (contents: ${thisParsedDisplayFrame.parsedScreen}); skipping" }
                 continue
             }
 

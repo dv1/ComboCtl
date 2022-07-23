@@ -605,7 +605,7 @@ suspend fun adjustQuantityOnScreen(
 
     logger(LogLevel.DEBUG) {
         "Adjusting quantity on RT screen; targetQuantity = $targetQuantity; " +
-        "increment / decrement buttons = $incrementButton / decrementButton; " +
+        "increment / decrement buttons = $incrementButton / $decrementButton; " +
         "cyclicQuantityRange = $cyclicQuantityRange"
     }
 
