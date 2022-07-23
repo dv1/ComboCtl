@@ -93,7 +93,9 @@ data class Tbr(val timestamp: Instant, val percentage: Int, val durationInMinute
     fun checkDurationForCombo() {
         if (percentage == 100)
             return
-        require((durationInMinutes >= 15) && (durationInMinutes <= (24 * 60))) { "Invalid duration $durationInMinutes; must be in the 15 - ${24 * 60} range" }
+        require((durationInMinutes >= 15) && (durationInMinutes <= (24 * 60))) {
+            "Invalid duration $durationInMinutes; must be in the 15 - ${24 * 60} range"
+        }
         require((durationInMinutes % 15) == 0) { "Invalid duration $durationInMinutes; must be integer multiple of 15" }
     }
 }

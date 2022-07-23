@@ -21,7 +21,6 @@ import info.nightscout.comboctl.base.PumpIO.ConnectionRequestIsNotBeingAcceptedE
 import info.nightscout.comboctl.base.PumpStateStore
 import info.nightscout.comboctl.base.Tbr
 import info.nightscout.comboctl.base.TransportLayer
-// import info.nightscout.comboctl.base.ioDispatcher
 import info.nightscout.comboctl.base.toStringWithDecimal
 import info.nightscout.comboctl.parser.AlertScreenContent
 import info.nightscout.comboctl.parser.AlertScreenException
@@ -29,6 +28,7 @@ import info.nightscout.comboctl.parser.BatteryState
 import info.nightscout.comboctl.parser.MainScreenContent
 import info.nightscout.comboctl.parser.ParsedScreen
 import info.nightscout.comboctl.parser.ReservoirState
+import kotlin.math.absoluteValue
 import kotlin.time.DurationUnit
 import kotlin.time.toDuration
 import kotlinx.coroutines.CancellationException
@@ -51,7 +51,6 @@ import kotlinx.datetime.atStartOfDayIn
 import kotlinx.datetime.offsetAt
 import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
-import kotlin.math.absoluteValue
 
 private val logger = Logger.get("Pump")
 
@@ -1172,7 +1171,10 @@ class Pump(
             is ParsedScreen.MainScreen -> mainScreen.content
             else -> throw NoUsableRTScreenException()
         }
-        logger(LogLevel.DEBUG) { "Main screen content after setting TBR: $mainScreenContent; expected TBR percentage / duration: $expectedTbrPercentage / $expectedTbrDuration" }
+        logger(LogLevel.DEBUG) {
+            "Main screen content after setting TBR: $mainScreenContent; expected TBR " +
+            "percentage / duration: $expectedTbrPercentage / $expectedTbrDuration"
+        }
         when (mainScreenContent) {
             is MainScreenContent.Stopped ->
                 throw IllegalStateException("Combo is in the stopped state after setting TBR")

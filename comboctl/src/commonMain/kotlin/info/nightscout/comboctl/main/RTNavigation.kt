@@ -10,13 +10,12 @@ import info.nightscout.comboctl.base.connectBidirectionally
 import info.nightscout.comboctl.base.connectDirectionally
 import info.nightscout.comboctl.base.findShortestPath
 import info.nightscout.comboctl.parser.ParsedScreen
-import kotlin.math.abs
+import kotlin.math.absoluteValue
 import kotlin.reflect.KClassifier
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.math.absoluteValue
 
 private val logger = Logger.get("RTNavigation")
 
@@ -595,7 +594,7 @@ suspend fun adjustQuantityOnScreen(
     fun checkIfNeedsToIncrement(currentQuantity: Int): Boolean {
         return if (cyclicQuantityRange != null) {
             val distance = (targetQuantity - currentQuantity)
-            if (abs(distance) <= (cyclicQuantityRange / 2))
+            if (distance.absoluteValue <= (cyclicQuantityRange / 2))
                 (currentQuantity < targetQuantity)
             else
                 (currentQuantity > targetQuantity)
