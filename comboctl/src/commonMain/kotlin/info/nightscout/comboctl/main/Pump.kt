@@ -2483,12 +2483,23 @@ class Pump(
     ) {
         setDateTimeProgressReporter.reset(Unit)
 
+        // In the time and date setting screens, only long-press the RT button if the
+        // quantity differs by more than 5. 5 and less means <= 5 button short button
+        // presses, which are faster than a long- and short-press sequence.
+        val longRTButtonPressPredicate = fun(targetQuantity: Int, quantityOnScreen: Int): Boolean =
+            ((targetQuantity - quantityOnScreen).absoluteValue) >= 5
+
         try {
             setDateTimeProgressReporter.setCurrentProgressStage(RTCommandProgressStage.SettingDateTimeHour)
 
             // Navigate from our current location to the first screen - the hour screen.
             navigateToRTScreen(rtNavigationContext, ParsedScreen.TimeAndDateSettingsHourScreen::class, pumpSuspended)
-            adjustQuantityOnScreen(rtNavigationContext, newPumpLocalDateTime.hour, cyclicQuantityRange = 24) { parsedScreen ->
+            adjustQuantityOnScreen(
+                rtNavigationContext,
+                targetQuantity = newPumpLocalDateTime.hour,
+                longRTButtonPressPredicate = longRTButtonPressPredicate,
+                cyclicQuantityRange = 24
+            ) { parsedScreen ->
                 (parsedScreen as ParsedScreen.TimeAndDateSettingsHourScreen).hour
             }
 
@@ -2497,28 +2508,45 @@ class Pump(
             setDateTimeProgressReporter.setCurrentProgressStage(RTCommandProgressStage.SettingDateTimeMinute)
             rtNavigationContext.shortPressButton(RTNavigationButton.MENU)
             waitUntilScreenAppears(rtNavigationContext, ParsedScreen.TimeAndDateSettingsMinuteScreen::class)
-            adjustQuantityOnScreen(rtNavigationContext, newPumpLocalDateTime.minute, cyclicQuantityRange = 60) { parsedScreen ->
+            adjustQuantityOnScreen(
+                rtNavigationContext,
+                targetQuantity = newPumpLocalDateTime.minute,
+                longRTButtonPressPredicate = longRTButtonPressPredicate,
+                cyclicQuantityRange = 60
+            ) { parsedScreen ->
                 (parsedScreen as ParsedScreen.TimeAndDateSettingsMinuteScreen).minute
             }
 
             setDateTimeProgressReporter.setCurrentProgressStage(RTCommandProgressStage.SettingDateTimeYear)
             rtNavigationContext.shortPressButton(RTNavigationButton.MENU)
             waitUntilScreenAppears(rtNavigationContext, ParsedScreen.TimeAndDateSettingsYearScreen::class)
-            adjustQuantityOnScreen(rtNavigationContext, newPumpLocalDateTime.year) { parsedScreen ->
+            adjustQuantityOnScreen(
+                rtNavigationContext,
+                targetQuantity = newPumpLocalDateTime.year,
+                longRTButtonPressPredicate = longRTButtonPressPredicate
+            ) { parsedScreen ->
                 (parsedScreen as ParsedScreen.TimeAndDateSettingsYearScreen).year
             }
 
             setDateTimeProgressReporter.setCurrentProgressStage(RTCommandProgressStage.SettingDateTimeMonth)
             rtNavigationContext.shortPressButton(RTNavigationButton.MENU)
             waitUntilScreenAppears(rtNavigationContext, ParsedScreen.TimeAndDateSettingsMonthScreen::class)
-            adjustQuantityOnScreen(rtNavigationContext, newPumpLocalDateTime.monthNumber) { parsedScreen ->
+            adjustQuantityOnScreen(
+                rtNavigationContext,
+                targetQuantity = newPumpLocalDateTime.monthNumber,
+                longRTButtonPressPredicate = longRTButtonPressPredicate
+            ) { parsedScreen ->
                 (parsedScreen as ParsedScreen.TimeAndDateSettingsMonthScreen).month
             }
 
             setDateTimeProgressReporter.setCurrentProgressStage(RTCommandProgressStage.SettingDateTimeDay)
             rtNavigationContext.shortPressButton(RTNavigationButton.MENU)
             waitUntilScreenAppears(rtNavigationContext, ParsedScreen.TimeAndDateSettingsDayScreen::class)
-            adjustQuantityOnScreen(rtNavigationContext, newPumpLocalDateTime.dayOfMonth) { parsedScreen ->
+            adjustQuantityOnScreen(
+                rtNavigationContext,
+                targetQuantity = newPumpLocalDateTime.dayOfMonth,
+                longRTButtonPressPredicate = longRTButtonPressPredicate
+            ) { parsedScreen ->
                 (parsedScreen as ParsedScreen.TimeAndDateSettingsDayScreen).day
             }
 
@@ -2543,9 +2571,19 @@ class Pump(
         try {
             var initialQuantityDistance: Int? = null
 
+            // Only long-press the RT button if we have to increase / decrease
+            // the TBR percentage by more than 50. Otherwise, short-pressing
+            // is sufficient; adjusting by 50 requires only 5 button presses.
+            val longRTButtonPressPercentagePredicate = fun(targetQuantity: Int, quantityOnScreen: Int): Boolean =
+                ((targetQuantity - quantityOnScreen).absoluteValue) >= 50
+
             // First, set the TBR percentage.
             navigateToRTScreen(rtNavigationContext, ParsedScreen.TemporaryBasalRatePercentageScreen::class, pumpSuspended)
-            adjustQuantityOnScreen(rtNavigationContext, percentage) {
+            adjustQuantityOnScreen(
+                rtNavigationContext,
+                targetQuantity = percentage,
+                longRTButtonPressPredicate = longRTButtonPressPercentagePredicate
+            ) {
                 val currentPercentage = (it as ParsedScreen.TemporaryBasalRatePercentageScreen).percentage
 
                 // Calculate the progress out of the "distance" from the
@@ -2578,11 +2616,21 @@ class Pump(
             if (percentage != 100) {
                 initialQuantityDistance = null
 
+                // Only long-press the RT button if we have to increase / decrease
+                // the TBR duration by more than 60 minutes. Otherwise, short-pressing
+                // is sufficient; adjusting by 60 minutes requires only 4 button presses.
+                val longRTButtonPressDurationPredicate = fun(targetQuantity: Int, quantityOnScreen: Int): Boolean =
+                    ((targetQuantity - quantityOnScreen).absoluteValue) >= 60
+
                 setTbrProgressReporter.setCurrentProgressStage(RTCommandProgressStage.SettingTBRDuration(0))
 
                 navigateToRTScreen(rtNavigationContext, ParsedScreen.TemporaryBasalRateDurationScreen::class, pumpSuspended)
 
-                adjustQuantityOnScreen(rtNavigationContext, durationInMinutes) {
+                adjustQuantityOnScreen(
+                    rtNavigationContext,
+                    targetQuantity = durationInMinutes,
+                    longRTButtonPressPredicate = longRTButtonPressDurationPredicate
+                ) {
                     val currentDuration = (it as ParsedScreen.TemporaryBasalRateDurationScreen).durationInMinutes
 
                     // Do the settingProgress calculation just like before when setting the percentage.
