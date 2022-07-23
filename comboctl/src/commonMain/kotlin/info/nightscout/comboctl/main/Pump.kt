@@ -2534,11 +2534,17 @@ class Pump(
             adjustQuantityOnScreen(
                 rtNavigationContext,
                 targetQuantity = newPumpLocalDateTime.monthNumber,
-                longRTButtonPressPredicate = longRTButtonPressPredicate
+                longRTButtonPressPredicate = longRTButtonPressPredicate,
+                cyclicQuantityRange = 12
             ) { parsedScreen ->
                 (parsedScreen as ParsedScreen.TimeAndDateSettingsMonthScreen).month
             }
 
+            // TODO: Set the cyclicQuantityRange for days. This is a little tricky
+            // though, since the exact number of days varies not only between
+            // months, but also between years (see February 29th). See if something
+            // in kotlinx.datetime can be used for this. Avoid self-made calendar
+            // logic here; such logic is easily error prone.
             setDateTimeProgressReporter.setCurrentProgressStage(RTCommandProgressStage.SettingDateTimeDay)
             rtNavigationContext.shortPressButton(RTNavigationButton.MENU)
             waitUntilScreenAppears(rtNavigationContext, ParsedScreen.TimeAndDateSettingsDayScreen::class)
