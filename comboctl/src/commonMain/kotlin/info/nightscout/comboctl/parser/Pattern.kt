@@ -372,6 +372,7 @@ val glyphPatterns = mapOf<Glyph, Pattern>(
         "        ██      "
     )),
     Glyph.LargeSymbol(LargeSymbol.EXTENDED_BOLUS) to Pattern(arrayOf(
+        "                ",
         "█████████████   ",
         "█████████████   ",
         "██         ██   ",
@@ -388,6 +389,7 @@ val glyphPatterns = mapOf<Glyph, Pattern>(
         "██         █████"
     )),
     Glyph.LargeSymbol(LargeSymbol.MULTIWAVE) to Pattern(arrayOf(
+        "                ",
         "██████          ",
         "██████          ",
         "██  ██          ",

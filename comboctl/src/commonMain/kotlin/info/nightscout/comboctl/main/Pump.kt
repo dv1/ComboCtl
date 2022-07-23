@@ -416,6 +416,16 @@ class Pump(
     )
 
     /**
+     * Exception thrown when the main screen shows information about an active extended / multiwave bolus.
+     *
+     * These bolus type are currently not supported and cannot be handled properly.
+     *
+     * @property bolusInfo Information about the detected extended / multiwave bolus.
+     */
+    class ExtendedOrMultiwaveBolusActiveException(val bolusInfo: MainScreenContent.ExtendedOrMultiwaveBolus) :
+        ComboException("Extended or multiwave bolus is active; bolus info: $bolusInfo")
+
+    /**
      * Reason for a standard bolus delivery.
      *
      * A standard bolus may be delivered for various reasons.
@@ -818,6 +828,8 @@ class Pump(
      * @throws UnaccountedBolusDetectedException if during the pump checks
      *   a bolus is found in the pump's history delta that wasn't delivered
      *   by ComboCtl.
+     * @throws ExtendedOrMultiwaveBolusActiveException if an extended / multiwave
+     *   bolus is active (these are shown on the main screen).
      */
     suspend fun connect() {
         check(stateFlow.value == State.Disconnected) { "Attempted to connect to pump in a the ${stateFlow.value} state" }
@@ -1090,6 +1102,10 @@ class Pump(
      * @throws UnexpectedTbrStateException if the TBR that is actually active
      *   after this function finishes does not match the specified percentage
      *   and duration.
+     * @throws ExtendedOrMultiwaveBolusActiveException if an extended / multiwave
+     *   bolus is active after setting the TBR. (This should not normally happen,
+     *   since it is not possible for users to set such a bolus while also setting
+     *   the TBR, but is included for completeness.)
      * @throws IllegalStateException if the current state is not
      *   [State.ReadyForCommands], or if the pump is suspended after setting the TBR.
      * @throws AlertScreenException if alerts occurs during this call, and they
@@ -1178,6 +1194,9 @@ class Pump(
         when (mainScreenContent) {
             is MainScreenContent.Stopped ->
                 throw IllegalStateException("Combo is in the stopped state after setting TBR")
+
+            is MainScreenContent.ExtendedOrMultiwaveBolus ->
+                throw ExtendedOrMultiwaveBolusActiveException(mainScreenContent)
 
             is MainScreenContent.Normal -> {
                 if (expectedTbrPercentage != 100) {
@@ -1283,6 +1302,11 @@ class Pump(
      *   [State.ReadyForCommands].
      * @throws AlertScreenException if alerts occurs during this call, and they
      *   aren't a W6 warning (those are handled by this function).
+     * @throws ExtendedOrMultiwaveBolusActiveException if an extended / multiwave
+     *   bolus is active after delivering this standard bolus. (This should not
+     *   normally happen, since it is not possible for users to set such a bolus
+     *   while also delivering a standard bolus the TBR, but is included for
+     *   completeness.)
      */
     suspend fun deliverBolus(bolusAmount: Int, bolusReason: StandardBolusReason, bolusStatusUpdateIntervalInMs: Long = 250) = executeCommand(
         // Instruct executeCommand() to not set the mode on its own.
@@ -1564,6 +1588,8 @@ class Pump(
      *   [State.Suspended] or [State.ReadyForCommands].
      * @throws AlertScreenException if alerts occurs during this call, and
      *   they aren't a W6 warning (those are handled by this function).
+     * @throws ExtendedOrMultiwaveBolusActiveException if an extended / multiwave
+     *   bolus is active (these are shown on the main screen).
      */
     suspend fun updateStatus() = updateStatusImpl(
         allowExecutionWhileSuspended = true,
@@ -2750,6 +2776,9 @@ class Pump(
                     batteryState = mainScreenContent.batteryState
                 )
             }
+
+            is MainScreenContent.ExtendedOrMultiwaveBolus ->
+                throw ExtendedOrMultiwaveBolusActiveException(mainScreenContent)
         }
 
         if (switchStatesIfNecessary) {

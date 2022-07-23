@@ -64,6 +64,16 @@ sealed class MainScreenContent {
         val currentBasalRateFactor: Int,
         val batteryState: BatteryState
     ) : MainScreenContent()
+
+    data class ExtendedOrMultiwaveBolus(
+        val currentTime: LocalDateTime,
+        val remainingBolusDurationInMinutes: Int,
+        val isExtendedBolus: Boolean,
+        val remainingBolusAmount: Int,
+        val activeBasalRateNumber: Int,
+        val currentBasalRateFactor: Int,
+        val batteryState: BatteryState
+    ) : MainScreenContent()
 }
 
 /**
@@ -1110,7 +1120,8 @@ class TopLeftClockScreenParser : Parser() {
                 BasalRateFactorSettingScreenParser(),
                 NormalMainScreenParser(),
                 TbrMainScreenParser(),
-                StoppedMainScreenParser()
+                StoppedMainScreenParser(),
+                ExtendedAndMultiwaveBolusMainScreenParser()
             )
         ).parse(parseContext)
     }
@@ -1342,6 +1353,62 @@ class TbrMainScreenParser : Parser() {
                     tbrPercentage = parseResult.valueAt<Int>(1),
                     activeBasalRateNumber = parseResult.valueAt<Glyph.SmallDigit>(2).digit,
                     currentBasalRateFactor = parseResult.valueAt<Int>(3),
+                    batteryState = batteryState
+                )
+            )
+        )
+    }
+}
+
+class ExtendedAndMultiwaveBolusMainScreenParser : Parser() {
+    override fun parseImpl(parseContext: ParseContext): ParseResult {
+        require(parseContext.topLeftTime != null)
+
+        val parseResult = SequenceParser(
+            listOf(
+                SingleGlyphParser(Glyph.SmallSymbol(SmallSymbol.ARROW)),
+                TimeParser(), // Remaining extended/multiwave bolus duration
+                SingleGlyphTypeParser(Glyph.LargeSymbol::class), // Extended / multiwave symbol
+                DecimalParser(), // Remaining bolus amount
+                SingleGlyphParser(Glyph.LargeCharacter('u')),
+                SingleGlyphTypeParser(Glyph.SmallDigit::class), // Active basal rate number
+                DecimalParser(), // Current basal rate factor
+                SingleGlyphParser(Glyph.SmallSymbol(SmallSymbol.UNITS_PER_HOUR)),
+                SingleGlyphTypeParser(Glyph.SmallSymbol::class) // Battery state
+            ),
+            allowIncompleteSequences = true
+        ).parse(parseContext)
+
+        if (!parseResult.isSuccess)
+            return ParseResult.Failed
+
+        parseResult as ParseResult.Sequence
+        if (parseResult.size < 5)
+            return ParseResult.Failed
+
+        // At that location, only the extended and multiwave bolus symbols
+        // are valid. Otherwise, this isn't an extended/multiwave bolus screen.
+        val isExtendedBolus = when (parseResult.valueAt<Glyph.LargeSymbol>(1).symbol) {
+            LargeSymbol.EXTENDED_BOLUS -> true
+            LargeSymbol.MULTIWAVE -> false
+            else -> return ParseResult.Failed
+        }
+
+        val batteryState = batteryStateFromSymbol(
+            if (parseResult.size >= 6) parseResult.valueAt<Glyph.SmallSymbol>(5).symbol else null
+        )
+
+        val remainingBolusDuration = parseResult.valueAt<LocalDateTime>(0)
+
+        return ParseResult.Value(
+            ParsedScreen.MainScreen(
+                MainScreenContent.ExtendedOrMultiwaveBolus(
+                    currentTime = parseContext.topLeftTime!!,
+                    remainingBolusDurationInMinutes = remainingBolusDuration.hour * 60 + remainingBolusDuration.minute,
+                    isExtendedBolus = isExtendedBolus,
+                    remainingBolusAmount = parseResult.valueAt<Int>(2),
+                    activeBasalRateNumber = parseResult.valueAt<Glyph.SmallDigit>(3).digit,
+                    currentBasalRateFactor = parseResult.valueAt<Int>(4),
                     batteryState = batteryState
                 )
             )
