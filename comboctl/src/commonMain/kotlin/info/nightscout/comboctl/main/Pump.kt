@@ -2058,6 +2058,9 @@ class Pump(
     private suspend fun performOnConnectChecks() {
         require(currentPumpUtcOffset != null)
 
+        // First few operations will run in command mode.
+        pumpIO.switchMode(PumpIO.Mode.COMMAND)
+
         // Read history delta, quickinfo etc. as a preparation
         // for further evaluating the current pump state.
         val historyDelta = fetchHistoryDelta()
@@ -2218,6 +2221,9 @@ class Pump(
                 }
             }
         }
+
+        // The next datetime operations will run in command mode again.
+        pumpIO.switchMode(PumpIO.Mode.COMMAND)
 
         // Get current pump and system datetime _after_ all operations above
         // finished in case those operations take some time to finish. We need
