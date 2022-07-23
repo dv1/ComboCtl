@@ -1065,7 +1065,7 @@ class MenuScreenParser : Parser() {
         when (lastGlyph) {
             Glyph.LargeSymbol(LargeSymbol.BOLUS) -> return ParseResult.Value(ParsedScreen.StandardBolusMenuScreen)
             Glyph.LargeSymbol(LargeSymbol.EXTENDED_BOLUS) -> return ParseResult.Value(ParsedScreen.ExtendedBolusMenuScreen)
-            Glyph.LargeSymbol(LargeSymbol.MULTIWAVE) -> return ParseResult.Value(ParsedScreen.MultiwaveBolusMenuScreen)
+            Glyph.LargeSymbol(LargeSymbol.MULTIWAVE_BOLUS) -> return ParseResult.Value(ParsedScreen.MultiwaveBolusMenuScreen)
             Glyph.LargeSymbol(LargeSymbol.BLUETOOTH_SETTINGS) -> return ParseResult.Value(ParsedScreen.BluetoothSettingsMenuScreen)
             Glyph.LargeSymbol(LargeSymbol.MENU_SETTINGS) -> return ParseResult.Value(ParsedScreen.MenuSettingsMenuScreen)
             Glyph.LargeSymbol(LargeSymbol.MY_DATA) -> return ParseResult.Value(ParsedScreen.MyDataMenuScreen)
@@ -1390,7 +1390,7 @@ class ExtendedAndMultiwaveBolusMainScreenParser : Parser() {
         // are valid. Otherwise, this isn't an extended/multiwave bolus screen.
         val isExtendedBolus = when (parseResult.valueAt<Glyph.LargeSymbol>(1).symbol) {
             LargeSymbol.EXTENDED_BOLUS -> true
-            LargeSymbol.MULTIWAVE -> false
+            LargeSymbol.MULTIWAVE_BOLUS -> false
             else -> return ParseResult.Failed
         }
 
@@ -1568,7 +1568,7 @@ class MyDataBolusDataScreenParser : Parser() {
         parseResult as ParseResult.Sequence
         val bolusType = when (parseResult.valueAt<Glyph.SmallSymbol>(0).symbol) {
             SmallSymbol.BOLUS -> MyDataBolusType.STANDARD
-            SmallSymbol.MULTIWAVE -> MyDataBolusType.MULTI_WAVE
+            SmallSymbol.MULTIWAVE_BOLUS -> MyDataBolusType.MULTI_WAVE
             SmallSymbol.EXTENDED_BOLUS -> MyDataBolusType.EXTENDED
             else -> return ParseResult.Failed
         }

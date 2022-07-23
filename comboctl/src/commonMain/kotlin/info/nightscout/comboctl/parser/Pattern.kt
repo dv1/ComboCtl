@@ -100,7 +100,7 @@ enum class SmallSymbol {
     ARROW,
     UNITS_PER_HOUR,
     BOLUS,
-    MULTIWAVE,
+    MULTIWAVE_BOLUS,
     SPEAKER,
     ERROR,
     DOT,
@@ -136,8 +136,8 @@ enum class LargeSymbol {
     CALENDAR_AND_CLOCK,
     TBR,
     BOLUS,
-    MULTIWAVE,
     MULTIWAVE_BOLUS,
+    MULTIWAVE_BOLUS_IMMEDIATE,
     EXTENDED_BOLUS,
     BLUETOOTH_SETTINGS,
     THERAPY_SETTINGS,
@@ -388,7 +388,7 @@ val glyphPatterns = mapOf<Glyph, Pattern>(
         "██         █████",
         "██         █████"
     )),
-    Glyph.LargeSymbol(LargeSymbol.MULTIWAVE) to Pattern(arrayOf(
+    Glyph.LargeSymbol(LargeSymbol.MULTIWAVE_BOLUS) to Pattern(arrayOf(
         "                ",
         "██████          ",
         "██████          ",
@@ -422,7 +422,7 @@ val glyphPatterns = mapOf<Glyph, Pattern>(
         "█████  ████████",
         "█████  ████████"
     )),
-    Glyph.LargeSymbol(LargeSymbol.MULTIWAVE_BOLUS) to Pattern(arrayOf(
+    Glyph.LargeSymbol(LargeSymbol.MULTIWAVE_BOLUS_IMMEDIATE) to Pattern(arrayOf(
         "██████         ",
         "██████         ",
         "██  ██         ",
@@ -1039,7 +1039,7 @@ val glyphPatterns = mapOf<Glyph, Pattern>(
         " █ █   ",
         "██ ████"
     )),
-    Glyph.SmallSymbol(SmallSymbol.MULTIWAVE) to Pattern(arrayOf(
+    Glyph.SmallSymbol(SmallSymbol.MULTIWAVE_BOLUS) to Pattern(arrayOf(
         "███     ",
         "█ █     ",
         "█ █     ",
