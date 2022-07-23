@@ -682,17 +682,26 @@ suspend fun adjustQuantityOnScreen(
         }
 
         var lastQuantity: Int? = null
+        var sameQuantityObservedCount = 0
         rtNavigationContext.resetDuplicate()
 
         // Observe the screens until we see a screen whose quantity
-        // is the same as the previous screen's. This "debouncing" is
-        // necessary since the Combo may be somewhat behind with the
-        // display frames it sends to the client. This means that even
-        // after the longPressRTButtonUntil() call above finished, the
-        // Combo may still send several send updates, and the on-screen
-        // quantity may still be in/decremented. We need to wait until
-        // that in/decrementing is over before we can do any corrections
-        // with short RT button presses.
+        // is the same as the previous screen's, and we see the quantity
+        // not changing 3 times. This "debouncing" is  necessary because
+        // the Combo may be somewhat behind with the display frames it
+        // sends to the client. This means that even after the
+        // longPressRTButtonUntil() call above finished, the Combo may
+        // still send several send updates, and the on-screen quantity
+        // may still be in/decremented. We need to wait until that
+        // in/decrementing is over before we can do any corrections
+        // with short RT button presses. And to be sure that it is
+        // over, we have to observe the frames for a short while.
+        // This also implies that long-pressing the RT button should
+        // really only be done if the quantity on screen differs
+        // significantly from the target quantity, otherwise the
+        // waiting / observation period for this "debouncing" will
+        // overshadow any speed gains the long-press may yield.
+        // See the longRTButtonPressPredicate documentation.
         while (true) {
             // Do not filter for duplicates, since a duplicate
             // is pretty much what we are waiting for.
@@ -706,10 +715,14 @@ suspend fun adjustQuantityOnScreen(
             }
 
             if (currentQuantity != null) {
-                if (currentQuantity == lastQuantity)
-                    break
-                else
+                if (currentQuantity == lastQuantity) {
+                    sameQuantityObservedCount++
+                    if (sameQuantityObservedCount >= 3)
+                        break
+                } else {
                     lastQuantity = currentQuantity
+                    sameQuantityObservedCount = 0
+                }
             }
         }
 
