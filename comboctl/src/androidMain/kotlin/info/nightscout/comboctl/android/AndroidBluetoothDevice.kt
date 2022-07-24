@@ -37,6 +37,7 @@ class AndroidBluetoothDevice(
     private var systemBluetoothSocket: SystemBluetoothSocket? = null
     private var inputStream: InputStream? = null
     private var outputStream: OutputStream? = null
+    private var canDoIO: Boolean = false
 
     // Use toUpperCase() since Android expects the A-F hex digits in the
     // Bluetooth address string to be uppercase (lowercase ones are considered
@@ -124,6 +125,8 @@ class AndroidBluetoothDevice(
             throw ComboIOException("Could not get output stream to device with address $address", e)
         }
 
+        canDoIO = true
+
         logger(LogLevel.INFO) { "RFCOMM connection with device with address $address established" }
     }
 
@@ -153,28 +156,60 @@ class AndroidBluetoothDevice(
     }
 
     override fun blockingSend(dataToSend: List<Byte>) {
+        // Handle corner case when disconnect() is called in a different coroutine
+        // shortly before this function is run.
+        if (!canDoIO) {
+            logger(LogLevel.DEBUG) { "We are disconnecting; ignoring attempt at sending data" }
+            return
+        }
+
         check(outputStream != null) { "Device is not connected - cannot send data" }
 
         try {
             outputStream!!.write(dataToSend.toByteArray())
         } catch (e: IOException) {
-            throw ComboIOException("Could not write data to device with address $address", e)
+            // If we are disconnecting, don't bother re-throwing the exception;
+            // one is always thrown when the stream is closed while write() blocks,
+            // and this essentially just means "write() call aborted because the
+            // stream got closed". That's not an error.
+            if (canDoIO)
+                throw ComboIOException("Could not write data to device with address $address", e)
+            else
+                logger(LogLevel.DEBUG) { "Aborted write call because we are disconnecting" }
         }
     }
 
     override fun blockingReceive(): List<Byte> {
+        // Handle corner case when disconnect() is called in a different coroutine
+        // shortly before this function is run.
+        if (!canDoIO) {
+            logger(LogLevel.DEBUG) { "We are disconnecting; ignoring attempt at receiving data" }
+            return listOf()
+        }
+
         check(inputStream != null) { "Device is not connected - cannot receive data" }
 
         try {
             val buffer = ByteArray(512)
             val numReadBytes = inputStream!!.read(buffer)
-            return if (numReadBytes > 0) buffer.toList().subList(0, numReadBytes) else listOf<Byte>()
+            return if (numReadBytes > 0) buffer.toList().subList(0, numReadBytes) else listOf()
         } catch (e: IOException) {
-            throw ComboIOException("Could not write data to device with address $address", e)
+            // If we are disconnecting, don't bother re-throwing the exception;
+            // one is always thrown when the stream is closed while read() blocks,
+            // and this essentially just means "read() call aborted because the
+            // stream got closed". That's not an error.
+            if (canDoIO)
+                throw ComboIOException("Could not read data from device with address $address", e)
+            else {
+                logger(LogLevel.DEBUG) { "Aborted read call because we are disconnecting" }
+                return listOf()
+            }
         }
     }
 
     private fun disconnectImpl() {
+        canDoIO = false
+
         if (inputStream != null) {
             try {
                 inputStream!!.close()
