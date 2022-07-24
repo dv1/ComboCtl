@@ -851,6 +851,7 @@ class Pump(
 
             setState(if (pumpSuspended) State.Suspended else State.ReadyForCommands)
         } catch (e: CancellationException) {
+            pumpIO.disconnect()
             _statusFlow.value = null
             setState(State.Disconnected)
             throw e
