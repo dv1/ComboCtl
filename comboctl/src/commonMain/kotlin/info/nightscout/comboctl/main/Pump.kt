@@ -1820,6 +1820,12 @@ class Pump(
                 // retval is non-null precisely when the command succeeded.
                 return retval!!
             } else throw CommandExecutionAttemptsFailedException()
+        } catch (e: CancellationException) {
+            // Command was cancelled. Revert to the previous state (since cancellation
+            // is not an error), then rethrow the CancellationException to maintain
+            // structured concurrency.
+            setState(previousState)
+            throw e
         } catch (e: AlertScreenException) {
             if (e.alertScreenContent is AlertScreenContent.Error) {
                 // If we reach this point, then an alert screen with an error
