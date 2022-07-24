@@ -2003,7 +2003,7 @@ class Pump(
                         timestamp = timestamp,
                         bolusAmount = detail.bolusAmount
                     ))
-                    if (lastBolusInfusionTimestamp != null) {
+                    if (lastBolusInfusionTimestamp == null) {
                         lastBolusId = entry.eventCounter
                         lastBolusAmount = detail.bolusAmount
                         lastBolusInfusionTimestamp = timestamp
@@ -2032,7 +2032,7 @@ class Pump(
                         standardBolusReason = standardBolusReason
                     ))
                     lastStandardBolusInfusedTypeSet = true
-                    if (lastBolusInfusionTimestamp != null) {
+                    if (lastBolusInfusionTimestamp == null) {
                         lastBolusId = entry.eventCounter
                         lastBolusAmount = detail.bolusAmount
                         lastBolusInfusionTimestamp = timestamp
@@ -2074,13 +2074,18 @@ class Pump(
             }
         }
 
-        lastBolusInfusionTimestamp?.let { timestamp ->
-            _lastBolusFlow.value = LastBolus(
+        if (lastBolusInfusionTimestamp != null) {
+            val lastBolus = LastBolus(
                 bolusId = lastBolusId,
                 bolusAmount = lastBolusAmount,
-                timestamp = timestamp
+                timestamp = lastBolusInfusionTimestamp!!
             )
-        }
+
+            logger(LogLevel.DEBUG) { "Found a last bolus in history delta; details: $lastBolus" }
+
+            _lastBolusFlow.value = lastBolus
+        } else
+            logger(LogLevel.DEBUG) { "No last bolus found in history delta" }
     }
 
     private suspend fun performOnConnectChecks() {
