@@ -1084,6 +1084,7 @@ class PumpIO(
         runPumpIOCall("send short RT button press", Mode.REMOTE_TERMINAL) {
             val buttonCodes = getCombinedButtonCodes(buttons)
             var delayBeforeNoButton = false
+            var ignoreNoButtonError = false
 
             try {
                 withContext(sequencedDispatcher) {
@@ -1095,9 +1096,11 @@ class PumpIO(
                 }
             } catch (e: CancellationException) {
                 delayBeforeNoButton = true
+                ignoreNoButtonError = true
                 throw e
             } catch (t: Throwable) {
                 delayBeforeNoButton = true
+                ignoreNoButtonError = true
                 logger(LogLevel.ERROR) { "Error thrown during short RT button press: ${t.stackTraceToString()}" }
                 throw t
             } finally {
@@ -1117,7 +1120,34 @@ class PumpIO(
                         ApplicationLayer.createRTButtonStatusPacket(ApplicationLayer.RTButton.NO_BUTTON.id, true)
                     )
                 } catch (t: Throwable) {
-                    logger(LogLevel.DEBUG) { "Swallowing error that was thrown while sending NO_BUTTON; exception: $t" }
+                    // The various IO operations in this function need to be viewed as being part
+                    // of one big IO activity. That is, the RT button sending above _and_ the
+                    // NO_BUTTON transmission here need to be seen as one single IO action. This
+                    // IO action can fail at multiple stages. It can fail in the try block in the
+                    // beginning of the runPumpIOCall when calling sendPacketWithoutResponse(). Or,
+                    // it can fail in the second sendPacketWithoutResponse() call right above
+                    // which sends NO_BUTTON to the Combo.
+                    // If the first call fails, we ignore errors caused by the second call, since
+                    // at this point, we'll forward the first call's exception anyway. In other
+                    // words, in that situation, we already know something went wrong, so extra
+                    // exceptions from the NO_BUTTON transmission are redundant.
+                    // But if the first call succeeds, and instead, the _second_ call (the one which
+                    // transmits NO_BUTTON to the Combo) fails, we do _not_ ignore that second call's
+                    // exception, since that is the only one we've got at that point. If it were
+                    // ignored, the user would never learn that something wrong happened with the IO.
+                    // And this is important, since IO errors may require reconnecting to the Combo.
+                    // To fix this, only ignore exceptions from the NO_BUTTON transmission if the
+                    // ignoreNoButtonError variable is set to true.
+                    if (ignoreNoButtonError) {
+                        logger(LogLevel.DEBUG) {
+                            "Ignoring error that was thrown while sending NO_BUTTON to end short button press; exception: $t"
+                        }
+                    } else {
+                        logger(LogLevel.ERROR) {
+                            "Error thrown while sending NO_BUTTON to end short button press; exception ${t.stackTraceToString()}"
+                        }
+                        throw t
+                    }
                 }
             }
         }
@@ -1803,6 +1833,7 @@ class PumpIO(
         longRTPressLoopRunning = true
 
         var delayBeforeNoButton = false
+        var ignoreNoButtonError = false
 
         currentLongRTPressJob = internalScope!!.async {
             try {
@@ -1861,9 +1892,11 @@ class PumpIO(
                 }
             } catch (e: CancellationException) {
                 delayBeforeNoButton = true
+                ignoreNoButtonError = true
                 throw e
             } catch (t: Throwable) {
                 delayBeforeNoButton = true
+                ignoreNoButtonError = true
                 logger(LogLevel.ERROR) { "Error thrown during long RT button press: ${t.stackTraceToString()}" }
                 throw t
             } finally {
@@ -1890,7 +1923,18 @@ class PumpIO(
                         )
                     }
                 } catch (t: Throwable) {
-                    logger(LogLevel.DEBUG) { "Swallowing error that was thrown while sending NO_BUTTON; exception: $t" }
+                    // See the explanation inside sendShortRTButtonPress()
+                    // for details why this logic is needed.
+                    if (ignoreNoButtonError) {
+                        logger(LogLevel.DEBUG) {
+                            "Ignoring error that was thrown while sending NO_BUTTON to end long button press; exception: $t"
+                        }
+                    } else {
+                        logger(LogLevel.ERROR) {
+                            "Error thrown while sending NO_BUTTON to end long button press; exception ${t.stackTraceToString()}"
+                        }
+                        throw t
+                    }
                 }
 
                 currentLongRTPressJob = null
