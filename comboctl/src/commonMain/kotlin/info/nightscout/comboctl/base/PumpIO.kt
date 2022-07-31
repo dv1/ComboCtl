@@ -113,11 +113,15 @@ typealias PairingPINCallback = suspend (previousAttemptFailed: Boolean) -> Pairi
  *   assigned to this instance.
  * @param onNewDisplayFrame Callback to invoke whenever a new RT
  *   [DisplayFrame] was received.
+ * @param onPacketReceiverException Callback to invoked whenever an
+ *   exception is thrown inside the transport layer's receiver loop.
+ *   This is useful for automatic reconnecting.
  */
 class PumpIO(
     private val pumpStateStore: PumpStateStore,
     private val bluetoothDevice: BluetoothDevice,
-    private val onNewDisplayFrame: (displayFrame: DisplayFrame?) -> Unit
+    private val onNewDisplayFrame: (displayFrame: DisplayFrame?) -> Unit,
+    private val onPacketReceiverException: (e: TransportLayer.PacketReceiverException) -> Unit
 ) {
     // Mutex to synchronize sendPacketWithResponse and sendPacketWithoutResponse calls.
     private val sendPacketMutex = Mutex()
@@ -138,6 +142,8 @@ class PumpIO(
         // If the packet receiver fails, close the barrier to wake
         // up any caller that is waiting on it.
         rtButtonConfirmationBarrier.close(packetReceiverException)
+        // Also forward the exception to the associated callback.
+        onPacketReceiverException(packetReceiverException)
     }
 
     private var internalScopeJob: Job? = null

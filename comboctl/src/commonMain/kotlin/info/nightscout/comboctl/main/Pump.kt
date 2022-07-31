@@ -223,7 +223,7 @@ class Pump(
     initialBasalProfile: BasalProfile? = null,
     private val onEvent: (event: Event) -> Unit = { }
 ) {
-    private val pumpIO = PumpIO(pumpStateStore, bluetoothDevice, this::processDisplayFrame)
+    private val pumpIO = PumpIO(pumpStateStore, bluetoothDevice, this::processDisplayFrame, this::packetReceiverExceptionThrown)
     // Updated by updateStatusImpl(). true if the Combo
     // is currently in the stop mode. If true, commands
     // are not executed, and an exception is thrown instead.
@@ -881,6 +881,7 @@ class Pump(
 
         pumpIO.disconnect()
         _statusFlow.value = null
+        parsedDisplayFrameStream.resetAll()
         setState(State.Disconnected)
     }
 
@@ -1634,6 +1635,10 @@ class Pump(
 
     private fun processDisplayFrame(displayFrame: DisplayFrame?) =
         parsedDisplayFrameStream.feedDisplayFrame(displayFrame)
+
+    private fun packetReceiverExceptionThrown(e: TransportLayer.PacketReceiverException) {
+        parsedDisplayFrameStream.abortDueToError(e)
+    }
 
     private inline fun <reified ProgressStageSubtype : ProgressStage> createBasalProgressReporter() =
         ProgressReporter(

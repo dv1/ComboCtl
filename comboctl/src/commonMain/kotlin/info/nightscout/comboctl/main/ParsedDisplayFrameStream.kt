@@ -85,6 +85,26 @@ class ParsedDisplayFrameStream {
     }
 
     /**
+     * Sets the internal states to reflect a given error.
+     *
+     * This behaves similar to [resetAll]. However, the internal Channel
+     * for parsed display frames is closed with the specified [cause], and
+     * is _not_ reopened afterwards. [resetAll] has to be called after
+     * this function to be able to use the [ParsedDisplayFrameStream] again.
+     * This is intentional; it makes sure any attempts at getting parsed
+     * display frames etc. fail until the user explicitly resets this stream.
+     *
+     * @param cause The throwable that caused the error. Any currently
+     *   suspended [getParsedDisplayFrame] call will be aborted and this
+     *   cause will be thrown from that function.
+     */
+    fun abortDueToError(cause: Throwable?) {
+        @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+        _flow.resetReplayCache()
+        parsedDisplayFrameChannel.close(cause)
+    }
+
+    /**
      * Resets the states that are associated with duplicate screen detection.
      *
      * See [getParsedDisplayFrame] for details about duplicate screen detection.
@@ -156,6 +176,11 @@ class ParsedDisplayFrameStream {
      *   suspends the coroutine and waits for a new frame.
      * @throws AlertScreenException if [processAlertScreens] is set to true and
      *   an alert screen is detected.
+     * @throws PacketReceiverException thrown when the [TransportLayer.IO] packet
+     *   receiver loop failed due to an exception. Said exception is wrapped in
+     *   a PacketReceiverException and forwarded all the way to this function
+     *   call, which will keep throwing that cause until [resetAll] is called
+     *   to reset the internal states.
      */
     suspend fun getParsedDisplayFrame(filterDuplicates: Boolean = false, processAlertScreens: Boolean = true): ParsedDisplayFrame? {
         while (true) {
