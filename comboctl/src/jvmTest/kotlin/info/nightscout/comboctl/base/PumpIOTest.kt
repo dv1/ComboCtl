@@ -49,7 +49,7 @@ class PumpIOTest {
                 testIO.pumpClientCipher = invariantPumpData.pumpClientCipher
             }
 
-            pumpIO = PumpIO(testPumpStateStore, testBluetoothDevice) { }
+            pumpIO = PumpIO(testPumpStateStore, testBluetoothDevice, onNewDisplayFrame = {}, onPacketReceiverException = {})
         }
 
         // Tests that a long button press is handled correctly.
