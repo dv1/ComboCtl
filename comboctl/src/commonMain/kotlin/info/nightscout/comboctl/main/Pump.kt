@@ -1779,9 +1779,16 @@ class Pump(
                     // (if isIdempotent is set to true).
                     handleAlertScreenContent(e.alertScreenContent)
                 } catch (e: TransportLayer.PacketReceiverException) {
-                    val pumpTerminatedConnection = (e.cause as? ApplicationLayer.ErrorCodeException)?.let {
-                        it.appLayerPacket.command == ApplicationLayer.Command.CTRL_DISCONNECT
-                    } ?: false
+                    // When the pump terminates the connection, this can happen either
+                    // through an ErrorCodeException (if the pump sends a packet with an
+                    // error code), or through a ComboIOException (in case of IO errors
+                    // because the Combo terminated the connection). Interpret both as a
+                    // "pump terminated connection" case to initiate a reconnect attempt.
+                    val pumpTerminatedConnection = when (val it = e.cause) {
+                        is ApplicationLayer.ErrorCodeException -> it.appLayerPacket.command == ApplicationLayer.Command.CTRL_DISCONNECT
+                        is ComboIOException -> true
+                        else -> false
+                    }
 
                     // Packet receiver exceptions can happen for a number of reasons.
                     // To be on the safe side, we only try to reconnect if the exception
