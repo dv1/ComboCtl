@@ -55,6 +55,7 @@ import kotlinx.datetime.toLocalDateTime
 private val logger = Logger.get("Pump")
 
 private const val NUM_IDEMPOTENT_COMMAND_DISPATCH_ATTEMPTS = 10
+private const val MAX_NUM_REGULAR_CONNECT_ATTEMPTS = 10
 private const val DELAY_IN_MS_BETWEEN_COMMAND_DISPATCH_ATTEMPTS = 2000L
 
 object RTCommandProgressStage {
@@ -229,6 +230,11 @@ class Pump(
     // are not executed, and an exception is thrown instead.
     // See the checks in executeCommand() for details.
     private var pumpSuspended = false
+
+    // This is used in connectInternal() to prevent executeCommand()
+    // from attempting to reconnect. That's needed when connectInternal()
+    // performs post-connect pump check commands.
+    private var reconnectAttemptsEnabled = false
 
     // States for navigating through remote terminal (RT) screens. Needed by
     // all commands that simulate user interactions in the RT mode, like
@@ -832,32 +838,38 @@ class Pump(
      *   bolus is active (these are shown on the main screen).
      */
     suspend fun connect() {
-        check(stateFlow.value == State.Disconnected) { "Attempted to connect to pump in a the ${stateFlow.value} state" }
+        check(stateFlow.value == State.Disconnected) { "Attempted to connect to pump in the ${stateFlow.value} state" }
 
-        try {
-            setState(State.Connecting)
+        for (connectionAttemptNr in 1..MAX_NUM_REGULAR_CONNECT_ATTEMPTS) {
+            logger(LogLevel.DEBUG) { "Attempt $connectionAttemptNr of $MAX_NUM_REGULAR_CONNECT_ATTEMPTS to establish connection" }
 
-            // Get the current pump state UTC offset to translate localtime
-            // timestamps from the history delta to Instant timestamps.
-            currentPumpUtcOffset = pumpStateStore.getCurrentUtcOffset(bluetoothDevice.address)
-
-            // Set the command mode as the initial mode to be able
-            // to directly check for warnings / errors through the
-            // CMD_READ_PUMP_STATUS command.
-            pumpIO.connect(initialMode = PumpIO.Mode.COMMAND, runHeartbeat = true)
-
-            setState(State.CheckingPump)
-            performOnConnectChecks()
-
-            setState(if (pumpSuspended) State.Suspended else State.ReadyForCommands)
-        } catch (e: CancellationException) {
-            pumpIO.disconnect()
-            _statusFlow.value = null
-            setState(State.Disconnected)
-            throw e
-        } catch (t: Throwable) {
-            setState(State.Error(throwable = t, "Connection error"))
-            throw t
+            try {
+                connectInternal()
+                break
+            } catch (e: CancellationException) {
+                pumpIO.disconnect()
+                _statusFlow.value = null
+                setState(State.Disconnected)
+                throw e
+            } catch (e: ComboException) {
+                if (connectionAttemptNr < MAX_NUM_REGULAR_CONNECT_ATTEMPTS) {
+                    logger(LogLevel.DEBUG) { "Got exception while connecting; will try again; exception was: $e" }
+                    pumpIO.disconnect()
+                    _statusFlow.value = null
+                    parsedDisplayFrameStream.resetAll()
+                    delay(DELAY_IN_MS_BETWEEN_COMMAND_DISPATCH_ATTEMPTS)
+                    continue
+                } else {
+                    logger(LogLevel.ERROR) {
+                        "Got exception $e while connecting, and max number of " +
+                        "connection establishing attempts reached; not trying again"
+                    }
+                    throw e
+                }
+            } catch (t: Throwable) {
+                setState(State.Error(throwable = t, "Connection error"))
+                throw t
+            }
         }
     }
 
@@ -882,6 +894,7 @@ class Pump(
         pumpIO.disconnect()
         _statusFlow.value = null
         parsedDisplayFrameStream.resetAll()
+        reconnectAttemptsEnabled = false
         setState(State.Disconnected)
     }
 
@@ -1775,7 +1788,12 @@ class Pump(
                     // happened due to the Combo terminating the connection on its end.
 
                     if (pumpTerminatedConnection) {
-                        if (isIdempotent) {
+                        if (!reconnectAttemptsEnabled) {
+                            logger(LogLevel.DEBUG) {
+                                "Pump terminated connection, and reconnect attempts are currently disabled"
+                            }
+                            throw e
+                        } else if (isIdempotent) {
                             logger(LogLevel.DEBUG) { "Pump terminated connection; will try to reconnect since this is an idempotent command" }
                             needsToReconnect = true
                         } else {
@@ -1791,7 +1809,12 @@ class Pump(
                     // This includes cases like when the pump and phone are out of
                     // reach. Try to reconnect if this is an idempotent command.
 
-                    if (isIdempotent) {
+                    if (!reconnectAttemptsEnabled) {
+                        logger(LogLevel.DEBUG) {
+                            "Combo IO exception $e occurred, but reconnect attempts are currently disabled"
+                        }
+                        throw e
+                    } else if (isIdempotent) {
                         logger(LogLevel.DEBUG) { "Combo IO exception $e occurred; will try to reconnect since this is an idempotent command" }
                         needsToReconnect = true
                     } else {
@@ -1972,12 +1995,43 @@ class Pump(
         }
     }
 
+    // The actual connect function. This has no exception handling or reconnect
+    // logic, and that is on purpose. This is the internal connect logic that
+    // callers then surround with their error handling code.
+    private suspend fun connectInternal() {
+        // Prevent reconnect() from being called if post-connect check commands
+        // fail (like the command to read the basal profile), since this internal
+        // connect function is explicitly meant to _not_ do things like attempting
+        // to reconnect in case of failures - that's up to the callers.
+        reconnectAttemptsEnabled = false
+
+        setState(State.Connecting)
+
+        try {
+            // Get the current pump state UTC offset to translate localtime
+            // timestamps from the history delta to Instant timestamps.
+            currentPumpUtcOffset = pumpStateStore.getCurrentUtcOffset(bluetoothDevice.address)
+
+            // Set the command mode as the initial mode to be able
+            // to directly check for warnings / errors through the
+            // CMD_READ_PUMP_STATUS command.
+            pumpIO.connect(initialMode = PumpIO.Mode.COMMAND, runHeartbeat = true)
+
+            setState(State.CheckingPump)
+            performOnConnectChecks()
+        } finally {
+            reconnectAttemptsEnabled = true
+        }
+
+        setState(if (pumpSuspended) State.Suspended else State.ReadyForCommands)
+    }
+
     // Utility code to add a log line that specifically records
     // that this is a *re*connect attempt.
     private suspend fun reconnect() {
         logger(LogLevel.DEBUG) { "Reconnecting Combo with address ${bluetoothDevice.address}" }
         disconnect()
-        connect()
+        connectInternal()
     }
 
     // The block allows callers to perform their own processing for each
