@@ -606,7 +606,7 @@ class Pump(
         data class Error(val throwable: Throwable? = null, val message: String? = null) : State() {
             override fun toString(): String {
                 return if (throwable != null)
-                        "Error (\"$message\"); throwable: ${throwable.stackTraceToString()}"
+                        "Error (\"$message\"); throwable: $throwable"
                     else
                         "Error (\"$message\")"
             }
