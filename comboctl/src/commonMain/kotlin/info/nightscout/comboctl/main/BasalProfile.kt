@@ -15,6 +15,7 @@ const val NUM_COMBO_BASAL_PROFILE_FACTORS = 24
  *   0.00 IU to 0.05 IU  : increment in 0.05 IU steps
  *   0.05 IU to 1.00 IU  : increment in 0.01 IU steps
  *   1.00 IU to 10.00 IU : increment in 0.05 IU steps
+ *   10.00 IU and above  : increment in 0.10 IU steps
  *
  * The [sourceFactors] argument must contain exactly 24
  * integer-encoded-decimals. Any other amount will result
@@ -63,8 +64,10 @@ class BasalProfile(sourceFactors: List<Int>) {
             require(factor >= 0) { "Source factor #$index has invalid negative value $factor" }
 
             val granularity = when (factor) {
+                in 0..50 -> 50
                 in 50..1000 -> 10
-                else -> 50
+                in 1000..10000 -> 50
+                else -> 100
             }
 
             // Round the factor with integer math
