@@ -1005,7 +1005,13 @@ class Pump(
                 adjustQuantityOnScreen(
                     rtNavigationContext,
                     targetQuantity = basalFactor,
-                    longRTButtonPressPredicate = longRTButtonPressPredicate
+                    longRTButtonPressPredicate = longRTButtonPressPredicate,
+                    // The in/decrement steps go as follows (the range is for the basal factor on screen):
+                    // 0.0 - 0.05 IU : 0.05 IU steps
+                    // 0.05 - 1.0 IU : 0.01 IU steps
+                    // 1.0 - 10.0 IU : 0.05 IU steps
+                    // above 10.0 IU : 0.1 IU steps
+                    incrementSteps = arrayOf(Pair(0, 50), Pair(50, 10), Pair(1000, 50), Pair(10000, 100))
                 ) {
                     (it as ParsedScreen.BasalRateFactorSettingScreen).numUnits
                 }
@@ -2610,7 +2616,8 @@ class Pump(
                 rtNavigationContext,
                 targetQuantity = newPumpLocalDateTime.hour,
                 longRTButtonPressPredicate = longRTButtonPressPredicate,
-                cyclicQuantityRange = 24
+                cyclicQuantityRange = 24,
+                incrementSteps = arrayOf(Pair(0, 1))
             ) { parsedScreen ->
                 (parsedScreen as ParsedScreen.TimeAndDateSettingsHourScreen).hour
             }
@@ -2624,7 +2631,8 @@ class Pump(
                 rtNavigationContext,
                 targetQuantity = newPumpLocalDateTime.minute,
                 longRTButtonPressPredicate = longRTButtonPressPredicate,
-                cyclicQuantityRange = 60
+                cyclicQuantityRange = 60,
+                incrementSteps = arrayOf(Pair(0, 1))
             ) { parsedScreen ->
                 (parsedScreen as ParsedScreen.TimeAndDateSettingsMinuteScreen).minute
             }
@@ -2635,7 +2643,8 @@ class Pump(
             adjustQuantityOnScreen(
                 rtNavigationContext,
                 targetQuantity = newPumpLocalDateTime.year,
-                longRTButtonPressPredicate = longRTButtonPressPredicate
+                longRTButtonPressPredicate = longRTButtonPressPredicate,
+                incrementSteps = arrayOf(Pair(0, 1))
             ) { parsedScreen ->
                 (parsedScreen as ParsedScreen.TimeAndDateSettingsYearScreen).year
             }
@@ -2647,7 +2656,8 @@ class Pump(
                 rtNavigationContext,
                 targetQuantity = newPumpLocalDateTime.monthNumber,
                 longRTButtonPressPredicate = longRTButtonPressPredicate,
-                cyclicQuantityRange = 12
+                cyclicQuantityRange = 12,
+                incrementSteps = arrayOf(Pair(0, 1))
             ) { parsedScreen ->
                 (parsedScreen as ParsedScreen.TimeAndDateSettingsMonthScreen).month
             }
@@ -2663,7 +2673,8 @@ class Pump(
             adjustQuantityOnScreen(
                 rtNavigationContext,
                 targetQuantity = newPumpLocalDateTime.dayOfMonth,
-                longRTButtonPressPredicate = longRTButtonPressPredicate
+                longRTButtonPressPredicate = longRTButtonPressPredicate,
+                incrementSteps = arrayOf(Pair(0, 1))
             ) { parsedScreen ->
                 (parsedScreen as ParsedScreen.TimeAndDateSettingsDayScreen).day
             }
@@ -2700,7 +2711,9 @@ class Pump(
             adjustQuantityOnScreen(
                 rtNavigationContext,
                 targetQuantity = percentage,
-                longRTButtonPressPredicate = longRTButtonPressPercentagePredicate
+                longRTButtonPressPredicate = longRTButtonPressPercentagePredicate,
+                // TBR duration is in/decremented in 10-minute steps
+                incrementSteps = arrayOf(Pair(0, 10))
             ) {
                 val currentPercentage = (it as ParsedScreen.TemporaryBasalRatePercentageScreen).percentage
 
@@ -2747,7 +2760,9 @@ class Pump(
                 adjustQuantityOnScreen(
                     rtNavigationContext,
                     targetQuantity = durationInMinutes,
-                    longRTButtonPressPredicate = longRTButtonPressDurationPredicate
+                    longRTButtonPressPredicate = longRTButtonPressDurationPredicate,
+                    // TBR percentage is in/decremented in 15 percentage point steps
+                    incrementSteps = arrayOf(Pair(0, 15))
                 ) {
                     val currentDuration = (it as ParsedScreen.TemporaryBasalRateDurationScreen).durationInMinutes
 

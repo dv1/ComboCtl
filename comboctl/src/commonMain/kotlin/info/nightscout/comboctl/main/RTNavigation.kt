@@ -11,6 +11,7 @@ import info.nightscout.comboctl.base.connectDirectionally
 import info.nightscout.comboctl.base.findShortestPath
 import info.nightscout.comboctl.parser.ParsedScreen
 import kotlin.math.absoluteValue
+import kotlin.math.min
 import kotlin.reflect.KClassifier
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
@@ -573,12 +574,24 @@ suspend fun waitUntilScreenAppears(
  * place if [longRTButtonPressPredicate] returns true. Its arguments are [targetQuantity]
  * and the quantity on screen. The default predicate always returns true.
  *
+ * [incrementSteps] specifies how the quantity on screen would increment/decrement if the
+ * [incrementButton] or [decrementButton] were pressed. This is an array of Pair integers.
+ * For each pair, the first integer in the Pair specifies the threshold, the second integer
+ * is the step size. Example value: `arrayOf(Pair(0, 10), Pair(100, 50), Pair(1000, 100))`.
+ * This means: Values in the 0-100 range are in/decremented by a step size of 10. Values
+ * in the 100-1000 range are incremented by a step size of 50. Values at or above 1000
+ * are incremented by a step size of 100.
+ *
+ * NOTE: If [cyclicQuantityRange] is not null, [incrementSteps] must have exactly one item.
+ *
  * @param rtNavigationContext Context to use for adjusting the quantity.
  * @param targetQuantity Quantity to set the on-screen quantity to.
  * @param incrementButton What RT button to press for incrementing the on-screen quantity.
  * @param decrementButton What RT button to press for decrementing the on-screen quantity.
  * @param cyclicQuantityRange The cyclic quantity range, or null if no such range exists.
  * @param longRTButtonPressPredicate Quantity delta predicate for enabling RT button presses.
+ * @param incrementSteps The step sizes and thresholds the pump uses for in/decrementing.
+ *   Must contain at least one item.
  * @param getQuantity Callback for extracting the on-screen quantity.
  * @throws info.nightscout.comboctl.parser.AlertScreenException if alert screens are seen.
  */
@@ -589,8 +602,15 @@ suspend fun adjustQuantityOnScreen(
     decrementButton: RTNavigationButton = RTNavigationButton.DOWN,
     cyclicQuantityRange: Int? = null,
     longRTButtonPressPredicate: (targetQuantity: Int, quantityOnScreen: Int) -> Boolean = { _, _ -> true },
+    incrementSteps: Array<Pair<Int, Int>>,
     getQuantity: (parsedScreen: ParsedScreen) -> Int?
 ) {
+    require(incrementSteps.isNotEmpty()) { "There must be at least one incrementSteps item" }
+    require((cyclicQuantityRange == null) || (incrementSteps.size == 1)) {
+        "If cyclicQuantityRange is not null, incrementSteps must contain " +
+        "exactly one item; actually contains ${incrementSteps.size}"
+    }
+
     fun checkIfNeedsToIncrement(currentQuantity: Int): Boolean {
         return if (cyclicQuantityRange != null) {
             val distance = (targetQuantity - currentQuantity)
@@ -736,30 +756,38 @@ suspend fun adjustQuantityOnScreen(
         }
     }
 
+    val currentQuantity: Int
+
+    while (true) {
+        val parsedDisplayFrame = rtNavigationContext.getParsedDisplayFrame(filterDuplicates = true) ?: continue
+        val parsedScreen = parsedDisplayFrame.parsedScreen
+        val quantity = getQuantity(parsedScreen)
+        if (quantity != null) {
+            currentQuantity = quantity
+            break
+        }
+    }
+
     // If the on-screen quantity is not the target quantity, we may
     // have overshot, or the in/decrement factor may have been increased
     // over time by the Combo. Perform short RT button presses to nudge
     // the quantity until it reaches the target value. Alternatively,
     // the long RT button press was skipped by request. In that case,
     // we must adjust with short RT button presses.
-    shortPressRTButtonsUntil(rtNavigationContext) { parsedScreen ->
-        val currentQuantity = getQuantity(parsedScreen)
-
-        val command = if (currentQuantity == null) {
-            ShortPressRTButtonsCommand.DoNothing
-        } else if (currentQuantity == targetQuantity) {
-            ShortPressRTButtonsCommand.Stop
-        } else {
-            val needToIncrement = checkIfNeedsToIncrement(currentQuantity)
-            if (needToIncrement)
-                ShortPressRTButtonsCommand.PressButton(incrementButton)
-            else
-                ShortPressRTButtonsCommand.PressButton(decrementButton)
-        }
-
-        logger(LogLevel.VERBOSE) { "Observed quantity $currentQuantity during finetuning; issuing command $command" }
-
-        command
+    val (numNeededShortRTButtonPresses: Int, shortRTButtonToPress) = computeShortRTButtonPress(
+        currentQuantity = currentQuantity,
+        targetQuantity = targetQuantity,
+        cyclicQuantityRange = cyclicQuantityRange,
+        incrementSteps = incrementSteps,
+        incrementButton = incrementButton,
+        decrementButton = decrementButton
+    )
+    logger(LogLevel.DEBUG) {
+        "Need to short-press the $shortRTButtonToPress " +
+        "RT button $numNeededShortRTButtonPresses time(s)"
+    }
+    repeat(numNeededShortRTButtonPresses) {
+        rtNavigationContext.shortPressButton(shortRTButtonToPress)
     }
 }
 
@@ -933,3 +961,75 @@ internal fun findShortestRtPath(from: KClassifier, to: KClassifier, isComboStopp
             RTEdgeValue.EdgeValidityCondition.ONLY_IF_COMBO_STOPPED -> isComboStopped
         }
     }
+
+// TODO: When setting basal, step size is 0.5 when going from 0.0 to 0.5
+internal fun computeShortRTButtonPress(
+    currentQuantity: Int,
+    targetQuantity: Int,
+    cyclicQuantityRange: Int?,
+    incrementSteps: Array<Pair<Int, Int>>,
+    incrementButton: RTNavigationButton,
+    decrementButton: RTNavigationButton
+): Pair<Int, RTNavigationButton> {
+    val numNeededShortRTButtonPresses: Int
+    val shortRTButtonToPress: RTNavigationButton
+
+    if (currentQuantity == targetQuantity) {
+        numNeededShortRTButtonPresses = 0
+        shortRTButtonToPress = RTNavigationButton.CHECK
+    } else if (incrementSteps.size == 1) {
+        val stepSize = incrementSteps[0].second
+        val distance = (targetQuantity - currentQuantity)
+        if (cyclicQuantityRange != null) {
+            if (distance.absoluteValue > (cyclicQuantityRange / 2)) {
+                val firstPart = (cyclicQuantityRange - targetQuantity)
+                val secondPart = currentQuantity - 0
+                numNeededShortRTButtonPresses = (firstPart + secondPart) / stepSize
+                shortRTButtonToPress = if (targetQuantity < currentQuantity) incrementButton else decrementButton
+            } else {
+                numNeededShortRTButtonPresses = distance / stepSize
+                shortRTButtonToPress = if (targetQuantity > currentQuantity) incrementButton else decrementButton
+            }
+        } else {
+            numNeededShortRTButtonPresses = distance.absoluteValue / stepSize
+            shortRTButtonToPress = if (targetQuantity > currentQuantity) incrementButton else decrementButton
+        }
+    } else {
+        val (start, end, button) = if (currentQuantity < targetQuantity)
+            Triple(currentQuantity, targetQuantity, incrementButton)
+        else
+            Triple(targetQuantity, currentQuantity, decrementButton)
+
+        shortRTButtonToPress = button
+
+        var currentValue = start
+        var numPresses = 0
+
+        for (index in incrementSteps.indices) {
+            val incrementStep = incrementSteps[index]
+            val stepSize = incrementStep.second
+            val curRangeStart = incrementStep.first
+            val curRangeEnd = if (index == incrementSteps.size - 1)
+                end
+            else
+                min(incrementSteps[index + 1].first, end)
+
+            if (currentValue >= curRangeEnd)
+                continue
+
+            if (currentValue < curRangeStart)
+                currentValue = curRangeStart
+
+            numPresses += (curRangeEnd - currentValue) / stepSize
+
+            currentValue = curRangeEnd
+
+            if (currentValue >= end)
+                break
+        }
+
+        numNeededShortRTButtonPresses = numPresses
+    }
+
+    return Pair(numNeededShortRTButtonPresses, shortRTButtonToPress)
+}

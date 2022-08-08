@@ -223,6 +223,159 @@ class RTNavigationTest {
     }
 
     @Test
+    fun checkComputeShortRTButtonPressWithOneStepSize() {
+        // Test that computeShortRTButtonPress() correctly computes
+        // the number of necessary short RT button presses and figures
+        // out the correct button to press. These are the tests for
+        // increment step arrays with one item.
+
+        var result: Pair<Int, RTNavigationButton>
+
+        result = computeShortRTButtonPress(
+            currentQuantity = 100,
+            targetQuantity = 130,
+            cyclicQuantityRange = null,
+            incrementSteps = arrayOf(Pair(0, 3)),
+            incrementButton = RTNavigationButton.UP,
+            decrementButton = RTNavigationButton.DOWN
+        )
+        assertEquals(Pair((130 - 100) / 3, RTNavigationButton.UP), result)
+
+        result = computeShortRTButtonPress(
+            currentQuantity = 4000,
+            targetQuantity = 60,
+            cyclicQuantityRange = null,
+            incrementSteps = arrayOf(Pair(0, 20)),
+            incrementButton = RTNavigationButton.UP,
+            decrementButton = RTNavigationButton.DOWN
+        )
+        assertEquals(Pair((4000 - 60) / 20, RTNavigationButton.DOWN), result)
+
+        result = computeShortRTButtonPress(
+            currentQuantity = 10,
+            targetQuantity = 20,
+            cyclicQuantityRange = 60,
+            incrementSteps = arrayOf(Pair(0, 1)),
+            incrementButton = RTNavigationButton.UP,
+            decrementButton = RTNavigationButton.DOWN
+        )
+        assertEquals(Pair((20 - 10) / 1, RTNavigationButton.UP), result)
+
+        // Tests that the cyclic quantity range is respected.
+        // In this case, a wrap-around is expected to be preferred
+        // by computeShortRTButtonPress().
+        result = computeShortRTButtonPress(
+            currentQuantity = 10,
+            targetQuantity = 50,
+            cyclicQuantityRange = 60,
+            incrementSteps = arrayOf(Pair(0, 1)),
+            incrementButton = RTNavigationButton.UP,
+            decrementButton = RTNavigationButton.DOWN
+        )
+        assertEquals(Pair(((60 - 50) + (10 - 0)) / 1, RTNavigationButton.DOWN), result)
+    }
+
+    @Test
+    fun checkComputeShortRTButtonPressWithTwoStepSizes() {
+        // Test that computeShortRTButtonPress() correctly computes
+        // the number of necessary short RT button presses and figures
+        // out the correct button to press. These are the tests for
+        // increment step arrays with two items.
+
+        var result: Pair<Int, RTNavigationButton>
+
+        result = computeShortRTButtonPress(
+            currentQuantity = 100,
+            targetQuantity = 150,
+            cyclicQuantityRange = null,
+            incrementSteps = arrayOf(Pair(0, 10), Pair(1000, 50)),
+            incrementButton = RTNavigationButton.UP,
+            decrementButton = RTNavigationButton.DOWN
+        )
+        assertEquals(Pair((150 - 100) / 10, RTNavigationButton.UP), result)
+
+        result = computeShortRTButtonPress(
+            currentQuantity = 1000,
+            targetQuantity = 1100,
+            cyclicQuantityRange = null,
+            incrementSteps = arrayOf(Pair(0, 10), Pair(1000, 50)),
+            incrementButton = RTNavigationButton.UP,
+            decrementButton = RTNavigationButton.DOWN
+        )
+        assertEquals(Pair((1100 - 1000) / 50, RTNavigationButton.UP), result)
+
+        result = computeShortRTButtonPress(
+            currentQuantity = 900,
+            targetQuantity = 1050,
+            cyclicQuantityRange = null,
+            incrementSteps = arrayOf(Pair(0, 10), Pair(1000, 50)),
+            incrementButton = RTNavigationButton.UP,
+            decrementButton = RTNavigationButton.DOWN
+        )
+        assertEquals(Pair((1000 - 900) / 10 + (1050 - 1000) / 50, RTNavigationButton.UP), result)
+
+        result = computeShortRTButtonPress(
+            currentQuantity = 300,
+            targetQuantity = 230,
+            cyclicQuantityRange = null,
+            incrementSteps = arrayOf(Pair(0, 10), Pair(1000, 50)),
+            incrementButton = RTNavigationButton.UP,
+            decrementButton = RTNavigationButton.DOWN
+        )
+        assertEquals(Pair((300 - 230) / 10, RTNavigationButton.DOWN), result)
+
+        result = computeShortRTButtonPress(
+            currentQuantity = 1200,
+            targetQuantity = 1000,
+            cyclicQuantityRange = null,
+            incrementSteps = arrayOf(Pair(0, 10), Pair(1000, 50)),
+            incrementButton = RTNavigationButton.UP,
+            decrementButton = RTNavigationButton.DOWN
+        )
+        assertEquals(Pair((1200 - 1000) / 50, RTNavigationButton.DOWN), result)
+
+        result = computeShortRTButtonPress(
+            currentQuantity = 1100,
+            targetQuantity = 970,
+            cyclicQuantityRange = null,
+            incrementSteps = arrayOf(Pair(0, 10), Pair(1000, 50)),
+            incrementButton = RTNavigationButton.UP,
+            decrementButton = RTNavigationButton.DOWN
+        )
+        assertEquals(Pair((1000 - 970) / 10 + (1100 - 1000) / 50, RTNavigationButton.DOWN), result)
+    }
+
+    @Test
+    fun checkComputeShortRTButtonPressWithThreeStepSizes() {
+        // Test that computeShortRTButtonPress() correctly computes
+        // the number of necessary short RT button presses and figures
+        // out the correct button to press. These are the tests for
+        // increment step arrays with three items.
+
+        var result: Pair<Int, RTNavigationButton>
+
+        result = computeShortRTButtonPress(
+            currentQuantity = 7900,
+            targetQuantity = 710,
+            cyclicQuantityRange = null,
+            incrementSteps = arrayOf(Pair(0, 50), Pair(50, 10), Pair(1000, 50)),
+            incrementButton = RTNavigationButton.UP,
+            decrementButton = RTNavigationButton.DOWN
+        )
+        assertEquals(Pair((1000 - 710) / 10 + (7900 - 1000) / 50, RTNavigationButton.DOWN), result)
+
+        result = computeShortRTButtonPress(
+            currentQuantity = 0,
+            targetQuantity = 1100,
+            cyclicQuantityRange = null,
+            incrementSteps = arrayOf(Pair(0, 50), Pair(50, 10), Pair(1000, 50)),
+            incrementButton = RTNavigationButton.UP,
+            decrementButton = RTNavigationButton.DOWN
+        )
+        assertEquals(Pair((50 - 0) / 50 + (1000 - 50) / 10 + (1100 - 1000) / 50, RTNavigationButton.UP), result)
+    }
+
+    @Test
     fun checkRTNavigationFromMainToQuickinfo() {
         // Check RT screen navigation by navigating from the main screen
         // to the quickinfo screen. If this does not work properly, the
@@ -506,7 +659,8 @@ class RTNavigationTest {
             adjustQuantityOnScreen(
                 rtNavigationContext,
                 targetQuantity = 160,
-                cyclicQuantityRange = null
+                cyclicQuantityRange = null,
+                incrementSteps = arrayOf(Pair(0, 10))
             ) { parsedScreen ->
                 parsedScreen as ParsedScreen.TemporaryBasalRatePercentageScreen
                 parsedScreen.percentage
@@ -543,7 +697,8 @@ class RTNavigationTest {
             adjustQuantityOnScreen(
                 rtNavigationContext,
                 targetQuantity = 2,
-                cyclicQuantityRange = 60
+                cyclicQuantityRange = 60,
+                incrementSteps = arrayOf(Pair(0, 1))
             ) { parsedScreen ->
                 parsedScreen as ParsedScreen.TimeAndDateSettingsMinuteScreen
                 parsedScreen.minute
