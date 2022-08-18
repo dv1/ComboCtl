@@ -139,6 +139,16 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
         }
     }
 
+    /** Callback for custom discovery activity startup.
+     *
+     * Useful for when more elaborate start procedures are done such as those that use
+     * [ActivityResultCaller.registerForActivityResult]. If this callback is set to null,
+     * the default behavior is used (= start activity with [Activity.startActivity]).
+     * Note that this default behavior does not detected when the user rejects permission
+     * to make the Android device discoverable.
+     */
+    var customDiscoveryActivityStartCallback: ((intent: Intent) -> Unit)? = null
+
     override fun startDiscovery(
         sdpServiceName: String,
         sdpServiceProvider: String,
@@ -229,13 +239,21 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
         val discoverableIntent = Intent(SystemBluetoothAdapter.ACTION_REQUEST_DISCOVERABLE).apply {
             putExtra(SystemBluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, discoveryDuration)
             putExtra(SystemBluetoothAdapter.EXTRA_SCAN_MODE, SystemBluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE)
-            // Necessary since we want to be able to start scans from any
-            // context, not just from activities. In fact, starting scans
-            // from activities would be a back pick, since they can  can
-            // go away at any moment, taking the ongoing scan with them.
-            flags = flags or Intent.FLAG_ACTIVITY_NEW_TASK
         }
-        androidContext.startActivity(discoverableIntent)
+
+        if (customDiscoveryActivityStartCallback == null) {
+            // Do the default start procedure if no custom one was defined.
+
+            // This flag is necessary to be able to start the scan from the given context,
+            // which is _not_ an activity. Starting scans from activities is potentially
+            // problematic since they can go away at any moment. If this is not desirable,
+            // relying on the AAPS Context is better, but we have to create a new task then.
+            discoverableIntent.flags = discoverableIntent.flags or Intent.FLAG_ACTIVITY_NEW_TASK
+
+            androidContext.startActivity(discoverableIntent)
+        } else {
+            customDiscoveryActivityStartCallback?.invoke(discoverableIntent)
+        }
 
         logger(LogLevel.DEBUG) { "Started discovery" }
 
