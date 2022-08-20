@@ -859,14 +859,31 @@ class Pump(
             } catch (e: CancellationException) {
                 pumpIO.disconnect()
                 _statusFlow.value = null
+                parsedDisplayFrameStream.resetAll()
                 setState(State.Disconnected)
                 throw e
             } catch (e: ComboException) {
+                pumpIO.disconnect()
+                _statusFlow.value = null
+                parsedDisplayFrameStream.resetAll()
+                when (e) {
+                    // If these exceptions occur, do _not_ try another connection attempt.
+                    // Instead, disconnect and forward these exceptions, as if all attempts
+                    // failed. That's because these exceptions indicate hard errors that
+                    // must be reported ASAP and disallow more connection attempts, at
+                    // least attempts without notifying the user.
+                    is IncorrectActiveBasalProfileException,
+                    is ExtendedOrMultiwaveBolusActiveException,
+                    is UnaccountedBolusDetectedException,
+                    is SettingPumpDatetimeFailedException,
+                    is AlertScreenException -> {
+                        setState(State.Error(throwable = e, "Connection error"))
+                        throw e
+                    }
+                    else -> Unit
+                }
                 if (connectionAttemptNr < MAX_NUM_REGULAR_CONNECT_ATTEMPTS) {
                     logger(LogLevel.DEBUG) { "Got exception while connecting; will try again; exception was: $e" }
-                    pumpIO.disconnect()
-                    _statusFlow.value = null
-                    parsedDisplayFrameStream.resetAll()
                     delay(DELAY_IN_MS_BETWEEN_COMMAND_DISPATCH_ATTEMPTS)
                     continue
                 } else {
@@ -874,6 +891,7 @@ class Pump(
                         "Got exception $e while connecting, and max number of " +
                         "connection establishing attempts reached; not trying again"
                     }
+                    setState(State.Error(throwable = e, "Connection error"))
                     throw e
                 }
             } catch (t: Throwable) {
