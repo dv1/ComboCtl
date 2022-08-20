@@ -76,7 +76,7 @@ class AndroidBluetoothDevice(
 
                 progressReporter?.setCurrentProgressStage(BasicProgressStage.EstablishingBtConnection(attemptNumber + 1, totalNumAttempts))
 
-                // Give the GC the chance to collect an older BluetoohSocket instance
+                // Give the GC the chance to collect an older BluetoothSocket instance
                 // while this thread sleep (see below).
                 systemBluetoothSocket = null
 
@@ -108,6 +108,7 @@ class AndroidBluetoothDevice(
                 }
             }
         } catch (t: Throwable) {
+            disconnectImpl() // Clean up any partial connection states that may exist.
             throw BluetoothException("Could not establish an RFCOMM client connection to device with address $address", t)
         }
 
