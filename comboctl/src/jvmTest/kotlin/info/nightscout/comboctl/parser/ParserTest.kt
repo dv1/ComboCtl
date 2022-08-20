@@ -267,7 +267,7 @@ class ParserTest {
         assertEquals(
             MainScreenContent.Normal(
                 currentTime = testContext.parseContext.topLeftTime!!,
-                activeBasalRateNumber = 1,
+                activeBasalProfileNumber = 1,
                 currentBasalRateFactor = 200,
                 batteryState = BatteryState.FULL_BATTERY
             ),
@@ -285,7 +285,7 @@ class ParserTest {
         assertEquals(
             MainScreenContent.Normal(
                 currentTime = testContext.parseContext.topLeftTime!!,
-                activeBasalRateNumber = 1,
+                activeBasalProfileNumber = 1,
                 currentBasalRateFactor = 200,
                 batteryState = BatteryState.FULL_BATTERY
             ),
@@ -305,7 +305,7 @@ class ParserTest {
                 currentTime = testContext.parseContext.topLeftTime!!,
                 remainingTbrDurationInMinutes = 30,
                 tbrPercentage = 110,
-                activeBasalRateNumber = 1,
+                activeBasalProfileNumber = 1,
                 currentBasalRateFactor = 220,
                 batteryState = BatteryState.FULL_BATTERY
             ),
@@ -329,7 +329,7 @@ class ParserTest {
                 currentTime = testContext.parseContext.topLeftTime!!,
                 remainingTbrDurationInMinutes = 5,
                 tbrPercentage = 90,
-                activeBasalRateNumber = 1,
+                activeBasalProfileNumber = 1,
                 currentBasalRateFactor = 45,
                 batteryState = BatteryState.FULL_BATTERY
             ),
@@ -416,7 +416,7 @@ class ParserTest {
         assertEquals(
             MainScreenContent.Normal(
                 currentTime = testContext.parseContext.topLeftTime!!,
-                activeBasalRateNumber = 1,
+                activeBasalProfileNumber = 1,
                 currentBasalRateFactor = 80,
                 batteryState = BatteryState.LOW_BATTERY
             ),
@@ -459,7 +459,7 @@ class ParserTest {
                 currentTime = testContext.parseContext.topLeftTime!!,
                 remainingTbrDurationInMinutes = 15,
                 tbrPercentage = 90,
-                activeBasalRateNumber = 1,
+                activeBasalProfileNumber = 1,
                 currentBasalRateFactor = 72,
                 batteryState = BatteryState.LOW_BATTERY
             ),
@@ -480,7 +480,7 @@ class ParserTest {
                 remainingBolusDurationInMinutes = 3 * 60 + 0,
                 isExtendedBolus = true,
                 remainingBolusAmount = 2300,
-                activeBasalRateNumber = 1,
+                activeBasalProfileNumber = 1,
                 currentBasalRateFactor = 790,
                 batteryState = BatteryState.FULL_BATTERY
             ),
@@ -501,7 +501,7 @@ class ParserTest {
                 remainingBolusDurationInMinutes = 1 * 60 + 30,
                 isExtendedBolus = false,
                 remainingBolusAmount = 1700,
-                activeBasalRateNumber = 1,
+                activeBasalProfileNumber = 1,
                 currentBasalRateFactor = 790,
                 batteryState = BatteryState.FULL_BATTERY
             ),

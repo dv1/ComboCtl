@@ -46,7 +46,7 @@ private fun batteryStateFromSymbol(symbol: SmallSymbol?): BatteryState =
 sealed class MainScreenContent {
     data class Normal(
         val currentTime: LocalDateTime,
-        val activeBasalRateNumber: Int,
+        val activeBasalProfileNumber: Int,
         val currentBasalRateFactor: Int,
         val batteryState: BatteryState
     ) : MainScreenContent()
@@ -60,7 +60,7 @@ sealed class MainScreenContent {
         val currentTime: LocalDateTime,
         val remainingTbrDurationInMinutes: Int,
         val tbrPercentage: Int,
-        val activeBasalRateNumber: Int,
+        val activeBasalProfileNumber: Int,
         val currentBasalRateFactor: Int,
         val batteryState: BatteryState
     ) : MainScreenContent()
@@ -70,7 +70,7 @@ sealed class MainScreenContent {
         val remainingBolusDurationInMinutes: Int,
         val isExtendedBolus: Boolean,
         val remainingBolusAmount: Int,
-        val activeBasalRateNumber: Int,
+        val activeBasalProfileNumber: Int,
         val currentBasalRateFactor: Int,
         val batteryState: BatteryState
     ) : MainScreenContent()
@@ -1298,7 +1298,7 @@ class NormalMainScreenParser : Parser() {
             ParsedScreen.MainScreen(
                 MainScreenContent.Normal(
                     currentTime = parseContext.topLeftTime!!,
-                    activeBasalRateNumber = parseResult.valueAt<Glyph.SmallDigit>(1).digit,
+                    activeBasalProfileNumber = parseResult.valueAt<Glyph.SmallDigit>(1).digit,
                     currentBasalRateFactor = parseResult.valueAt<Int>(0),
                     batteryState = batteryState
                 )
@@ -1351,7 +1351,7 @@ class TbrMainScreenParser : Parser() {
                     currentTime = parseContext.topLeftTime!!,
                     remainingTbrDurationInMinutes = remainingTbrDuration.hour * 60 + remainingTbrDuration.minute,
                     tbrPercentage = parseResult.valueAt<Int>(1),
-                    activeBasalRateNumber = parseResult.valueAt<Glyph.SmallDigit>(2).digit,
+                    activeBasalProfileNumber = parseResult.valueAt<Glyph.SmallDigit>(2).digit,
                     currentBasalRateFactor = parseResult.valueAt<Int>(3),
                     batteryState = batteryState
                 )
@@ -1407,7 +1407,7 @@ class ExtendedAndMultiwaveBolusMainScreenParser : Parser() {
                     remainingBolusDurationInMinutes = remainingBolusDuration.hour * 60 + remainingBolusDuration.minute,
                     isExtendedBolus = isExtendedBolus,
                     remainingBolusAmount = parseResult.valueAt<Int>(2),
-                    activeBasalRateNumber = parseResult.valueAt<Glyph.SmallDigit>(3).digit,
+                    activeBasalProfileNumber = parseResult.valueAt<Glyph.SmallDigit>(3).digit,
                     currentBasalRateFactor = parseResult.valueAt<Int>(4),
                     batteryState = batteryState
                 )

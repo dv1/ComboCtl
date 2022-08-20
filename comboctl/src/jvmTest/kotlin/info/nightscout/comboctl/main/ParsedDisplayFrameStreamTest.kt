@@ -133,7 +133,7 @@ class ParsedDisplayFrameStreamTest {
             ParsedScreen.MainScreen(
                 MainScreenContent.Normal(
                     currentTime = timeWithoutDate(hour = 10, minute = 20),
-                    activeBasalRateNumber = 1,
+                    activeBasalProfileNumber = 1,
                     currentBasalRateFactor = 200,
                     batteryState = BatteryState.FULL_BATTERY
                 )

@@ -386,7 +386,7 @@ class RTNavigationTest {
         val rtNavigationContext = TestRTNavigationContext(listOf(
             ParsedScreen.MainScreen(MainScreenContent.Normal(
                 currentTime = LocalDateTime(year = 2020, monthNumber = 10, dayOfMonth = 4, hour = 0, minute = 0),
-                activeBasalRateNumber = 1,
+                activeBasalProfileNumber = 1,
                 currentBasalRateFactor = 300,
                 batteryState = BatteryState.FULL_BATTERY
             )),
@@ -407,7 +407,7 @@ class RTNavigationTest {
         val rtNavigationContext = TestRTNavigationContext(listOf(
             ParsedScreen.MainScreen(MainScreenContent.Normal(
                 currentTime = LocalDateTime(year = 2020, monthNumber = 10, dayOfMonth = 4, hour = 0, minute = 0),
-                activeBasalRateNumber = 1,
+                activeBasalProfileNumber = 1,
                 currentBasalRateFactor = 300,
                 batteryState = BatteryState.FULL_BATTERY
             )),
@@ -439,7 +439,7 @@ class RTNavigationTest {
         val rtNavigationContext = TestRTNavigationContext(listOf(
             ParsedScreen.MainScreen(MainScreenContent.Normal(
                 currentTime = LocalDateTime(year = 2020, monthNumber = 10, dayOfMonth = 4, hour = 0, minute = 0),
-                activeBasalRateNumber = 1,
+                activeBasalProfileNumber = 1,
                 currentBasalRateFactor = 300,
                 batteryState = BatteryState.FULL_BATTERY
             ))
@@ -457,7 +457,7 @@ class RTNavigationTest {
         val rtNavigationContext = TestRTNavigationContext(listOf(
             ParsedScreen.MainScreen(MainScreenContent.Normal(
                 currentTime = LocalDateTime(year = 0, monthNumber = 1, dayOfMonth = 1, hour = 23, minute = 11),
-                activeBasalRateNumber = 1,
+                activeBasalProfileNumber = 1,
                 currentBasalRateFactor = 800,
                 batteryState = BatteryState.FULL_BATTERY
             )),
@@ -521,7 +521,7 @@ class RTNavigationTest {
         val rtNavigationContext = TestRTNavigationContext(listOf(
             ParsedScreen.MainScreen(MainScreenContent.Normal(
                 currentTime = LocalDateTime(year = 2020, monthNumber = 10, dayOfMonth = 4, hour = 0, minute = 0),
-                activeBasalRateNumber = 1,
+                activeBasalProfileNumber = 1,
                 currentBasalRateFactor = 300,
                 batteryState = BatteryState.FULL_BATTERY
             )),
@@ -555,7 +555,7 @@ class RTNavigationTest {
         val rtNavigationContext = TestRTNavigationContext(listOf(
             ParsedScreen.MainScreen(MainScreenContent.Normal(
                 currentTime = LocalDateTime(year = 2020, monthNumber = 10, dayOfMonth = 4, hour = 0, minute = 0),
-                activeBasalRateNumber = 1,
+                activeBasalProfileNumber = 1,
                 currentBasalRateFactor = 300,
                 batteryState = BatteryState.FULL_BATTERY
             )),
@@ -586,7 +586,7 @@ class RTNavigationTest {
         val rtNavigationContext = TestRTNavigationContext(listOf(
             ParsedScreen.MainScreen(MainScreenContent.Normal(
                 currentTime = LocalDateTime(year = 2020, monthNumber = 10, dayOfMonth = 4, hour = 0, minute = 0),
-                activeBasalRateNumber = 1,
+                activeBasalProfileNumber = 1,
                 currentBasalRateFactor = 300,
                 batteryState = BatteryState.FULL_BATTERY
             )),

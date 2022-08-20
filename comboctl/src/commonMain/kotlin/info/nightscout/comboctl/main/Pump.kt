@@ -662,7 +662,7 @@ class Pump(
      */
     data class Status(
         val availableUnitsInReservoir: Int,
-        val activeBasalRateNumber: Int,
+        val activeBasalProfileNumber: Int,
         val currentBasalRateFactor: Int,
         val tbrOngoing: Boolean,
         val remainingTbrDurationInMinutes: Int,
@@ -2821,7 +2821,7 @@ class Pump(
                 pumpSuspended = false
                 Status(
                     availableUnitsInReservoir = quickinfo.availableUnits,
-                    activeBasalRateNumber = mainScreenContent.activeBasalRateNumber,
+                    activeBasalProfileNumber = mainScreenContent.activeBasalProfileNumber,
                     currentBasalRateFactor = mainScreenContent.currentBasalRateFactor,
                     tbrOngoing = false,
                     remainingTbrDurationInMinutes = 0,
@@ -2835,7 +2835,7 @@ class Pump(
                 pumpSuspended = true
                 Status(
                     availableUnitsInReservoir = quickinfo.availableUnits,
-                    activeBasalRateNumber = 0,
+                    activeBasalProfileNumber = 0,
                     // The stopped screen does not show any basal rate
                     // factor. Set this to 0 to let the caller know
                     // that the current factor is unknown.
@@ -2852,7 +2852,7 @@ class Pump(
                 pumpSuspended = false
                 Status(
                     availableUnitsInReservoir = quickinfo.availableUnits,
-                    activeBasalRateNumber = mainScreenContent.activeBasalRateNumber,
+                    activeBasalProfileNumber = mainScreenContent.activeBasalProfileNumber,
                     // The main screen shows the basal rate factor with the TBR
                     // percentage applied (= multiplied) to it. Undo this operation
                     // to get the original basal rate factor. We can't undo a
