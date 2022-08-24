@@ -800,6 +800,7 @@ class PumpIO(
         internalScopeJob?.cancelAndJoin()
         internalScopeJob = null
         _currentModeFlow.value = null
+        onNewDisplayFrame(null)
 
         logger(LogLevel.DEBUG) { "Pump IO disconnected" }
     }
