@@ -2182,13 +2182,31 @@ class Pump(
         }
 
         if (lastBolusInfusionTimestamp != null) {
+            // The last bolus timestamp may be a little bit in advance
+            // of the current time. That's because the datetime is set
+            // through the remote terminal mode, which is slow, which
+            // is why the updatePumpDateTime() call that is done inside
+            // performOnConnectChecks() gets passed a timestamp that is
+            // not the current time, but the current time + 30 seconds.
+            // This compensates for the time it takes to set the new
+            // datetime. But as a side effect, the bolus timestamps may
+            // be ahead of the current time. In such cases, compensate
+            // for that by using the current time instead.
+            val now = Clock.System.now()
+            val bolusTimestamp = lastBolusInfusionTimestamp!!.let {
+                if (now < it) now else it
+            }
+
             val lastBolus = LastBolus(
                 bolusId = lastBolusId,
                 bolusAmount = lastBolusAmount,
-                timestamp = lastBolusInfusionTimestamp!!
+                timestamp = bolusTimestamp
             )
 
-            logger(LogLevel.DEBUG) { "Found a last bolus in history delta; details: $lastBolus" }
+            logger(LogLevel.DEBUG) {
+                "Found a last bolus in history delta; details: $lastBolus; now: $now; " +
+                "lastBolusInfusionTimestamp: $lastBolusInfusionTimestamp -> bolusTimestamp: $bolusTimestamp"
+            }
 
             _lastBolusFlow.value = lastBolus
         } else
