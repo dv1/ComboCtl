@@ -720,6 +720,18 @@ class Pump(
      */
     val lastBolusFlow = _lastBolusFlow.asStateFlow()
 
+    private var _currentTbrFlow = MutableStateFlow<Tbr?>(null)
+
+    /**
+     * Informs about a currently active TBR.
+     *
+     * Along with [Event.TbrStarted], [Event.TbrEnded], and the TBR details in
+     * [Status], this is an additional way to get informed about TBR activity,
+     * and is mostly useful for UI updates. If no TBR is ongoing, the flow's
+     * value is set to null.
+     */
+    val currentTbrFlow = _currentTbrFlow.asStateFlow()
+
     /**
      * Unpairs the pump.
      *
@@ -2292,10 +2304,11 @@ class Pump(
             //    active TBR, this means that the TBR ended some time ago. Announce the ended TBR as an
             //    event, then set currentTbrState to NoTbrOngoing.
             // 2. currentTbrState is TbrStarted, and TBR information is shown on the main screen.
-            //    Do nothing in that case, since we know the TBR started earlier and is still ongoing,
-            //    so nothing needs to be done.
+            //    Do nothing in that case other than a currentTbrFlow value update, since we know the
+            //    TBR started earlier and is still ongoing.
             // 3. currentTbrState is NoTbrOngoing, and no TBR information is shown on the main screen.
-            //    Do nothing in that case, since we already know that no TBR was ongoing.
+            //    Do nothing in that case other than a currentTbrFlow value update, since we already
+            //    know that no TBR was ongoing.
             // 4. currentTbrState is NoTbrOngoing, and TBR information is shown on the main screen.
             //    This is an error - a TBR is ongoing that we don't know about. We did not start it!
             //    End it immediately, then emit an UnknownTbrDetected event to inform the user about
@@ -2330,13 +2343,18 @@ class Pump(
                         logger(LogLevel.DEBUG) { "Previously started TBR ended; TBR: $newTbr" }
                         pumpStateStore.setCurrentTbrState(bluetoothDevice.address, CurrentTbrState.NoTbrOngoing)
                         onEvent(Event.TbrEnded(newTbr, endTbrTimestamp))
+                        _currentTbrFlow.value = null
+                    } else {
+                        // Handle case #2.
+                        _currentTbrFlow.value = currentTbrState.tbr
                     }
                 }
 
-                // Do nothing in cases #2 and #3.
-
                 is CurrentTbrState.NoTbrOngoing -> {
-                    if (tbrInfoShownOnMainScreen) {
+                    if (!tbrInfoShownOnMainScreen) {
+                        // Handle case #3.
+                        _currentTbrFlow.value = null
+                    } else {
                         // Handle case #4.
 
                         logger(LogLevel.DEBUG) {
@@ -2620,6 +2638,7 @@ class Pump(
 
         pumpStateStore.setCurrentTbrState(bluetoothDevice.address, CurrentTbrState.TbrStarted(tbr))
         onEvent(Event.TbrStarted(tbr))
+        _currentTbrFlow.value = tbr
     }
 
     private fun reportOngoingTbrAsStopped() {
@@ -2651,6 +2670,7 @@ class Pump(
                 durationInMinutes = newDurationInMinutes,
                 tbr.type
             ), endTbrTimestamp))
+            _currentTbrFlow.value = null
         }
     }
 
