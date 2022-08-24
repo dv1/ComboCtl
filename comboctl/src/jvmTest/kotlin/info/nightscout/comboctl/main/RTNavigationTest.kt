@@ -273,6 +273,66 @@ class RTNavigationTest {
             decrementButton = RTNavigationButton.DOWN
         )
         assertEquals(Pair(((60 - 50) + (10 - 0)) / 1, RTNavigationButton.DOWN), result)
+
+        // Test that computeShortRTButtonPress() can correctly handle start
+        // quantities that aren't an integer multiple of the step size. The
+        // "half-step" should be counted as one full step.
+
+        result = computeShortRTButtonPress(
+            currentQuantity = 25,
+            targetQuantity = 40,
+            cyclicQuantityRange = null,
+            incrementSteps = arrayOf(Pair(0, 20)),
+            incrementButton = RTNavigationButton.UP,
+            decrementButton = RTNavigationButton.DOWN
+        )
+        assertEquals(Pair(1, RTNavigationButton.UP), result)
+
+        result = computeShortRTButtonPress(
+            currentQuantity = 25,
+            targetQuantity = 60,
+            cyclicQuantityRange = null,
+            incrementSteps = arrayOf(Pair(0, 20)),
+            incrementButton = RTNavigationButton.UP,
+            decrementButton = RTNavigationButton.DOWN
+        )
+        assertEquals(Pair(2, RTNavigationButton.UP), result)
+
+        result = computeShortRTButtonPress(
+            currentQuantity = 35,
+            targetQuantity = 20,
+            cyclicQuantityRange = null,
+            incrementSteps = arrayOf(Pair(0, 20)),
+            incrementButton = RTNavigationButton.UP,
+            decrementButton = RTNavigationButton.DOWN
+        )
+        assertEquals(Pair(1, RTNavigationButton.DOWN), result)
+
+        result = computeShortRTButtonPress(
+            currentQuantity = 55,
+            targetQuantity = 20,
+            cyclicQuantityRange = null,
+            incrementSteps = arrayOf(Pair(0, 20)),
+            incrementButton = RTNavigationButton.UP,
+            decrementButton = RTNavigationButton.DOWN
+        )
+        assertEquals(Pair(2, RTNavigationButton.DOWN), result)
+
+        // Corner case: current and target quantity are the same. In this case,
+        // no RT button would actually be pressed, but the button value in the
+        // result can't be left unset, so it is just set to CHECK. (Any value
+        // would be okay; CHECK was chosen because it seems closest to something
+        // like a "neutral" value.)
+        result = computeShortRTButtonPress(
+            currentQuantity = 60,
+            targetQuantity = 60,
+            cyclicQuantityRange = null,
+            incrementSteps = arrayOf(Pair(0, 20)),
+            incrementButton = RTNavigationButton.UP,
+            decrementButton = RTNavigationButton.DOWN
+        )
+        assertEquals(Pair(0, RTNavigationButton.CHECK), result)
+
     }
 
     @Test

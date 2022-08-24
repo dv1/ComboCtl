@@ -974,24 +974,37 @@ internal fun computeShortRTButtonPress(
     val numNeededShortRTButtonPresses: Int
     val shortRTButtonToPress: RTNavigationButton
 
+    // Compute the number of RT button press steps to cover the given distance.
+    // Use the (x + (d-1)) / d formula (with integer division) to round up the
+    // result. That's because in case of "half steps", these must be counted as
+    // one full step. For example, if the current quantity on screen is 21, the
+    // target quantity is 40, and the step size is 20, then pressing UP will
+    // cause the Combo to increment the quantity from 21 to 40. A further UP
+    // button press would then increment from 40 to 60 etc. If we didn't round
+    // up, the "half-step" would not be counted. In the example above, this
+    // would compute 0, since (40-21)/20 = 19/20 = 0 (integer division). The
+    // rounding formula by contrast: (40-21+(20-1))/20 = (19+19)/20 = 38/20 = 1.
+    fun computeNumSteps(stepSize: Int, distance: Int) = (distance + (stepSize - 1)) / stepSize
+
     if (currentQuantity == targetQuantity) {
         numNeededShortRTButtonPresses = 0
         shortRTButtonToPress = RTNavigationButton.CHECK
     } else if (incrementSteps.size == 1) {
         val stepSize = incrementSteps[0].second
+        require(stepSize > 0)
         val distance = (targetQuantity - currentQuantity)
         if (cyclicQuantityRange != null) {
             if (distance.absoluteValue > (cyclicQuantityRange / 2)) {
                 val firstPart = (cyclicQuantityRange - targetQuantity)
                 val secondPart = currentQuantity - 0
-                numNeededShortRTButtonPresses = (firstPart + secondPart) / stepSize
+                numNeededShortRTButtonPresses = computeNumSteps(stepSize, firstPart + secondPart)
                 shortRTButtonToPress = if (targetQuantity < currentQuantity) incrementButton else decrementButton
             } else {
-                numNeededShortRTButtonPresses = distance / stepSize
+                numNeededShortRTButtonPresses = computeNumSteps(stepSize, distance)
                 shortRTButtonToPress = if (targetQuantity > currentQuantity) incrementButton else decrementButton
             }
         } else {
-            numNeededShortRTButtonPresses = distance.absoluteValue / stepSize
+            numNeededShortRTButtonPresses = computeNumSteps(stepSize, distance.absoluteValue)
             shortRTButtonToPress = if (targetQuantity > currentQuantity) incrementButton else decrementButton
         }
     } else {
@@ -1008,6 +1021,7 @@ internal fun computeShortRTButtonPress(
         for (index in incrementSteps.indices) {
             val incrementStep = incrementSteps[index]
             val stepSize = incrementStep.second
+            require(stepSize > 0)
             val curRangeStart = incrementStep.first
             val curRangeEnd = if (index == incrementSteps.size - 1)
                 end
@@ -1020,7 +1034,7 @@ internal fun computeShortRTButtonPress(
             if (currentValue < curRangeStart)
                 currentValue = curRangeStart
 
-            numPresses += (curRangeEnd - currentValue) / stepSize
+            numPresses += computeNumSteps(stepSize, curRangeEnd - currentValue)
 
             currentValue = curRangeEnd
 
