@@ -218,6 +218,7 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
         intentFilter.addAction(SystemBluetoothDevice.ACTION_ACL_CONNECTED)
         intentFilter.addAction(SystemBluetoothDevice.ACTION_PAIRING_REQUEST)
         intentFilter.addAction(SystemBluetoothAdapter.ACTION_DISCOVERY_FINISHED)
+        intentFilter.addAction(SystemBluetoothAdapter.ACTION_SCAN_MODE_CHANGED)
 
         discoveryBroadcastReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
@@ -227,6 +228,7 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
                     SystemBluetoothDevice.ACTION_ACL_CONNECTED -> onAclConnected(intent, onFoundNewPairedDevice)
                     SystemBluetoothDevice.ACTION_PAIRING_REQUEST -> onPairingRequest(intent, btPairingPin)
                     SystemBluetoothAdapter.ACTION_DISCOVERY_FINISHED -> onDiscoveryFinished()
+                    SystemBluetoothAdapter.ACTION_SCAN_MODE_CHANGED -> onScanModeChanged(intent)
                     else -> Unit
                 }
             }
@@ -575,6 +577,38 @@ class AndroidBluetoothInterface(private val androidContext: Context) : Bluetooth
             // is reached, we get to this point, but the value of
             // discoveryStoppedReason  is still null.
             discoveryStopped(discoveryStoppedReason ?: BluetoothInterface.DiscoveryStoppedReason.DISCOVERY_TIMEOUT)
+        }
+    }
+
+    private fun onScanModeChanged(intent: Intent) {
+        // Only using EXTRA_SCAN_MODE here, since EXTRA_PREVIOUS_SCAN_MODE never
+        // seems to be populated. See: https://stackoverflow.com/a/30935424/560774
+        // This appears to be either a bug in Android or an error in the documentation.
+
+        val currentScanMode = intent.getIntExtra(SystemBluetoothAdapter.EXTRA_SCAN_MODE, SystemBluetoothAdapter.ERROR)
+        if (currentScanMode == SystemBluetoothAdapter.ERROR) {
+            logger(LogLevel.ERROR) { "Could not get current scan mode; EXTRA_SCAN_MODE extra field missing" }
+            return
+        }
+
+        logger(LogLevel.DEBUG) { "Scan mode changed to $currentScanMode" }
+
+        // Since EXTRA_PREVIOUS_SCAN_MODE is not available, we have to use a trick
+        // to make sure we detect a discovery timeout. If there's a broadcast
+        // receiver, we must have been discoverable so far. And if the EXTRA_SCAN_MODE
+        // field indicates that we aren't discoverable right now, it follows that
+        // we used to be discoverable but no longer are.
+        if ((discoveryBroadcastReceiver != null) &&
+            (currentScanMode != SystemBluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE)
+        ) {
+            logger(LogLevel.INFO) { "We are no longer discoverable" }
+            // Only proceed if the discovery timed out. This happens if no device was
+            // found and discoveryStoppedReason wasn't set. (see stopDiscovery()
+            // for an example where discoveryStoppedReason is set prior to stopping.)
+            if (!foundDevice && (discoveryStoppedReason == null)) {
+                discoveryStoppedReason = BluetoothInterface.DiscoveryStoppedReason.DISCOVERY_TIMEOUT
+                onDiscoveryFinished()
+            }
         }
     }
 }
