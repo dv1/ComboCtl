@@ -324,10 +324,18 @@ class PumpManager(
             }
         }
 
-        // Report "Finished" _after_ discovery was stopped
-        // (otherwise it isn't really finished yet).
-        if (result is PairingResult.Success)
-            pairingProgressReporter.setCurrentProgressStage(BasicProgressStage.Finished)
+        when (result) {
+            // Report Finished/Aborted _after_ discovery was stopped
+            // (otherwise it isn't really finished/aborted yet).
+            is PairingResult.Success ->
+                pairingProgressReporter.setCurrentProgressStage(BasicProgressStage.Finished)
+            is PairingResult.DiscoveryError,
+            is PairingResult.DiscoveryTimeout,
+            is PairingResult.DiscoveryManuallyStopped ->
+                pairingProgressReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
+            // The other cases are covered by the catch clauses above.
+            else -> Unit
+        }
 
         return result
     }
