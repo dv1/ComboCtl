@@ -52,6 +52,11 @@ class PumpManager(
     private val acquiredPumps = mutableMapOf<BluetoothAddress, Pump>()
 
     /**
+     * Stage for when discovery is aborted due to an error.
+     */
+    object DiscoveryError : BasicProgressStage.Aborted("discoveryError")
+
+    /**
      * Exception thrown when an attempt is made to acquire an already acquired pump.
      *
      * Pumps cannot be acquired multiple times simulatenously. This is a safety
@@ -313,10 +318,10 @@ class PumpManager(
                 result = deferred.await()
             } catch (e: CancellationException) {
                 logger(LogLevel.DEBUG) { "Pairing cancelled" }
-                pairingProgressReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
+                pairingProgressReporter.setCurrentProgressStage(BasicProgressStage.Cancelled)
                 throw e
             } catch (e: Exception) {
-                pairingProgressReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
+                pairingProgressReporter.setCurrentProgressStage(BasicProgressStage.Error(e))
                 result = PairingResult.ExceptionDuringPairing(e)
                 throw e
             } finally {
@@ -329,10 +334,12 @@ class PumpManager(
             // (otherwise it isn't really finished/aborted yet).
             is PairingResult.Success ->
                 pairingProgressReporter.setCurrentProgressStage(BasicProgressStage.Finished)
-            is PairingResult.DiscoveryError,
-            is PairingResult.DiscoveryTimeout,
+            is PairingResult.DiscoveryTimeout ->
+                pairingProgressReporter.setCurrentProgressStage(BasicProgressStage.Timeout)
             is PairingResult.DiscoveryManuallyStopped ->
-                pairingProgressReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
+                pairingProgressReporter.setCurrentProgressStage(BasicProgressStage.Cancelled)
+            is PairingResult.DiscoveryError ->
+                pairingProgressReporter.setCurrentProgressStage(DiscoveryError)
             // The other cases are covered by the catch clauses above.
             else -> Unit
         }

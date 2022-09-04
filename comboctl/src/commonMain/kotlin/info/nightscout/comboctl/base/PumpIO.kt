@@ -757,12 +757,12 @@ class PumpIO(
 
             connectProgressReporter.setCurrentProgressStage(BasicProgressStage.Finished)
         } catch (e: CancellationException) {
-            connectProgressReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
+            connectProgressReporter.setCurrentProgressStage(BasicProgressStage.Cancelled)
             disconnect()
             throw e
         } catch (t: Throwable) {
             newScopeJob.cancelAndJoin()
-            connectProgressReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
+            connectProgressReporter.setCurrentProgressStage(BasicProgressStage.Error(t))
             _connectionState.value = ConnectionState.FAILED
             throw t
         }

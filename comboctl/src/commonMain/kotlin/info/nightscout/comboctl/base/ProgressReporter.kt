@@ -9,7 +9,7 @@ private val logger = Logger.get("Pump")
 /**
  * Base class for specifying a stage for a [ProgressReporter] instance.
  *
- * @property id ID string, useful for serialization and localization.
+ * @property id ID string, useful for serialization and logging.
  */
 open class ProgressStage(val id: String)
 
@@ -18,8 +18,13 @@ open class ProgressStage(val id: String)
  */
 object BasicProgressStage {
     // Fundamental stages, used for starting / ending a progress sequence.
+    // The Aborted stage base class is useful to be able to catch all possible
+    // abort reasons and also differentiate between them.
     object Idle : ProgressStage("idle")
-    object Aborted : ProgressStage("aborted")
+    open class Aborted(id: String) : ProgressStage(id)
+    object Cancelled : Aborted("cancelled")
+    object Timeout : Aborted("timeout")
+    class Error(val cause: Throwable) : Aborted("error")
     object Finished : ProgressStage("finished")
 
     // Connection related stages.
@@ -47,13 +52,13 @@ object BasicProgressStage {
  * Report with updated progress information.
  *
  * @property stageNumber Current progress stage number, starting at 0.
- *           If stageNumber == numStages, then the stage is always
- *           [BasicProgressStage.Finished] or [BasicProgressStage.Aborted].
+ *   If stageNumber == numStages, then the stage is always
+ *   [BasicProgressStage.Finished] or a subclass of [BasicProgressStage.Aborted].
  * @property numStages Total number of stages in the progress sequence.
  * @property stage Information about the current stage.
  * @property overallProgress Numerical indicator for the overall progress.
- *           Valid range is 0.0 - 1.0, with 0.0 being the beginning of
- *           the progress, and 1.0 specifying the end.
+ *   Valid range is 0.0 - 1.0, with 0.0 being the beginning of
+ *   the progress, and 1.0 specifying the end.
  */
 data class ProgressReport(val stageNumber: Int, val numStages: Int, val stage: ProgressStage, val overallProgress: Double)
 
@@ -67,8 +72,8 @@ data class ProgressReport(val stageNumber: Int, val numStages: Int, val stage: P
  * administered so far.
  *
  * A sequence always begins with [BasicProgressStage.Idle] and ends with either
- * [BasicProgressStage.Aborted] or [BasicProgressStage.Finished]. These are special
- * in that they are never explicitly specified in the sequence. [BasicProgressStage.Idle]
+ * [BasicProgressStage.Finished] or a subclass of [BasicProgressStage.Aborted]. These are
+ * special in that they are never explicitly specified in the sequence. [BasicProgressStage.Idle]
  * is always set as the current flow value when the reporter is created and when
  * [reset] is called. The other two are passed to [setCurrentProgressStage], which
  * then immediately forwards them in a [ProgressReport] instance, with that instance's
@@ -121,7 +126,7 @@ data class ProgressReport(val stageNumber: Int, val numStages: Int, val stage: P
  *
  * @param plannedSequence The planned progress sequence, as a list of ProgressStage
  *        classes. This never contains [BasicProgressStage.Idle],
- *        [BasicProgressStage.Aborted], or [BasicProgressStage.Finished].
+ *        [BasicProgressStage.Finished], or a [BasicProgressStage.Aborted] subclass.
  * @param context User defined contxt to pass to computeOverallProgressCallback.
  *        This can be updated via [reset] calls.
  * @param computeOverallProgressCallback Callback for computing an overall progress
@@ -178,10 +183,10 @@ class ProgressReporter<Context>(
      * Sets the current stage and triggers an update via a [ProgressReport] instance through the [progressFlow].
      *
      * If the process that is being tracked by this reported was cancelled
-     * or aborted due to an error, pass [BasicProgressStage.Aborted] as
-     * the stage argument. This will trigger a report with the stage number
+     * or aborted due to an error, pass a subclass of [BasicProgressStage.Aborted]
+     * as the stage argument. This will trigger a report with the stage number
      * set to the total number of stages (to signify that the work is over)
-     * and the stage set to [BasicProgressStage.Aborted].
+     * and the stage set to the [BasicProgressStage.Aborted] subclass.
      *
      * If the process finished successfully, do the same as written above,
      * except using [BasicProgressStage.Finished] as the stage instead.

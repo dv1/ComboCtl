@@ -167,9 +167,9 @@ class ProgressReporterTest {
             progressReporter.progressFlow.value
         )
 
-        progressReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
+        progressReporter.setCurrentProgressStage(BasicProgressStage.Cancelled)
         assertEquals(
-            ProgressReport(4, 4, BasicProgressStage.Aborted, 4.0 / 4.0),
+            ProgressReport(4, 4, BasicProgressStage.Cancelled, 4.0 / 4.0),
             progressReporter.progressFlow.value
         )
     }

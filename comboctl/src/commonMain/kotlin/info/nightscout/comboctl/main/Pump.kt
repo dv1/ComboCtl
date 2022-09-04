@@ -269,7 +269,7 @@ class Pump(
         // progress range.
         when (stage) {
             BasicProgressStage.Finished,
-            BasicProgressStage.Aborted -> 1.0
+            is BasicProgressStage.Aborted -> 1.0
             is RTCommandProgressStage.SettingTBRPercentage ->
                 0.0 + stage.settingProgress.toDouble() / 100.0 * 0.5
             is RTCommandProgressStage.SettingTBRDuration ->
@@ -291,7 +291,7 @@ class Pump(
         // so we use that for the overall progress.
         when (stage) {
             BasicProgressStage.Finished,
-            BasicProgressStage.Aborted -> 1.0
+            is BasicProgressStage.Aborted -> 1.0
             is RTCommandProgressStage.DeliveringBolus ->
                 stage.deliveredAmount.toDouble() / stage.totalAmount.toDouble()
             else -> 0.0
@@ -322,7 +322,7 @@ class Pump(
             // read, which is suitable for a progress indicator,
             // so we use that for the overall progress.
             BasicProgressStage.Finished,
-            BasicProgressStage.Aborted -> 1.0
+            is BasicProgressStage.Aborted -> 1.0
             is RTCommandProgressStage.FetchingTDDHistory ->
                 stage.historyEntryIndex.toDouble() / stage.totalNumEntries.toDouble()
             else -> 0.0
@@ -1102,8 +1102,11 @@ class Pump(
             currentBasalProfile = basalProfile
 
             return@executeCommand true
+        } catch (e: CancellationException) {
+            setBasalProfileReporter.setCurrentProgressStage(BasicProgressStage.Cancelled)
+            throw e
         } catch (t: Throwable) {
-            setBasalProfileReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
+            setBasalProfileReporter.setCurrentProgressStage(BasicProgressStage.Error(t))
             throw t
         }
     }
@@ -1471,10 +1474,15 @@ class Pump(
             // was cancelled by the user or aborted due to an error.
             // The code further below tries to cancel in case of any
             // exception, which would make no sense with these.
-            bolusDeliveryProgressReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
+            when (e) {
+                is BolusCancelledByUserException ->
+                    bolusDeliveryProgressReporter.setCurrentProgressStage(BasicProgressStage.Cancelled)
+                else ->
+                    bolusDeliveryProgressReporter.setCurrentProgressStage(BasicProgressStage.Error(e))
+            }
             throw e
         } catch (e: Exception) {
-            bolusDeliveryProgressReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
+            bolusDeliveryProgressReporter.setCurrentProgressStage(BasicProgressStage.Error(e))
             try {
                 pumpIO.cancelCMDStandardBolus()
             } catch (cancelBolusExc: Exception) {
@@ -1629,8 +1637,11 @@ class Pump(
             }
 
             return@executeCommand tddHistoryEntries
+        } catch (e: CancellationException) {
+            tddHistoryProgressReporter.setCurrentProgressStage(BasicProgressStage.Cancelled)
+            throw e
         } catch (e: Exception) {
-            tddHistoryProgressReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
+            tddHistoryProgressReporter.setCurrentProgressStage(BasicProgressStage.Error(e))
             throw e
         }
     }
@@ -1714,7 +1725,7 @@ class Pump(
             // the overall progress.
             when (stage) {
                 BasicProgressStage.Finished,
-                BasicProgressStage.Aborted -> 1.0
+                is BasicProgressStage.Aborted -> 1.0
                 is RTCommandProgressStage.SettingBasalProfile ->
                     stage.numSetFactors.toDouble() / NUM_COMBO_BASAL_PROFILE_FACTORS.toDouble()
                 is RTCommandProgressStage.GettingBasalProfile ->
@@ -2616,8 +2627,11 @@ class Pump(
             getBasalProfileReporter.setCurrentProgressStage(BasicProgressStage.Finished)
 
             return@executeCommand BasalProfile(basalProfileFactors)
+        } catch (e: CancellationException) {
+            getBasalProfileReporter.setCurrentProgressStage(BasicProgressStage.Cancelled)
+            throw e
         } catch (e: Exception) {
-            getBasalProfileReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
+            getBasalProfileReporter.setCurrentProgressStage(BasicProgressStage.Error(e))
             throw e
         }
     }
@@ -2766,8 +2780,11 @@ class Pump(
             rtNavigationContext.shortPressButton(RTNavigationButton.CHECK)
 
             setDateTimeProgressReporter.setCurrentProgressStage(BasicProgressStage.Finished)
+        } catch (e: CancellationException) {
+            setDateTimeProgressReporter.setCurrentProgressStage(BasicProgressStage.Cancelled)
+            throw e
         } catch (e: Exception) {
-            setDateTimeProgressReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
+            setDateTimeProgressReporter.setCurrentProgressStage(BasicProgressStage.Error(e))
             throw e
         }
     }
@@ -2874,8 +2891,11 @@ class Pump(
             rtNavigationContext.shortPressButton(RTNavigationButton.CHECK)
 
             setTbrProgressReporter.setCurrentProgressStage(BasicProgressStage.Finished)
+        } catch (e: CancellationException) {
+            setTbrProgressReporter.setCurrentProgressStage(BasicProgressStage.Cancelled)
+            throw e
         } catch (e: Exception) {
-            setTbrProgressReporter.setCurrentProgressStage(BasicProgressStage.Aborted)
+            setTbrProgressReporter.setCurrentProgressStage(BasicProgressStage.Error(e))
             throw e
         }
     }
