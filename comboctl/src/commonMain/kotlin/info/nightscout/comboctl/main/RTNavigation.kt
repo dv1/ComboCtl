@@ -992,9 +992,9 @@ internal fun computeShortRTButtonPress(
     } else if (incrementSteps.size == 1) {
         val stepSize = incrementSteps[0].second
         require(stepSize > 0)
-        val distance = (targetQuantity - currentQuantity)
+        val distance = (targetQuantity - currentQuantity).absoluteValue
         if (cyclicQuantityRange != null) {
-            if (distance.absoluteValue > (cyclicQuantityRange / 2)) {
+            if (distance > (cyclicQuantityRange / 2)) {
                 val firstPart = (cyclicQuantityRange - targetQuantity)
                 val secondPart = currentQuantity - 0
                 numNeededShortRTButtonPresses = computeNumSteps(stepSize, firstPart + secondPart)
@@ -1004,7 +1004,7 @@ internal fun computeShortRTButtonPress(
                 shortRTButtonToPress = if (targetQuantity > currentQuantity) incrementButton else decrementButton
             }
         } else {
-            numNeededShortRTButtonPresses = computeNumSteps(stepSize, distance.absoluteValue)
+            numNeededShortRTButtonPresses = computeNumSteps(stepSize, distance)
             shortRTButtonToPress = if (targetQuantity > currentQuantity) incrementButton else decrementButton
         }
     } else {

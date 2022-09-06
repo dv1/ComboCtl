@@ -274,6 +274,19 @@ class RTNavigationTest {
         )
         assertEquals(Pair(((60 - 50) + (10 - 0)) / 1, RTNavigationButton.DOWN), result)
 
+        // Additional test to check that cyclic ranges are handled correctly
+        // even if currentQuantity is slightly higher than targetQuantity. This
+        // verifies that the computation does not produce negative distances.
+        result = computeShortRTButtonPress(
+            currentQuantity = 11,
+            targetQuantity = 10,
+            cyclicQuantityRange = 24,
+            incrementSteps = arrayOf(Pair(0, 1)),
+            incrementButton = RTNavigationButton.UP,
+            decrementButton = RTNavigationButton.DOWN
+        )
+        assertEquals(Pair(1, RTNavigationButton.DOWN), result)
+
         // Test that computeShortRTButtonPress() can correctly handle start
         // quantities that aren't an integer multiple of the step size. The
         // "half-step" should be counted as one full step.
