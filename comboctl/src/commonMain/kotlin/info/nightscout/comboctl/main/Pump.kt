@@ -330,6 +330,38 @@ class Pump(
     }
 
     /**
+     * Empty base class for command descriptions used during the [State.ExecutingCommand] state.
+     *
+     * Callers can check for a specific subclass to determine the command that is
+     * being executed. Example:
+     *
+     * ```
+     * when (executingCommandState.description) {
+     *     is GettingBasalProfileCommandDesc -> println("Getting basal profile")
+     *     is FetchingTDDHistoryCommandDesc -> println("Fetching TDD history")
+     *     // etc.
+     * }
+     * ```
+     */
+    open class CommandDescription
+
+    class GettingBasalProfileCommandDesc : CommandDescription()
+    class SettingBasalProfileCommandDesc : CommandDescription()
+    class UpdatingPumpDateTimeCommandDesc(val newPumpLocalDateTime: LocalDateTime) : CommandDescription()
+    class UpdatingPumpStatusCommandDesc : CommandDescription()
+    class FetchingTDDHistoryCommandDesc : CommandDescription()
+    class SettingTbrCommandDesc(
+        val percentage: Int,
+        val durationInMinutes: Int,
+        val type: Tbr.Type,
+        val force100Percent: Boolean
+    ) : CommandDescription()
+    class DeliveringBolusCommandDesc(
+        val bolusAmount: Int,
+        val bolusReason: StandardBolusReason
+    ) : CommandDescription()
+
+    /**
      * Exception thrown when an idempotent command failed every time.
      *
      * Idempotent commands are retried multiple times if they fail. If all attempts
@@ -590,9 +622,10 @@ class Pump(
          * A command is currently being executed. This state remains set
          * until the command execution finishes. If it finishes successfully,
          * it is set back to [ReadyForCommands]. If an error occurs,
-         * it is set to [Error].
+         * it is set to [Error]. The [description] provides information for
+         * UIs to show the user what command is being executed.
          */
-        object ExecutingCommand : State()
+        data class ExecutingCommand(val description: CommandDescription) : State()
 
         /**
          * The Combo is currently stopped (= suspended). No commands can
@@ -996,6 +1029,7 @@ class Pump(
     suspend fun setBasalProfile(basalProfile: BasalProfile, carryOverLastFactor: Boolean = true) = executeCommand<Boolean>(
         pumpMode = PumpIO.Mode.REMOTE_TERMINAL,
         isIdempotent = true,
+        description = SettingBasalProfileCommandDesc(),
         allowExecutionWhileSuspended = true
     ) {
         if (basalProfile == currentBasalProfile) {
@@ -1182,7 +1216,8 @@ class Pump(
         force100Percent: Boolean = false
     ) = executeCommand(
         pumpMode = PumpIO.Mode.REMOTE_TERMINAL,
-        isIdempotent = true
+        isIdempotent = true,
+        description = SettingTbrCommandDesc(percentage, durationInMinutes, type, force100Percent)
     ) {
         require(type in listOf(Tbr.Type.NORMAL, Tbr.Type.SUPERBOLUS, Tbr.Type.EMULATED_COMBO_STOP)) { "Invalid TBR type" }
 
@@ -1377,7 +1412,8 @@ class Pump(
         // This function itself switches manually between the
         // command and remote terminal modes.
         pumpMode = null,
-        isIdempotent = false
+        isIdempotent = false,
+        description = DeliveringBolusCommandDesc(bolusAmount, bolusReason)
     ) {
         require((bolusAmount > 0) && (bolusAmount <= 250)) {
             "Invalid bolus amount $bolusAmount (${bolusAmount.toStringWithDecimal(1)} IU)"
@@ -1598,7 +1634,8 @@ class Pump(
      */
     suspend fun fetchTDDHistory() = executeCommand<List<TDDHistoryEntry>>(
         pumpMode = PumpIO.Mode.REMOTE_TERMINAL,
-        isIdempotent = true
+        isIdempotent = true,
+        description = FetchingTDDHistoryCommandDesc()
     ) {
         tddHistoryProgressReporter.reset(Unit)
 
@@ -1748,6 +1785,7 @@ class Pump(
     private suspend fun <T> executeCommand(
         pumpMode: PumpIO.Mode?,
         isIdempotent: Boolean,
+        description: CommandDescription,
         allowExecutionWhileSuspended: Boolean = false,
         allowExecutionWhileChecking: Boolean = false,
         block: suspend CoroutineScope.() -> T
@@ -1760,7 +1798,7 @@ class Pump(
 
         val previousState = stateFlow.value
         if (stateFlow.value != State.CheckingPump)
-            setState(State.ExecutingCommand)
+            setState(State.ExecutingCommand(description))
 
         try {
             // Verify that there have been no errors/warnings since the last time
@@ -1953,7 +1991,8 @@ class Pump(
         pumpMode = PumpIO.Mode.REMOTE_TERMINAL,
         isIdempotent = true,
         allowExecutionWhileSuspended = allowExecutionWhileSuspended,
-        allowExecutionWhileChecking = allowExecutionWhileChecking
+        allowExecutionWhileChecking = allowExecutionWhileChecking,
+        description = UpdatingPumpStatusCommandDesc()
     ) {
         updateStatusByReadingMainAndQuickinfoScreens(switchStatesIfNecessary)
     }
@@ -2504,6 +2543,7 @@ class Pump(
     private suspend fun getBasalProfile(): BasalProfile = executeCommand(
         pumpMode = PumpIO.Mode.REMOTE_TERMINAL,
         isIdempotent = true,
+        description = GettingBasalProfileCommandDesc(),
         // Allow this since getBasalProfile can be called by connect() during the pump checks.
         allowExecutionWhileChecking = true
     ) {
@@ -2693,6 +2733,7 @@ class Pump(
     ) = executeCommand(
         pumpMode = PumpIO.Mode.REMOTE_TERMINAL,
         isIdempotent = true,
+        description = UpdatingPumpDateTimeCommandDesc(newPumpLocalDateTime),
         allowExecutionWhileSuspended = true,
         allowExecutionWhileChecking = true
     ) {
