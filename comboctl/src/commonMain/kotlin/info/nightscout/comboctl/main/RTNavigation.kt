@@ -962,7 +962,6 @@ internal fun findShortestRtPath(from: KClassifier, to: KClassifier, isComboStopp
         }
     }
 
-// TODO: When setting basal, step size is 0.5 when going from 0.0 to 0.5
 internal fun computeShortRTButtonPress(
     currentQuantity: Int,
     targetQuantity: Int,
