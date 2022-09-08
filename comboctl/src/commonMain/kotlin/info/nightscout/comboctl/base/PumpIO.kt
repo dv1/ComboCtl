@@ -354,7 +354,7 @@ class PumpIO(
                 // Connecting to Bluetooth may block, so run it in
                 // a coroutine with an IO dispatcher.
                 withContext(bluetoothDevice.ioDispatcher) {
-                    bluetoothDevice.connect(progressReporter)
+                    bluetoothDevice.connect()
                 }
 
                 _connectionState.value = ConnectionState.CONNECTED
@@ -687,11 +687,16 @@ class PumpIO(
             // re-pairing the pump instead.
             var regularConnectionRequestAccepted = false
             for (regularConnectionAttemptNr in 0 until PumpIOConstants.MAX_NUM_REGULAR_CONNECTION_ATTEMPTS) {
+                connectProgressReporter.setCurrentProgressStage(BasicProgressStage.EstablishingBtConnection(
+                    currentAttemptNr = regularConnectionAttemptNr + 1,
+                    totalNumAttempts = PumpIOConstants.MAX_NUM_REGULAR_CONNECTION_ATTEMPTS
+                ))
+
                 // Suspend the coroutine until Bluetooth is connected.
                 // Do this in a separate coroutine with an IO dispatcher
                 // since the connection setup may block.
                 withContext(bluetoothDevice.ioDispatcher) {
-                    bluetoothDevice.connect(connectProgressReporter)
+                    bluetoothDevice.connect()
                 }
 
                 connectProgressReporter.setCurrentProgressStage(BasicProgressStage.PerformingConnectionHandshake)

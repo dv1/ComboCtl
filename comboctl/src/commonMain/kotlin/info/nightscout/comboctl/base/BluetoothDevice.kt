@@ -27,7 +27,6 @@ abstract class BluetoothDevice(ioDispatcher: CoroutineDispatcher) : BlockingComb
      *
      * This function blocks until the connection is set up or an error occurs.
      *
-     * @param progressReporter [ProgressReporter] for tracking connect progress.
      * @throws BluetoothPermissionException if connecting fails
      *         because connection permissions are missing.
      * @throws BluetoothException if connection fails due to an underlying
@@ -38,7 +37,7 @@ abstract class BluetoothDevice(ioDispatcher: CoroutineDispatcher) : BlockingComb
      *         that does not permit connecting, such as a device
      *         that has been shut down.
      */
-    abstract fun connect(progressReporter: ProgressReporter<Unit>? = null)
+    abstract fun connect()
 
     /**
      * Explicitly disconnect the device's RFCOMM connection now.
