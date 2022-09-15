@@ -298,6 +298,14 @@ class Pump(
         }
     }
 
+    private val connectProgressReporter = ProgressReporter<Unit>(
+        listOf(
+            BasicProgressStage.EstablishingBtConnection::class,
+            BasicProgressStage.PerformingConnectionHandshake::class
+        ),
+        Unit
+    )
+
     private val setDateTimeProgressReporter = ProgressReporter<Unit>(
         listOf(
             RTCommandProgressStage.SettingDateTimeHour::class,
@@ -666,7 +674,7 @@ class Pump(
      *
      * See the [ProgressReporter] documentation for details.
      */
-    val connectProgressFlow: StateFlow<ProgressReport> = pumpIO.connectProgressFlow
+    val connectProgressFlow: StateFlow<ProgressReport> = connectProgressReporter.progressFlow
 
     /**
      * [ProgressReporter] flow for reporting progress while the pump datetime is set.
@@ -895,13 +903,21 @@ class Pump(
     suspend fun connect() {
         check(stateFlow.value == State.Disconnected) { "Attempted to connect to pump in the ${stateFlow.value} state" }
 
+        connectProgressReporter.reset(Unit)
+
         for (connectionAttemptNr in 1..MAX_NUM_REGULAR_CONNECT_ATTEMPTS) {
             logger(LogLevel.DEBUG) { "Attempt $connectionAttemptNr of $MAX_NUM_REGULAR_CONNECT_ATTEMPTS to establish connection" }
+
+            connectProgressReporter.setCurrentProgressStage(BasicProgressStage.EstablishingBtConnection(
+                currentAttemptNr = connectionAttemptNr,
+                totalNumAttempts = MAX_NUM_REGULAR_CONNECT_ATTEMPTS
+            ))
 
             try {
                 connectInternal()
                 break
             } catch (e: CancellationException) {
+                connectProgressReporter.setCurrentProgressStage(BasicProgressStage.Cancelled)
                 pumpIO.disconnect()
                 _statusFlow.value = null
                 parsedDisplayFrameStream.resetAll()
@@ -936,10 +952,12 @@ class Pump(
                         "Got exception $e while connecting, and max number of " +
                         "connection establishing attempts reached; not trying again"
                     }
+                    connectProgressReporter.setCurrentProgressStage(BasicProgressStage.Error(e))
                     setState(State.Error(throwable = e, "Connection error"))
                     throw e
                 }
             } catch (t: Throwable) {
+                connectProgressReporter.setCurrentProgressStage(BasicProgressStage.Error(t))
                 setState(State.Error(throwable = t, "Connection error"))
                 throw t
             }
@@ -2118,7 +2136,8 @@ class Pump(
             // Set the command mode as the initial mode to be able
             // to directly check for warnings / errors through the
             // CMD_READ_PUMP_STATUS command.
-            pumpIO.connect(initialMode = PumpIO.Mode.COMMAND, runHeartbeat = true)
+            pumpIO.connect(initialMode = PumpIO.Mode.COMMAND, runHeartbeat = true, connectProgressReporter = connectProgressReporter)
+            connectProgressReporter.setCurrentProgressStage(BasicProgressStage.Finished)
 
             setState(State.CheckingPump)
             performOnConnectChecks()
@@ -2134,6 +2153,7 @@ class Pump(
     private suspend fun reconnect() {
         logger(LogLevel.DEBUG) { "Reconnecting Combo with address ${bluetoothDevice.address}" }
         disconnect()
+        connectProgressReporter.reset(Unit)
         connectInternal()
     }
 

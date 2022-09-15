@@ -204,11 +204,6 @@ class PumpIO(
 
     /**
      * Current connection state.
-     *
-     * This differs from the [connectProgressFlow] in that the progress flow is generally
-     * not useful to check the current state, while the connection state is not generally
-     * useful for keeping track of the connection progress (since it does not contain
-     * extra info like the overall progress value etc.)
      */
     enum class ConnectionState {
         DISCONNECTED,
@@ -552,21 +547,6 @@ class PumpIO(
         }
     }
 
-    private val connectProgressReporter = ProgressReporter<Unit>(
-        listOf(
-            BasicProgressStage.EstablishingBtConnection::class,
-            BasicProgressStage.PerformingConnectionHandshake::class
-        ),
-        Unit
-    )
-
-    /**
-     * [StateFlow] for reporting progress during the [connect] call.
-     *
-     * See the [ProgressReporter] documentation for details.
-     */
-    val connectProgressFlow: StateFlow<ProgressReport> = connectProgressReporter.progressFlow
-
     /**
      * Establishes a regular connection.
      *
@@ -580,8 +560,9 @@ class PumpIO(
      * exception to be thrown. If this happens, users must call [disconnect]
      * before doing anything else again with this [PumpIO] instance.
      *
-     * The Bluetooth connection is set up by this function. [connectProgressFlow]
-     * and [connectionState] are updated by it as well.
+     * The Bluetooth connection is set up by this function. [connectionState]
+     * is updated by it as well, as is the [connectProgressReporter] that is
+     * passed to this function as an argument.
      *
      * This must be called before [switchMode] and any RT / command mode
      * function are used.
@@ -601,6 +582,18 @@ class PumpIO(
      * an exception, unless it is a [CancellationException], in which case
      * this function performs a normal disconnection by calling [disconnect].
      *
+     * If the [connectProgressReporter] isn't null, progress is reported through
+     * it to the caller. The [BasicProgressStage.Aborted] (and its subclasses),
+     * [BasicProgressStage.Finished], and [BasicProgressStage.Cancelled] stages
+     * are _not_ set; this is up to the caller. Likewise, the progress reporter
+     * is not automatically reset; if it requires a reset, the caller must do
+     * that by calling [ProgressReporter.reset]. This is done that way because
+     * the caller may implement some mechanism to retry a connection attempt;
+     * in such a case, setting these stages and resetting the reported would
+     * interfere, so this is not done. The [connectProgressReporter] must contain
+     * the [BasicProgressStage.PerformingConnectionHandshake] stage in its
+     * planned progress sequence (see [ProgressReporter] for details).
+     *
      * This function also handles a special situation if the [Nonce] that is
      * stored in [PumpStateStore] for this pump is incorrect. The Bluetooth
      * socket can then be successfully connected, but right afterwards, when
@@ -616,6 +609,8 @@ class PumpIO(
      *
      * @param initialMode What mode to initially switch to.
      * @param runHeartbeat True if the heartbeat shall be started.
+     * @param connectProgressReporter Optional [ProgressReporter] to update
+     *   during the connection progress.
      * @throws ConnectionRequestIsNotBeingAcceptedException if connecting the
      *   actual Bluetooth socket succeeds, but the Combo does not accept the
      *   packet that requests a connection, and this failed several times
@@ -627,7 +622,8 @@ class PumpIO(
      */
     suspend fun connect(
         initialMode: Mode = Mode.REMOTE_TERMINAL,
-        runHeartbeat: Boolean = true
+        runHeartbeat: Boolean = true,
+        connectProgressReporter: ProgressReporter<Unit>? = null
     ) {
         // Prerequisites.
 
@@ -665,8 +661,6 @@ class PumpIO(
         // a previous connection.
         framedComboIO.reset()
 
-        connectProgressReporter.reset(Unit)
-
         logger(LogLevel.DEBUG) { "Pump IO connecting asynchronously" }
 
         try {
@@ -687,11 +681,6 @@ class PumpIO(
             // re-pairing the pump instead.
             var regularConnectionRequestAccepted = false
             for (regularConnectionAttemptNr in 0 until PumpIOConstants.MAX_NUM_REGULAR_CONNECTION_ATTEMPTS) {
-                connectProgressReporter.setCurrentProgressStage(BasicProgressStage.EstablishingBtConnection(
-                    currentAttemptNr = regularConnectionAttemptNr + 1,
-                    totalNumAttempts = PumpIOConstants.MAX_NUM_REGULAR_CONNECTION_ATTEMPTS
-                ))
-
                 // Suspend the coroutine until Bluetooth is connected.
                 // Do this in a separate coroutine with an IO dispatcher
                 // since the connection setup may block.
@@ -699,7 +688,7 @@ class PumpIO(
                     bluetoothDevice.connect()
                 }
 
-                connectProgressReporter.setCurrentProgressStage(BasicProgressStage.PerformingConnectionHandshake)
+                connectProgressReporter?.setCurrentProgressStage(BasicProgressStage.PerformingConnectionHandshake)
 
                 try {
                     // Start the actual IO activity.
@@ -759,15 +748,11 @@ class PumpIO(
             logger(LogLevel.INFO) { "Pump IO connected" }
 
             _connectionState.value = ConnectionState.CONNECTED
-
-            connectProgressReporter.setCurrentProgressStage(BasicProgressStage.Finished)
         } catch (e: CancellationException) {
-            connectProgressReporter.setCurrentProgressStage(BasicProgressStage.Cancelled)
             disconnect()
             throw e
         } catch (t: Throwable) {
             newScopeJob.cancelAndJoin()
-            connectProgressReporter.setCurrentProgressStage(BasicProgressStage.Error(t))
             _connectionState.value = ConnectionState.FAILED
             throw t
         }
