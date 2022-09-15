@@ -21,7 +21,7 @@ class TestBluetoothDevice(private val testComboIO: ComboIO) : BluetoothDevice(Di
 
     override val address: BluetoothAddress = BluetoothAddress(byteArrayListOfInts(1, 2, 3, 4, 5, 6))
 
-    override fun connect(progressReporter: ProgressReporter<Unit>?) {
+    override fun connect() {
     }
 
     override fun disconnect() {
