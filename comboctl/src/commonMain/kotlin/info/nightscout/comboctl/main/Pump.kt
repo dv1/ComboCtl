@@ -29,6 +29,7 @@ import info.nightscout.comboctl.parser.MainScreenContent
 import info.nightscout.comboctl.parser.ParsedScreen
 import info.nightscout.comboctl.parser.ReservoirState
 import kotlin.math.absoluteValue
+import kotlin.time.Duration
 import kotlin.time.DurationUnit
 import kotlin.time.toDuration
 import kotlinx.coroutines.CancellationException
@@ -57,6 +58,7 @@ private val logger = Logger.get("Pump")
 private const val NUM_IDEMPOTENT_COMMAND_DISPATCH_ATTEMPTS = 10
 private const val MAX_NUM_REGULAR_CONNECT_ATTEMPTS = 10
 private const val DELAY_IN_MS_BETWEEN_COMMAND_DISPATCH_ATTEMPTS = 2000L
+private const val PUMP_DATETIME_UPDATE_LONG_RT_BUTTON_PRESS_THRESHOLD = 5
 
 object RTCommandProgressStage {
     /**
@@ -2496,10 +2498,12 @@ class Pump(
         val currentSystemDateTime = Clock.System.now()
         val currentSystemTimeZone = TimeZone.currentSystemDefault()
         val currentSystemUtcOffset = currentSystemTimeZone.offsetAt(currentSystemDateTime)
+        val dateTimeDelta = (currentSystemDateTime - currentPumpDateTime)
 
         logger(LogLevel.DEBUG) { "History delta size: ${historyDelta.size}" }
         logger(LogLevel.DEBUG) { "Pump local datetime: $currentPumpLocalDateTime with UTC offset: $currentPumpDateTime" }
         logger(LogLevel.DEBUG) { "Current system datetime: $currentSystemDateTime" }
+        logger(LogLevel.DEBUG) { "Datetime delta: $dateTimeDelta" }
 
         // The following checks update the UTC offset in the pump state and
         // the datetime in the pump. This is done *after* all the checks above
@@ -2526,20 +2530,34 @@ class Pump(
         // (b) setting datetime takes a while because it has to be done
         // via the RT mode. Having this threshold avoids too frequent
         // pump datetime updates (which, as said, are rather slow).
-        if ((currentSystemDateTime - currentPumpDateTime).absoluteValue >= 2.toDuration(DurationUnit.MINUTES)) {
+        if (dateTimeDelta.absoluteValue >= 2.toDuration(DurationUnit.MINUTES)) {
             logger(LogLevel.INFO) {
-                "Current system datetime differs from pump's: system datetime: $currentSystemDateTime; " +
-                "pump datetime: $currentPumpDateTime; updating pump datetime"
+                "Current system datetime differs from pump's too much, updating pump datetime; " +
+                "system / pump datetime (UTC): $currentSystemDateTime / $currentPumpDateTime; " +
+                "datetime delta: $dateTimeDelta"
             }
-            // When updating the datetime, add 30 seconds. This is done because the
-            // updatePumpDateTime() is likely to take a while. Without an offset,
-            // it is possible that by the time the set datetime operation is finished,
+            // Shift the pump's new datetime into the future, using a simple
+            // heuristic that estimates how long it will take updatePumpDateTime()
+            // to complete the adjustment. If the difference between the pump's
+            // current datetime and the current system datetime is rather large,
+            // updatePumpDateTime() can take a significant amount of time to
+            // complete (in some extreme cases even more than a minute). It is
+            // possible that by the time the set datetime operation is finished,
             // the pump's current datetime is already too far or at least almost
-            // too far in the past. The offset tries to take the duration of the
-            // datetime operation itself into account.
+            // too far in the past. By estimating the updatePumpDateTime()
+            // duration and taking it into account, we minimize the chances
+            // of the pump's new datetime being too old already.
+            val newPumpDateTimeShift = estimateDateTimeSetDurationFrom(currentPumpDateTime, currentSystemDateTime, currentSystemTimeZone)
             updatePumpDateTime(
-                (currentSystemDateTime + 30.toDuration(DurationUnit.SECONDS)).toLocalDateTime(currentSystemTimeZone)
+                (currentSystemDateTime + newPumpDateTimeShift).toLocalDateTime(currentSystemTimeZone)
             )
+        } else {
+            logger(LogLevel.INFO) {
+                "Current system datetime is close enough to pump's current datetime, " +
+                "no pump datetime adjustment needed; " +
+                "system / pump datetime (UTC): $currentSystemDateTime / $currentPumpDateTime; " +
+                "datetime delta: $dateTimeDelta"
+            }
         }
 
         // Check if the pump's current UTC offset matches that of the system.
@@ -2763,7 +2781,7 @@ class Pump(
         // quantity differs by more than 5. 5 and less means <= 5 button short button
         // presses, which are faster than a long- and short-press sequence.
         val longRTButtonPressPredicate = fun(targetQuantity: Int, quantityOnScreen: Int): Boolean =
-            ((targetQuantity - quantityOnScreen).absoluteValue) >= 5
+            ((targetQuantity - quantityOnScreen).absoluteValue) >= PUMP_DATETIME_UPDATE_LONG_RT_BUTTON_PRESS_THRESHOLD
 
         try {
             setDateTimeProgressReporter.setCurrentProgressStage(RTCommandProgressStage.SettingDateTimeHour)
@@ -2848,6 +2866,81 @@ class Pump(
             setDateTimeProgressReporter.setCurrentProgressStage(BasicProgressStage.Error(e))
             throw e
         }
+    }
+
+    private fun estimateDateTimeSetDurationFrom(
+        currentPumpDateTime: Instant,
+        currentSystemDateTime: Instant,
+        timezone: TimeZone
+    ): Duration {
+        // In here, we use a simple heuristic to estimate how long it will take the updatePumpDateTime()
+        // function to adjust the pump's local datetime to match the system datetime. It looks at the
+        // individual differences in minute/hour/day/month/year values, evaluates them, and decides
+        // based on that how long it should take updatePumpDateTime() to bring the current quantity
+        // to the target quantity. This is a conservative estimate that does not factor in blinked-out
+        // screens and is always shorter than the actual duration updatePumpDateTime() takes to finish
+        // the adjustment. This is important, otherwise we may end up setting the pump's local datetime
+        // to a timestamp that lies in the future. This is OK if it is only maybe at most a few seconds
+        // in the future, but anything beyond that could cause problems, because then, the timestamps
+        // of following bolus deliveries etc. would all be shifted into the future, and potentially
+        // confuse AAPS and its IOB calculations (since the bolus dosage would not be factored in
+        // right away if the bolus timestamp is shifted into the future).
+
+        val currentLocalPumpDateTime = currentPumpDateTime.toLocalDateTime(timezone)
+        val currentLocalSystemDateTime = currentSystemDateTime.toLocalDateTime(timezone)
+
+        fun calcCyclicDistance(begin: Int, end: Int, range: Int): Int {
+            val simpleDistance = (end - begin).absoluteValue
+            return if (simpleDistance <= (range / 2)) simpleDistance else (range - simpleDistance)
+        }
+        fun calcNormalDistance(begin: Int, end: Int): Int {
+            return (end - begin).absoluteValue
+        }
+        fun calcLongRTButtonPressObservationPeriod(distance: Int): Duration {
+            // Check if the distance is large enough to trigger a long RT button press. If so,
+            // factor in 2 seconds. This is the time it takes after the long button
+            // press completes to wait until the quantity post-button press can be read.
+            // After the long RT button press is over, the code observes the RT screen
+            // updates for about 2 seconds before it extracts the new current quantity
+            // from the RT screen.
+            // If however no long RT button press is expected, then no such waiting /
+            // observation period will happen, so return 0 then instead.
+            return (if (distance >= PUMP_DATETIME_UPDATE_LONG_RT_BUTTON_PRESS_THRESHOLD) 2 else 0).toDuration(DurationUnit.SECONDS)
+        }
+
+        // When calculating the "distances" (= how many button in/decrements it takes to reach the
+        // target quantity), also factor in cyclic behavior if there is one.
+        val hourDistance = calcCyclicDistance(currentLocalPumpDateTime.hour, currentLocalSystemDateTime.hour, 24)
+        val minuteDistance = calcCyclicDistance(currentLocalPumpDateTime.minute, currentLocalSystemDateTime.minute, 60)
+        val yearDistance = calcNormalDistance(currentLocalPumpDateTime.year, currentLocalSystemDateTime.year)
+        val monthDistance = calcCyclicDistance(currentLocalPumpDateTime.monthNumber, currentLocalSystemDateTime.monthNumber, 12)
+        val dayDistance = calcNormalDistance(currentLocalPumpDateTime.dayOfMonth, currentLocalSystemDateTime.dayOfMonth)
+        val totalDistance = hourDistance + minuteDistance + yearDistance + monthDistance + dayDistance
+
+        val estimatedDuration =
+            // 2 seconds to account for navigation to the time and date settings screens.
+            2.toDuration(DurationUnit.SECONDS) +
+            // 1 second per quantity to factor in the waiting period while reading each initial quantity.
+            // We handle 5 quantities (hour/minute/year/month/day), so we factor in 5*1 seconds.
+            5.toDuration(DurationUnit.SECONDS) +
+            // Factor in the individual factor changes (1 increment/decrement takes ~300 ms to finish).
+            (totalDistance * 300).toDuration(DurationUnit.MILLISECONDS) +
+            // if a long RT button press happens, there's a waiting period after the button press stopped.
+            // IMPORTANT: This is evaluated for each distance individually instead of evaluating
+            // totalDistance once. That's because whether to do long RT button press is decided per-quantity
+            // and not once for all quantities.
+            calcLongRTButtonPressObservationPeriod(hourDistance) +
+            calcLongRTButtonPressObservationPeriod(minuteDistance) +
+            calcLongRTButtonPressObservationPeriod(yearDistance) +
+            calcLongRTButtonPressObservationPeriod(monthDistance) +
+            calcLongRTButtonPressObservationPeriod(dayDistance)
+
+        logger(LogLevel.DEBUG) {
+            "Current local pump / system datetime: $currentLocalPumpDateTime / $currentLocalSystemDateTime " +
+            "; estimated duration: $estimatedDuration"
+        }
+
+        return estimatedDuration
     }
 
     private suspend fun setCurrentTbr(
