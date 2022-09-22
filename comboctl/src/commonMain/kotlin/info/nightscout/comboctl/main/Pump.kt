@@ -2336,6 +2336,9 @@ class Pump(
         // factor we see on screen. This is distinct from the other datetimes
         // we fetch later below, since several operations are in between here
         // and there, and these operations can take some time to finish.
+        // Since this is done through the command mode, we must make sure we
+        // are in that mode before reading the datetime.
+        pumpIO.switchMode(PumpIO.Mode.COMMAND)
         val timestampOfStatusUpdate = pumpIO.readCMDDateTime()
 
         // Scan history delta for unaccounted bolus(es). Report all discovered ones.
