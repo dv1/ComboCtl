@@ -244,8 +244,9 @@ class Pump(
     private val parsedDisplayFrameStream = ParsedDisplayFrameStream()
     private val rtNavigationContext = RTNavigationContextProduction(pumpIO, parsedDisplayFrameStream)
 
-    // Used for counting how many times an RT alert screen was dismissed by a button press.
-    private var dismissalCount = 0
+    // Used for keeping track of wether an RT alert screen was already dismissed
+    // (necessary since the screen may change its contents but still be the same screen).
+    private var rtScreenAlreadyDismissed = false
     // Used in handleAlertScreenContent() to check if the current alert
     // screen contains the same alert as the previous one.
     private var lastObservedAlertScreenContent: AlertScreenContent? = null
@@ -1834,7 +1835,7 @@ class Pump(
 
             // Reset these to guarantee that the handleAlertScreenContent()
             // calls don't use stale states.
-            dismissalCount = 0
+            rtScreenAlreadyDismissed = false
             lastObservedAlertScreenContent = null
 
             // A command execution is attempted a number of times. That number
@@ -2018,39 +2019,90 @@ class Pump(
     }
 
     private suspend fun checkForAlerts() {
-        // First check the error/warning status flags in the command
-        // mode. Only look at the RT screen if at least one of these
-        // flags is set. This is because retrieving the flags is done
-        // very quickly - much quicker than reading the RT screen.
-        // Most of the time, there's no alert, so this allows us to
-        // only perform the slower RT screen operation if it is
-        // really necessary.
+        // Alert checks differ depending on the currently active mode.
+        // That's because we want to avoid unnecessary mode changes
+        // that take extra time to complete.
+        //
+        // If we are in the command mode, then we can right away send
+        // a CMD_READ_ERROR_WARNING_STATUS packet to see if an error
+        // and/or warning is active right now. Only if one is active
+        // do we switch to the remote terminal mode to read the alert
+        // screen contents and dismiss the screen (if appropriate).
+        //
+        // If we are in the remote terminal mode, sending the
+        // CMD_READ_ERROR_WARNING_STATUS packet would require switching
+        // to the command mode first. In this situation, it is instead
+        // easier and quicker to just peek at the current RT display frame
+        // and check if it shows an alert screen. If so, read its contents
+        // and dismiss it (if appropriate).
+        if (currentModeFlow.value == PumpIO.Mode.COMMAND) {
+            val pumpStatus = pumpIO.readCMDErrorWarningStatus()
+            if (pumpStatus.warningOccurred || pumpStatus.errorOccurred) {
+                pumpIO.switchMode(PumpIO.Mode.REMOTE_TERMINAL)
+                handleAlertScreen()
+            }
+        } else {
+            while (true) {
+                // Loop until we get a non-blinked out screen (when blinked out,
+                // getParsedDisplayFrame() returns null).
+                val parsedDisplayFrame = rtNavigationContext.getParsedDisplayFrame(
+                    filterDuplicates = false,
+                    processAlertScreens = false
+                ) ?: continue
 
-        pumpIO.switchMode(PumpIO.Mode.COMMAND)
-        val pumpStatus = pumpIO.readCMDErrorWarningStatus()
+                // If the pump indeed is currently showing an alert screen,
+                // handle it, passing the already seen screen to handleAlertScreen()
+                // to be able to analyze that immediately. If no such alert screen
+                // is shown however, reset the duplicate detection - subsequent
+                // calls may want to call getParsedDisplayFrame() with filterDuplicates
+                // set to true, which would cause that function call to hang, since
+                // the rtNavigationContext would store the already seen screen for
+                // detecting duplicates.
+                val parsedScreen = parsedDisplayFrame.parsedScreen
+                if (parsedScreen is ParsedScreen.AlertScreen)
+                    handleAlertScreen(parsedScreen)
+                else
+                    rtNavigationContext.resetDuplicate()
 
-        if (pumpStatus.warningOccurred || pumpStatus.errorOccurred) {
-            pumpIO.switchMode(PumpIO.Mode.REMOTE_TERMINAL)
-
-            handleAlertScreen()
+                break
+            }
         }
     }
 
-    private suspend fun handleAlertScreen() {
+    private suspend fun handleAlertScreen(previouslySeenAlertScreen: ParsedScreen.AlertScreen? = null) {
+        // previouslySeenAlertScreen is a way for the caller to pass an alert
+        // screen to here that the caller already observed. This allows us here
+        // to skip a getParsedDisplayFrame() call during the first iteration
+        // of this loop. That call would be redundant, since the first time
+        // we arrive here, the caller may already know that an alert screen
+        // appeared. Thus, if previouslySeenAlertScreen is not null, use its
+        // contents during the first iteration instead of getting a parsed
+        // display frame from the rtNavigationContext. But only do this during
+        // the first iteration, since handleAlertScreenContent() causes
+        // changes that also cause the RT screen to change.
+        var previouslySeenAlertScreenInternal = previouslySeenAlertScreen
         while (true) {
-            val parsedDisplayFrame = rtNavigationContext.getParsedDisplayFrame(
-                filterDuplicates = true,
-                processAlertScreens = false
-            ) ?: continue
-            val parsedScreen = parsedDisplayFrame.parsedScreen
+            val alertScreenContent = if (previouslySeenAlertScreenInternal != null) {
+                val content = previouslySeenAlertScreenInternal.content
+                previouslySeenAlertScreenInternal = null
+                content
+            } else {
+                val parsedDisplayFrame = rtNavigationContext.getParsedDisplayFrame(
+                    filterDuplicates = true,
+                    processAlertScreens = false
+                ) ?: continue
+                val parsedScreen = parsedDisplayFrame.parsedScreen
 
-            if (parsedScreen !is ParsedScreen.AlertScreen)
-                break
+                if (parsedScreen !is ParsedScreen.AlertScreen)
+                    break
+                else
+                    parsedScreen.content
+            }
 
             logger(LogLevel.DEBUG) {
-                "Got alert screen with content ${parsedScreen.content}"
+                "Got alert screen with content $alertScreenContent"
             }
-            handleAlertScreenContent(parsedScreen.content)
+            handleAlertScreenContent(alertScreenContent)
         }
     }
 
@@ -2077,7 +2129,7 @@ class Pump(
                 // to be able to properly dismiss followup warnings.
                 if (lastObservedAlertScreenContent != alertScreenContent) {
                     lastObservedAlertScreenContent = alertScreenContent
-                    dismissalCount = 0
+                    rtScreenAlreadyDismissed = false
                 }
 
                 val warningCode = alertScreenContent.code
@@ -2105,14 +2157,15 @@ class Pump(
                 // Warning screens are dismissed by pressing CHECK twice.
                 // First time, the CHECK button press transitions the state
                 // on that screen from alert to confirm. Second time, the
-                // screen is finally dismissed. Due to the blinking screen
-                // though, we might end up getting the warning screen more
-                // than twice, so use a counter to not accidentally press
-                // CHECK more than twice.
-                if (dismissalCount < 2) {
-                    logger(LogLevel.DEBUG) { "Dismissing W$warningCode by short-pressing CHECK" }
+                // screen is finally dismissed. This holds true even if
+                // the screen blinks in between; the Combo still registers
+                // the two button presses, so there is no need to wait
+                // for the second screen - just press twice right away.
+                if (!rtScreenAlreadyDismissed) {
+                    logger(LogLevel.DEBUG) { "Dismissing W$warningCode by short-pressing CHECK twice" }
                     rtNavigationContext.shortPressButton(RTNavigationButton.CHECK)
-                    dismissalCount++
+                    rtNavigationContext.shortPressButton(RTNavigationButton.CHECK)
+                    rtScreenAlreadyDismissed = true
                 }
             }
         }
