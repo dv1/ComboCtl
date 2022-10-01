@@ -898,9 +898,9 @@ class Pump(
     suspend fun connect() {
         check(stateFlow.value == State.Disconnected) { "Attempted to connect to pump in the ${stateFlow.value} state" }
 
-        connectProgressReporter.reset(Unit)
-
         for (connectionAttemptNr in 1..MAX_NUM_REGULAR_CONNECT_ATTEMPTS) {
+            connectProgressReporter.reset(Unit)
+
             logger(LogLevel.DEBUG) { "Attempt $connectionAttemptNr of $MAX_NUM_REGULAR_CONNECT_ATTEMPTS to establish connection" }
 
             connectProgressReporter.setCurrentProgressStage(BasicProgressStage.EstablishingBtConnection(
