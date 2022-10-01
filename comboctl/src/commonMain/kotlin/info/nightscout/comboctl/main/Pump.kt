@@ -475,14 +475,6 @@ class Pump(
         ComboException("Extended or multiwave bolus is active; bolus info: $bolusInfo")
 
     /**
-     * Exception thrown when the Combo's active basal profile is not profile #1.
-     *
-     * @property activeBasalProfileNumber Number of the profile that is actually active.
-     */
-    class IncorrectActiveBasalProfileException(val activeBasalProfileNumber: Int) :
-        ComboException("Incorrect basal profile active; expected profile 1 to be active, not profile $activeBasalProfileNumber")
-
-    /**
      * Reason for a standard bolus delivery.
      *
      * A standard bolus may be delivered for various reasons.
@@ -936,7 +928,6 @@ class Pump(
                     // failed. That's because these exceptions indicate hard errors that
                     // must be reported ASAP and disallow more connection attempts, at
                     // least attempts without notifying the user.
-                    is IncorrectActiveBasalProfileException,
                     is ExtendedOrMultiwaveBolusActiveException,
                     is UnaccountedBolusDetectedException,
                     is SettingPumpDatetimeFailedException,
@@ -2367,22 +2358,6 @@ class Pump(
             allowExecutionWhileChecking = true,
             switchStatesIfNecessary = false
         )
-
-        // Right after the pump status was read from the remote terminal screens,
-        // check if basal profile #1 is active. If not, we cannot proceed, since
-        // the logic in this code relies on adjusting profile #1. If a different
-        // profile is active, throw an exception instead of trying to change the
-        // active profile automatically. That's because a different profile being
-        // the active one may indicate that the pump overall isn't prepared for
-        // being used for looping yet.
-        statusFlow.value?.let { currentStatus ->
-            if (!pumpSuspended && (currentStatus.activeBasalProfileNumber != 1)) {
-                logger(LogLevel.ERROR) {
-                    "Cannot continue if the pump's active profile is ${currentStatus.activeBasalProfileNumber} (must be profile #1)"
-                }
-                throw IncorrectActiveBasalProfileException(currentStatus.activeBasalProfileNumber)
-            }
-        }
 
         // Read the timestamp when the update is read to be able to determine
         // below what factor of the current basal profile corresponds to the
