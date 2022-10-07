@@ -835,7 +835,6 @@ class Pump(
      * delivered boluses since the last time the history delta was retrieved.
      * If no boluses happened in between connections, this list will be empty.
      * Otherwise, unaccounted boluses happened. These are announced via [onEvent].
-     * Afterwards, this function throws an [UnaccountedBolusDetectedException].
      * 3. The current pump status is evaluated. If the pump is found to be
      * suspended, the [stateFlow] switches to [State.Suspended], the checks
      * end, and so does this function. Otherwise, it continues.
@@ -887,9 +886,6 @@ class Pump(
      * @throws SettingPumpDatetimeFailedException if during the checks,
      *   the pump's datetime was found to be deviating too much from the
      *   actual current datetime, and adjusting the pump's datetime failed.
-     * @throws UnaccountedBolusDetectedException if during the pump checks
-     *   a bolus is found in the pump's history delta that wasn't delivered
-     *   by ComboCtl.
      * @throws ExtendedOrMultiwaveBolusActiveException if an extended / multiwave
      *   bolus is active (these are shown on the main screen).
      * @throws IncorrectActiveBasalProfileException if the currently active basal
@@ -929,7 +925,6 @@ class Pump(
                     // must be reported ASAP and disallow more connection attempts, at
                     // least attempts without notifying the user.
                     is ExtendedOrMultiwaveBolusActiveException,
-                    is UnaccountedBolusDetectedException,
                     is SettingPumpDatetimeFailedException,
                     is AlertScreenException -> {
                         setState(State.Error(throwable = e, "Connection error"))
@@ -2370,21 +2365,7 @@ class Pump(
         val timestampOfStatusUpdate = pumpIO.readCMDDateTime()
 
         // Scan history delta for unaccounted bolus(es). Report all discovered ones.
-        // If at least one was found, throw an exception for safety reasons.
-
-        var foundUnaccountedBolus = false
-
-        scanHistoryDeltaForBolusToEmit(historyDelta) { entry ->
-            foundUnaccountedBolus = foundUnaccountedBolus or entry.detail.isBolusDetail
-        }
-
-        if (foundUnaccountedBolus) {
-            logger(LogLevel.ERROR) {
-                "Unaccounted bolus(es) detected; cannot execute commands, " +
-                "since commands may be issues based on incorrect IOB assumptions"
-            }
-            throw UnaccountedBolusDetectedException()
-        }
+        scanHistoryDeltaForBolusToEmit(historyDelta)
 
         if (pumpSuspended) {
             // If the pump is suspended, no insulin is delivered. This behaves like
