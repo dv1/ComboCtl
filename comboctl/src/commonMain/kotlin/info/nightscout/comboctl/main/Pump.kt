@@ -888,8 +888,6 @@ class Pump(
      *   actual current datetime, and adjusting the pump's datetime failed.
      * @throws ExtendedOrMultiwaveBolusActiveException if an extended / multiwave
      *   bolus is active (these are shown on the main screen).
-     * @throws IncorrectActiveBasalProfileException if the currently active basal
-     *   profile is not profile #1.
      */
     suspend fun connect() {
         check(stateFlow.value == State.Disconnected) { "Attempted to connect to pump in the ${stateFlow.value} state" }
