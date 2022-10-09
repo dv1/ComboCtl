@@ -2386,8 +2386,10 @@ class Pump(
             //    active TBR, this means that the TBR ended some time ago. Announce the ended TBR as an
             //    event, then set currentTbrState to NoTbrOngoing.
             // 2. currentTbrState is TbrStarted, and TBR information is shown on the main screen.
-            //    Do nothing in that case other than a currentTbrFlow value update, since we know the
-            //    TBR started earlier and is still ongoing.
+            //    Check that the TBR information on screen matches the TBR information from the
+            //    TbrStarted state. If there is a mismatch, emit an UnknownTbrDetected event.
+            //    Otherwise, do nothing in that case other than a currentTbrFlow value update, since
+            //    we know the TBR started earlier and is still ongoing.
             // 3. currentTbrState is NoTbrOngoing, and no TBR information is shown on the main screen.
             //    Do nothing in that case other than a currentTbrFlow value update, since we already
             //    know that no TBR was ongoing.
@@ -2428,6 +2430,34 @@ class Pump(
                         _currentTbrFlow.value = null
                     } else {
                         // Handle case #2.
+
+                        val now = Clock.System.now()
+                        val expectedCurrentTbrPercentage = currentTbrState.tbr.percentage
+                        val actualCurrentTbrPercentage = status.tbrPercentage
+                        val elapsedTimeSinceTbrStart = now - currentTbrState.tbr.timestamp
+                        val expectedRemainingDurationInMinutes = currentTbrState.tbr.durationInMinutes - elapsedTimeSinceTbrStart.inWholeMinutes.toInt()
+                        val actualRemainingDurationInMinutes = status.remainingTbrDurationInMinutes
+
+                        // The remaining duration check uses a tolerance range of 10 minutes, since
+                        // TBR durations are set in 15-minute steps, and a strict value equality check
+                        // would raise false positives due to jitter caused by using the current time.
+                        if ((expectedCurrentTbrPercentage != actualCurrentTbrPercentage) ||
+                            ((expectedRemainingDurationInMinutes - actualRemainingDurationInMinutes).absoluteValue >= 10)) {
+                                logger(LogLevel.DEBUG) {
+                                    "Unknown/unexpected TBR detected; expected TBR with percentage $expectedCurrentTbrPercentage " +
+                                    "and remaining duration expectedRemainingDurationInMinutes; actual TBR has percentage " +
+                                    "$actualRemainingDurationInMinutes and remaining duration $actualRemainingDurationInMinutes"
+                                }
+
+                                pumpIO.switchMode(PumpIO.Mode.REMOTE_TERMINAL)
+                                setCurrentTbr(percentage = 100, durationInMinutes = 0)
+
+                                onEvent(Event.UnknownTbrDetected(
+                                    tbrPercentage = status.tbrPercentage,
+                                    remainingTbrDurationInMinutes = status.remainingTbrDurationInMinutes
+                                ))
+                        }
+
                         _currentTbrFlow.value = currentTbrState.tbr
                     }
                 }
