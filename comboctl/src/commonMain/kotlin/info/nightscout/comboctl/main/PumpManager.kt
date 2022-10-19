@@ -120,26 +120,13 @@ class PumpManager(
      * have a corresponding device in the list of paired device addresses, then
      * those stale pump states are erased.
      *
-     * Additionally, a similar check is made to see if there pumps in the
-     * list of paired device addresses that have no corresponding pump state
-     * in the [pumpStateStore]. If [unpairUnknownPumps] is true, then such
-     * devices are unpaired at the Bluetooth level. This is useful to prevent
-     * situations where a Combo isn't actually paired, but [pairWithNewPump]
-     * doesn't detect them, because at a Bluetooth level, that Combo _is_
-     * still paired (that is, the OS has it listed among its paired devices).
-     *
      * This must be called before using [pairWithNewPump] or [acquirePump].
      *
-     * @param unpairUnknownPumps If true (the default), pumps that are paired but
-     *        have no associated state in the pump state store are unpaired.
      * @param onPumpUnpaired Callback for when a previously paired pump is unpaired.
      *        This is typically called from some background thread. Switching to
      *        a different context with [withContext] may be necessary.
      */
-    fun setup(
-        unpairUnknownPumps: Boolean = true,
-        onPumpUnpaired: (pumpAddress: BluetoothAddress) -> Unit = { }
-    ) {
+    fun setup(onPumpUnpaired: (pumpAddress: BluetoothAddress) -> Unit = { }) {
         bluetoothInterface.onDeviceUnpaired = { deviceAddress ->
             onPumpUnpaired(deviceAddress)
             // Explicitly wipe the pump state to make sure that no stale pump state remains.
@@ -175,22 +162,6 @@ class PumpManager(
             if (!pairedDevicePresent) {
                 logger(LogLevel.DEBUG) { "There is no paired device for pump state with address $pumpStateAddress; deleting state" }
                 pumpStateStore.deletePumpState(pumpStateAddress)
-            }
-        }
-
-        if (unpairUnknownPumps) {
-            // Check for paired pumps that have no corresponding state. This can happen
-            // if the state was deleted and the application crashed before it could unpair
-            // the pump, or if some other application paired the pump.
-            for (pairedDeviceAddress in pairedDeviceAddresses) {
-                val pumpStatePresent = availablePumpStates.contains(pairedDeviceAddress)
-                if (!pumpStatePresent) {
-                    if (isCombo(pairedDeviceAddress)) {
-                        logger(LogLevel.DEBUG) { "There is no pump state for paired pump with address $pairedDeviceAddresses; unpairing" }
-                        val bluetoothDevice = bluetoothInterface.getDevice(pairedDeviceAddress)
-                        bluetoothDevice.unpair()
-                    }
-                }
             }
         }
     }
@@ -250,6 +221,16 @@ class PumpManager(
      * context. Consider using [kotlinx.coroutines.withContext] in
      * [onPairingPIN] for this reason.
      *
+     * Before the pairing starts, this function compares the list of paired
+     * Bluetooth device addresses with the list of pump states in the
+     * [pumpStateStore]. This is similar to the checks done in [setup], except
+     * it is reversed: Each paired device that has no corresponding pump
+     * state in the [pumpStateStore] is unpaired before the new pairing begins.
+     * This is useful to prevent situations where a Combo isn't actually paired,
+     * but [pairWithNewPump] doesn't detect them, because at a Bluetooth level,
+     * that Combo _is_ still paired (that is, the OS has it listed among its
+     * paired devices).
+     *
      * @param discoveryDuration How long the discovery shall go on,
      *   in seconds. Must be a value between 1 and 300.
      * @param onPairingPIN Suspending block that asks the user for
@@ -264,6 +245,30 @@ class PumpManager(
         val deferred = CompletableDeferred<PairingResult>()
 
         lateinit var result: PairingResult
+
+        // Before doing the actual pairing, unpair devices that have no corresponding pump state.
+
+        val pairedDeviceAddresses = bluetoothInterface.getPairedDeviceAddresses()
+        logger(LogLevel.DEBUG) { "${pairedDeviceAddresses.size} paired Bluetooth device(s)" }
+
+        val availablePumpStates = pumpStateStore.getAvailablePumpStateAddresses()
+        logger(LogLevel.DEBUG) { "${availablePumpStates.size} available pump state(s)" }
+
+        // Check for paired pumps that have no corresponding state. This can happen if
+        // the state was deleted and the application crashed before it could unpair the
+        // pump, or if some other application paired the pump. Those devices get unpaired.
+        for (pairedDeviceAddress in pairedDeviceAddresses) {
+            val pumpStatePresent = availablePumpStates.contains(pairedDeviceAddress)
+            if (!pumpStatePresent) {
+                if (isCombo(pairedDeviceAddress)) {
+                    logger(LogLevel.DEBUG) { "There is no pump state for paired pump with address $pairedDeviceAddresses; unpairing" }
+                    val bluetoothDevice = bluetoothInterface.getDevice(pairedDeviceAddress)
+                    bluetoothDevice.unpair()
+                }
+            }
+        }
+
+        // Unpairing unknown devices done. Actual pairing of a new pump continues now.
 
         pairingProgressReporter.reset(Unit)
 
