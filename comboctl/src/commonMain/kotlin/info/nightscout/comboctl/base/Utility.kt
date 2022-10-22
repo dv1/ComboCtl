@@ -19,6 +19,27 @@ internal fun timeWithoutDate(hour: Int = 0, minute: Int = 0, second: Int = 0) =
 internal fun combinedDateTime(date: LocalDate, time: LocalDateTime) =
     date.atTime(hour = time.hour, minute = time.minute, second = time.second, nanosecond = time.nanosecond)
 
+// IMPORTANT: Only use this with local dates that always lie in the past or present,
+// never in the future. Read the comment block right below for an explanation why.
+internal fun LocalDate.withFixedYearFrom(reference: LocalDate): LocalDate {
+    // In cases where the Combo does not show years (just months and days), we may have
+    // to fix the local date by inserting a year number from some other timestamp
+    // (typically the current system time).
+    // If we do this, we have to address a corner case: Suppose that the un-fixed date
+    // has month 12 and day 29, but the current date is 2024-01-02. Just inserting 2024
+    // into the first date yields the date 2024-12-29. The screens that only show
+    // months and days (and not years) are in virtually all cases used for historical
+    // data, meaning that these dates cannot be in the future. The example just shown
+    // would produce a future date though (since 2024-12-29 > 2024-01-02). Therefore,
+    // if we see that the newly constructed local date is in the future relative to
+    // the reference date, we subtract 1 from the year.
+    val date = LocalDate(year = reference.year, month = this.month, dayOfMonth = this.dayOfMonth)
+    return if (date > reference) {
+        LocalDate(year = reference.year - 1, month = this.month, dayOfMonth = this.dayOfMonth)
+    } else
+        date
+}
+
 /**
  * Produces a ByteArray out of a sequence of integers.
  *

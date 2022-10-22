@@ -22,6 +22,7 @@ import info.nightscout.comboctl.base.PumpStateStore
 import info.nightscout.comboctl.base.Tbr
 import info.nightscout.comboctl.base.TransportLayer
 import info.nightscout.comboctl.base.toStringWithDecimal
+import info.nightscout.comboctl.base.withFixedYearFrom
 import info.nightscout.comboctl.parser.AlertScreenContent
 import info.nightscout.comboctl.parser.AlertScreenException
 import info.nightscout.comboctl.parser.BatteryState
@@ -1647,6 +1648,10 @@ class Pump(
         try {
             val tddHistoryEntries = mutableListOf<TDDHistoryEntry>()
 
+            val currentSystemDateTime = Clock.System.now()
+            val currentSystemTimeZone = TimeZone.currentSystemDefault()
+            val currentLocalDate = currentSystemDateTime.toLocalDateTime(currentSystemTimeZone).date
+
             navigateToRTScreen(rtNavigationContext, ParsedScreen.MyDataDailyTotalsScreen::class, pumpSuspended)
 
             longPressRTButtonUntil(rtNavigationContext, RTNavigationButton.DOWN) { parsedScreen ->
@@ -1655,18 +1660,19 @@ class Pump(
                     return@longPressRTButtonUntil LongPressRTButtonsCommand.ReleaseButton
                 }
 
-                tddHistoryEntries.add(
-                    TDDHistoryEntry(
-                        date = parsedScreen.date.atStartOfDayIn(currentPumpUtcOffset!!.asTimeZone()),
-                        totalDailyAmount = parsedScreen.totalDailyAmount
-                    )
+                val historyEntry = TDDHistoryEntry(
+                    // Fix the date since the Combo does not show years in TDD screens.
+                    date = parsedScreen.date.withFixedYearFrom(currentLocalDate).atStartOfDayIn(currentPumpUtcOffset!!.asTimeZone()),
+                    totalDailyAmount = parsedScreen.totalDailyAmount
                 )
 
                 logger(LogLevel.DEBUG) {
                     "Got TDD history entry ${parsedScreen.index} / ${parsedScreen.totalNumEntries} ; " +
-                    "date = ${parsedScreen.date} ; " +
-                    "TDD = ${parsedScreen.totalDailyAmount.toStringWithDecimal(3)}"
+                    "date = ${historyEntry.date} ; " +
+                    "TDD = ${historyEntry.totalDailyAmount.toStringWithDecimal(3)}"
                 }
+
+                tddHistoryEntries.add(historyEntry)
 
                 tddHistoryProgressReporter.setCurrentProgressStage(
                     RTCommandProgressStage.FetchingTDDHistory(parsedScreen.index, parsedScreen.totalNumEntries)
