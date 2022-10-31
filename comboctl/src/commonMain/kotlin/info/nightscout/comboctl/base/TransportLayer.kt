@@ -713,8 +713,20 @@ object TransportLayer {
          *        the shutdown procedure.
          */
         suspend fun stop(disconnectPacketInfo: OutgoingPacketInfo? = null, disconnectDeviceCallback: suspend () -> Unit = { }) {
-            if (!isIORunning())
+            if (!isIORunning()) {
+                // Invoke the disconnectDeviceCallback even if IO isn't actually running.
+                // That's because the callback may be needed to for example close a socket
+                // and abort an ongoing connect attempt.
+                try {
+                    disconnectDeviceCallback()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (t: Throwable) {
+                    logger(LogLevel.WARN) { "Error thrown in disconnectDeviceCallback: $t ; swallowing this throwable" }
+                    // We are tearing down IO already, so we swallow throwables here.
+                }
                 return
+            }
 
             try {
                 if (disconnectPacketInfo != null) {
