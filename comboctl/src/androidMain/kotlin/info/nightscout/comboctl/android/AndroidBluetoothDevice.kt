@@ -36,6 +36,7 @@ class AndroidBluetoothDevice(
     private var inputStream: InputStream? = null
     private var outputStream: OutputStream? = null
     private var canDoIO: Boolean = false
+    private var abortConnectAttempt: Boolean = false
 
     // Use toUpperCase() since Android expects the A-F hex digits in the
     // Bluetooth address string to be uppercase (lowercase ones are considered
@@ -48,6 +49,8 @@ class AndroidBluetoothDevice(
         check(systemBluetoothSocket == null) { "Connection already established" }
 
         logger(LogLevel.DEBUG) { "Attempting to get object representing device with address $address" }
+
+        abortConnectAttempt = false
 
         lateinit var device: SystemBluetoothDevice
 
@@ -68,6 +71,9 @@ class AndroidBluetoothDevice(
             // The user needs to be informed and given the choice to try again.
             val totalNumAttempts = 5
             retryBlocking(numberOfRetries = totalNumAttempts, delayBetweenRetries = 100) { attemptNumber, previousException ->
+                if (abortConnectAttempt)
+                    return@retryBlocking
+
                 if (attemptNumber == 0) {
                     logger(LogLevel.DEBUG) { "First attempt to establish an RFCOMM client connection to the Combo" }
                 } else {
@@ -111,6 +117,11 @@ class AndroidBluetoothDevice(
         } catch (t: Throwable) {
             disconnectImpl() // Clean up any partial connection states that may exist.
             throw BluetoothException("Could not establish an RFCOMM client connection to device with address $address", t)
+        }
+
+        if (abortConnectAttempt) {
+            logger(LogLevel.INFO) { "RFCOMM connection setup with device with address $address aborted" }
+            return
         }
 
         try {
@@ -211,9 +222,11 @@ class AndroidBluetoothDevice(
 
     private fun disconnectImpl() {
         canDoIO = false
+        abortConnectAttempt = true
 
         if (inputStream != null) {
             try {
+                logger(LogLevel.DEBUG) { "Closing input stream" }
                 inputStream!!.close()
             } catch (e: IOException) {
                 logger(LogLevel.WARN) { "Caught exception while closing input stream to device with address $address: $e - ignoring exception" }
@@ -224,6 +237,7 @@ class AndroidBluetoothDevice(
 
         if (outputStream != null) {
             try {
+                logger(LogLevel.DEBUG) { "Closing output stream" }
                 outputStream!!.close()
             } catch (e: IOException) {
                 logger(LogLevel.WARN) { "Caught exception while closing output stream to device with address $address: $e - ignoring exception" }
@@ -234,6 +248,7 @@ class AndroidBluetoothDevice(
 
         if (systemBluetoothSocket != null) {
             try {
+                logger(LogLevel.DEBUG) { "Closing Bluetooth socket" }
                 systemBluetoothSocket!!.close()
             } catch (e: IOException) {
                 logger(LogLevel.WARN) { "Caught exception while closing Bluetooth socket to device with address $address: $e - ignoring exception" }
@@ -241,5 +256,7 @@ class AndroidBluetoothDevice(
                 systemBluetoothSocket = null
             }
         }
+
+        logger(LogLevel.DEBUG) { "Device disconnected" }
     }
 }
