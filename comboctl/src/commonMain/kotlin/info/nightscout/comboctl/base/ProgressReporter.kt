@@ -34,12 +34,16 @@ object BasicProgressStage {
      *
      * The connection setup may require several attempts on some platforms.
      * If the number of attempts so far exceeds the total number, the
-     * connection attempt fails.
+     * connection attempt fails. If no total number is set (that is,
+     * (totalNumAttempts is set to null), then there is no defined limit.
+     * This is typically used when the caller manually aborts connection
+     * attempts after a while.
      *
      * @property currentAttemptNr Current attempt number, starting at 1.
-     * @property totalNumAttempts Total number of attempts that will be done.
+     * @property totalNumAttempts Total number of attempts that will be done,
+     *   or null if no total number is defined.
      */
-    data class EstablishingBtConnection(val currentAttemptNr: Int, val totalNumAttempts: Int) :
+    data class EstablishingBtConnection(val currentAttemptNr: Int, val totalNumAttempts: Int?) :
         ProgressStage("establishingBtConnection")
     object PerformingConnectionHandshake : ProgressStage("performingConnectionHandshake")
 
