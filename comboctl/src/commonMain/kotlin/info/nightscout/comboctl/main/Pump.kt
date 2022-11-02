@@ -57,7 +57,7 @@ import kotlinx.datetime.toLocalDateTime
 private val logger = Logger.get("Pump")
 
 private const val NUM_IDEMPOTENT_COMMAND_DISPATCH_ATTEMPTS = 10
-private const val MAX_NUM_REGULAR_CONNECT_ATTEMPTS = 10
+private const val DEFAULT_MAX_NUM_REGULAR_CONNECT_ATTEMPTS = 10
 private const val DELAY_IN_MS_BETWEEN_COMMAND_DISPATCH_ATTEMPTS = 2000L
 private const val PUMP_DATETIME_UPDATE_LONG_RT_BUTTON_PRESS_THRESHOLD = 5
 
@@ -861,6 +861,13 @@ class Pump(
      * Combo simultaneously, these checks do not have to be performed before
      * each command - it is sufficient to do them upon connection setup.
      *
+     * If IO errors happen during a connection attempt, this function tries
+     * to establish the connection again. The maximum number of attempts is
+     * specified by the [maxNumAttempts] argument. It can be set to null to
+     * allow for an unlimited amount of attempts. This should only be used
+     * if the caller has some sort of custom timeout mechanism at which the
+     * [disconnect] function is called (which makes this function abort).
+     *
      * This function also handles a special situation if the [Nonce] that is
      * stored in [PumpStateStore] for this pump is incorrect. The Bluetooth
      * socket can then be successfully connected, but right afterwards, when
@@ -890,17 +897,19 @@ class Pump(
      * @throws ExtendedOrMultiwaveBolusActiveException if an extended / multiwave
      *   bolus is active (these are shown on the main screen).
      */
-    suspend fun connect() {
+    suspend fun connect(maxNumAttempts: Int? = DEFAULT_MAX_NUM_REGULAR_CONNECT_ATTEMPTS) {
         check(stateFlow.value == State.Disconnected) { "Attempted to connect to pump in the ${stateFlow.value} state" }
 
-        for (connectionAttemptNr in 1..MAX_NUM_REGULAR_CONNECT_ATTEMPTS) {
+        val actualMaxNumAttempts = maxNumAttempts ?: Int.MAX_VALUE
+
+        for (connectionAttemptNr in 1..actualMaxNumAttempts) {
             connectProgressReporter.reset(Unit)
 
-            logger(LogLevel.DEBUG) { "Attempt $connectionAttemptNr of $MAX_NUM_REGULAR_CONNECT_ATTEMPTS to establish connection" }
+            logger(LogLevel.DEBUG) { "Attempt no. $connectionAttemptNr to establish connection" }
 
             connectProgressReporter.setCurrentProgressStage(BasicProgressStage.EstablishingBtConnection(
                 currentAttemptNr = connectionAttemptNr,
-                totalNumAttempts = MAX_NUM_REGULAR_CONNECT_ATTEMPTS
+                totalNumAttempts = maxNumAttempts
             ))
 
             try {
@@ -931,7 +940,7 @@ class Pump(
                     }
                     else -> Unit
                 }
-                if (connectionAttemptNr < MAX_NUM_REGULAR_CONNECT_ATTEMPTS) {
+                if (connectionAttemptNr < actualMaxNumAttempts) {
                     logger(LogLevel.DEBUG) { "Got exception while connecting; will try again; exception was: $e" }
                     delay(DELAY_IN_MS_BETWEEN_COMMAND_DISPATCH_ATTEMPTS)
                     continue
