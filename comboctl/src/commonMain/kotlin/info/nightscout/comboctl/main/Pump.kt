@@ -454,26 +454,19 @@ class Pump(
      *
      * If no TBR is active, [actualTbrDuration] is 0. If no TBR was expected to be active,
      * [expectedTbrDuration] is 0.
+     *
+     * [actualTbrPercentage] and [actualTbrDuration] are both null if a multiwave or extended
+     * bolus is active because the exact TBR percentage / duration are not shown on screen then.
      */
     class UnexpectedTbrStateException(
         val expectedTbrPercentage: Int,
         val expectedTbrDuration: Int,
-        val actualTbrPercentage: Int,
-        val actualTbrDuration: Int
+        val actualTbrPercentage: Int?,
+        val actualTbrDuration: Int?
     ) : ComboException(
         "Expected TBR: $expectedTbrPercentage% $expectedTbrDuration minutes ; " +
         "actual TBR: $actualTbrPercentage% $actualTbrDuration minutes"
     )
-
-    /**
-     * Exception thrown when the main screen shows information about an active extended / multiwave bolus.
-     *
-     * These bolus type are currently not supported and cannot be handled properly.
-     *
-     * @property bolusInfo Information about the detected extended / multiwave bolus.
-     */
-    class ExtendedOrMultiwaveBolusActiveException(val bolusInfo: MainScreenContent.ExtendedOrMultiwaveBolus) :
-        ComboException("Extended or multiwave bolus is active; bolus info: $bolusInfo")
 
     /**
      * Reason for a standard bolus delivery.
@@ -894,8 +887,6 @@ class Pump(
      * @throws SettingPumpDatetimeFailedException if during the checks,
      *   the pump's datetime was found to be deviating too much from the
      *   actual current datetime, and adjusting the pump's datetime failed.
-     * @throws ExtendedOrMultiwaveBolusActiveException if an extended / multiwave
-     *   bolus is active (these are shown on the main screen).
      */
     suspend fun connect(maxNumAttempts: Int? = DEFAULT_MAX_NUM_REGULAR_CONNECT_ATTEMPTS) {
         check(stateFlow.value == State.Disconnected) { "Attempted to connect to pump in the ${stateFlow.value} state" }
@@ -932,7 +923,6 @@ class Pump(
                     // failed. That's because these exceptions indicate hard errors that
                     // must be reported ASAP and disallow more connection attempts, at
                     // least attempts without notifying the user.
-                    is ExtendedOrMultiwaveBolusActiveException,
                     is SettingPumpDatetimeFailedException,
                     is AlertScreenException -> {
                         setState(State.Error(throwable = e, "Connection error"))
@@ -1215,10 +1205,6 @@ class Pump(
      * @throws UnexpectedTbrStateException if the TBR that is actually active
      *   after this function finishes does not match the specified percentage
      *   and duration.
-     * @throws ExtendedOrMultiwaveBolusActiveException if an extended / multiwave
-     *   bolus is active after setting the TBR. (This should not normally happen,
-     *   since it is not possible for users to set such a bolus while also setting
-     *   the TBR, but is included for completeness.)
      * @throws IllegalStateException if the current state is not
      *   [State.ReadyForCommands], or if the pump is suspended after setting the TBR.
      * @throws AlertScreenException if alerts occurs during this call, and they
@@ -1309,8 +1295,17 @@ class Pump(
             is MainScreenContent.Stopped ->
                 throw IllegalStateException("Combo is in the stopped state after setting TBR")
 
-            is MainScreenContent.ExtendedOrMultiwaveBolus ->
-                throw ExtendedOrMultiwaveBolusActiveException(mainScreenContent)
+            is MainScreenContent.ExtendedOrMultiwaveBolus -> {
+                val expectedTbrActive = (expectedTbrPercentage != 100)
+                if (expectedTbrActive == mainScreenContent.tbrIsActive) {
+                    throw UnexpectedTbrStateException(
+                        expectedTbrPercentage = expectedTbrPercentage,
+                        expectedTbrDuration = expectedTbrDuration,
+                        actualTbrPercentage = null,
+                        actualTbrDuration = null
+                    )
+                }
+            }
 
             is MainScreenContent.Normal -> {
                 if (expectedTbrPercentage != 100) {
@@ -1416,11 +1411,6 @@ class Pump(
      *   [State.ReadyForCommands].
      * @throws AlertScreenException if alerts occurs during this call, and they
      *   aren't a W6 warning (those are handled by this function).
-     * @throws ExtendedOrMultiwaveBolusActiveException if an extended / multiwave
-     *   bolus is active after delivering this standard bolus. (This should not
-     *   normally happen, since it is not possible for users to set such a bolus
-     *   while also delivering a standard bolus the TBR, but is included for
-     *   completeness.)
      */
     suspend fun deliverBolus(bolusAmount: Int, bolusReason: StandardBolusReason, bolusStatusUpdateIntervalInMs: Long = 250) = executeCommand(
         // Instruct executeCommand() to not set the mode on its own.
@@ -1728,8 +1718,6 @@ class Pump(
      *   [State.Suspended] or [State.ReadyForCommands].
      * @throws AlertScreenException if alerts occurs during this call, and
      *   they aren't a W6 warning (those are handled by this function).
-     * @throws ExtendedOrMultiwaveBolusActiveException if an extended / multiwave
-     *   bolus is active (these are shown on the main screen).
      */
     suspend fun updateStatus() = updateStatusImpl(
         allowExecutionWhileSuspended = true,
@@ -3195,8 +3183,36 @@ class Pump(
                 )
             }
 
-            is MainScreenContent.ExtendedOrMultiwaveBolus ->
-                throw ExtendedOrMultiwaveBolusActiveException(mainScreenContent)
+            is MainScreenContent.ExtendedOrMultiwaveBolus -> {
+                val (tbrPercentage, remainingTbrDurationInMinutes) = if (mainScreenContent.tbrIsActive) {
+                    val tbrPercentageScreen = navigateToRTScreen(
+                        rtNavigationContext,
+                        ParsedScreen.TemporaryBasalRatePercentageScreen::class,
+                        pumpSuspended
+                    ) as? ParsedScreen.TemporaryBasalRatePercentageScreen ?:
+                    throw NoUsableRTScreenException()
+
+                    navigateToRTScreen(rtNavigationContext, ParsedScreen.MainScreen::class, pumpSuspended)
+
+                    Pair(tbrPercentageScreen.percentage ?: 100, tbrPercentageScreen.remainingDurationInMinutes ?: 0)
+                } else {
+                    Pair(100, 0)
+                }
+
+                Status(
+                    availableUnitsInReservoir = quickinfo.availableUnits,
+                    activeBasalProfileNumber = mainScreenContent.activeBasalProfileNumber,
+                    currentBasalRateFactor = if (tbrPercentage != 0)
+                        mainScreenContent.currentBasalRateFactor * 100 / tbrPercentage
+                    else
+                        0,
+                    tbrOngoing = (tbrPercentage != 100),
+                    remainingTbrDurationInMinutes = remainingTbrDurationInMinutes,
+                    tbrPercentage = tbrPercentage,
+                    reservoirState = quickinfo.reservoirState,
+                    batteryState = mainScreenContent.batteryState
+                )
+            }
         }
 
         if (switchStatesIfNecessary) {
