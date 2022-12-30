@@ -9,7 +9,6 @@ import info.nightscout.comboctl.base.Tbr
 import info.nightscout.comboctl.main.BasalProfile
 import info.nightscout.comboctl.main.NUM_COMBO_BASAL_PROFILE_FACTORS
 import info.nightscout.comboctl.main.Pump
-import java.io.File
 import javafx.beans.property.ObjectProperty
 import javafx.beans.property.SimpleObjectProperty
 import javafx.geometry.Pos
@@ -25,13 +24,14 @@ import javafx.scene.image.WritableImage
 import javafx.scene.layout.BorderPane
 import javafx.scene.layout.HBox
 import javafx.stage.Stage
-import kotlin.random.Random
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import java.io.File
+import kotlin.random.Random
 
 // Dialog for entering bolus dosage, in 0.1 IU steps.
 // If the return value is null, the user pressed the Cancel button.

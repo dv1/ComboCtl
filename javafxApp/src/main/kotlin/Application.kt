@@ -6,8 +6,6 @@ import info.nightscout.comboctl.base.Logger
 import info.nightscout.comboctl.base.PumpStateStoreAccessException
 import info.nightscout.comboctl.linuxBlueZ.BlueZInterface
 import info.nightscout.comboctl.main.PumpManager
-import javafx.application.Application as JavafxApplication
-import javafx.application.Application.launch as javafxLaunch
 import javafx.fxml.FXMLLoader
 import javafx.scene.Parent
 import javafx.scene.Scene
@@ -15,10 +13,12 @@ import javafx.scene.control.Button
 import javafx.scene.control.ListCell
 import javafx.scene.control.ListView
 import javafx.stage.Stage
-import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.javafx.JavaFx
+import kotlin.coroutines.CoroutineContext
+import javafx.application.Application as JavafxApplication
+import javafx.application.Application.launch as javafxLaunch
 
 fun main() {
     javafxLaunch(Application::class.java)
