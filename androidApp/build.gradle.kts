@@ -1,11 +1,15 @@
+val kotlinx_datetime_version: String by rootProject.extra
+val android_compile_sdk: Int by rootProject.extra
+val android_min_sdk: Int by rootProject.extra
+val android_target_sdk: Int by rootProject.extra
+
+val compose_version = "1.1.1"
+
 plugins {
     id("com.android.application")
     kotlin("android")
     id("kotlin-kapt")
 }
-
-val kotlinx_datetime_version = rootProject.extra["kotlinx_datetime_version"]
-val compose_version = "1.1.1"
 
 dependencies {
     implementation(platform("org.jetbrains.kotlin:kotlin-bom"))
@@ -52,12 +56,12 @@ dependencies {
 }
 
 android {
-    compileSdk = 32
+    compileSdk = android_compile_sdk
 
     defaultConfig {
         applicationId = "info.nightscout.comboctl.comboandroid"
-        minSdk = 28
-        targetSdk = 32
+        minSdk = android_min_sdk
+        targetSdk = android_target_sdk
         versionCode = 1
         versionName = "1.0"
     }

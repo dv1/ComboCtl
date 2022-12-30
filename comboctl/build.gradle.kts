@@ -1,8 +1,13 @@
 import org.jetbrains.dokka.gradle.DokkaTask
 
-val kotlinx_coroutines_version = rootProject.extra["kotlinx_coroutines_version"]
-val kotlinx_datetime_version = rootProject.extra["kotlinx_datetime_version"]
-val androidx_core_version = rootProject.extra["androidx_core_version"]
+val kotlinx_coroutines_version: String by rootProject.extra
+val kotlinx_datetime_version: String by rootProject.extra
+val androidx_core_version: String by rootProject.extra
+val kotlintest_runner_junit5_version: String by rootProject.extra
+val junit_jupiter_engine_version: String by rootProject.extra
+val android_compile_sdk: Int by rootProject.extra
+val android_min_sdk: Int by rootProject.extra
+val android_target_sdk: Int by rootProject.extra
 
 plugins {
     kotlin("multiplatform")
@@ -46,8 +51,8 @@ kotlin {
         val jvmTest by getting {
             dependencies {
                 implementation(kotlin("test-junit5"))
-                implementation("io.kotlintest:kotlintest-runner-junit5:3.4.2")
-                runtimeOnly("org.junit.jupiter:junit-jupiter-engine:5.7.0")
+                implementation("io.kotlintest:kotlintest-runner-junit5:$kotlintest_runner_junit5_version")
+                runtimeOnly("org.junit.jupiter:junit-jupiter-engine:$junit_jupiter_engine_version")
             }
         }
     }
@@ -64,10 +69,10 @@ tasks {
 }
 
 android {
-    compileSdk = 31
+    compileSdk = android_compile_sdk
     defaultConfig {
-        minSdk = 28
-        targetSdk = 28
+        minSdk = android_min_sdk
+        targetSdk = android_target_sdk
     }
     sourceSets {
         getByName("main") {

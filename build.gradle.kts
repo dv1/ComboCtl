@@ -4,19 +4,24 @@ group = "info.nightscout.comboctl"
 version = "1.0-SNAPSHOT"
 
 buildscript {
-    extra.apply {
-        set("kotlin_version", "1.7.0")
-        set("kotlinx_coroutines_version", "1.6.3")
-        set("kotlinx_datetime_version", "0.3.2")
-        set("androidx_core_version", "1.8.0")
-    }
+    val kotlin_version by extra { "1.7.22" }
+    val kotlinx_coroutines_version by extra { "1.6.4" }
+    val kotlinx_datetime_version by extra { "0.4.0" }
+    val androidx_core_version by extra { "1.9.0" }
+    val android_gradle_plugin_version by extra { "7.3.1" }
+    val ktlint_version by extra { "11.0.0" }
+    val kotlintest_runner_junit5_version by extra { "3.4.2" }
+    val junit_jupiter_engine_version by extra { "5.9.1" }
+    val klaxon_version by extra { "5.6" }
+    val android_compile_sdk by extra { 33 }
+    val android_min_sdk by extra { 28 }
+    val android_target_sdk by extra { 28 }
     repositories {
         mavenCentral()
         google()
     }
     dependencies {
-        val kotlin_version = rootProject.extra["kotlin_version"]
-        classpath("com.android.tools.build:gradle:7.2.1")
+        classpath("com.android.tools.build:gradle:$android_gradle_plugin_version")
         logger.info("Building using Kotlin $kotlin_version")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version")
     }
@@ -24,8 +29,9 @@ buildscript {
 
 plugins {
     val kotlin_version = rootProject.extra["kotlin_version"]
+    val ktlint_version = rootProject.extra["ktlint_version"]
     kotlin("multiplatform") version "$kotlin_version" apply false
-    id("org.jlleitschuh.gradle.ktlint") version "9.2.1"
+    id("org.jlleitschuh.gradle.ktlint") version "$ktlint_version"
 }
 
 ktlint {

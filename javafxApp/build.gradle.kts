@@ -1,12 +1,13 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
-val kotlinx_coroutines_version = rootProject.extra["kotlinx_coroutines_version"]
-val kotlinx_datetime_version = rootProject.extra["kotlinx_datetime_version"]
+val kotlinx_coroutines_version: String by rootProject.extra
+val kotlinx_datetime_version: String by rootProject.extra
+val klaxon_version: String by rootProject.extra
 
 plugins {
     application
     kotlin("jvm")
-    id("org.openjfx.javafxplugin") version "0.0.9"
+    id("org.openjfx.javafxplugin") version "0.0.13"
 }
 
 application {
@@ -37,7 +38,7 @@ dependencies {
     implementation(project(":comboctl"))
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinx_coroutines_version")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-javafx:$kotlinx_coroutines_version")
-    implementation("com.beust:klaxon:5.5")
+    implementation("com.beust:klaxon:$klaxon_version")
     implementation("org.jetbrains.kotlinx:kotlinx-datetime:$kotlinx_datetime_version")
 }
 
