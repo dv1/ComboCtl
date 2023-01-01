@@ -11,19 +11,24 @@ import info.nightscout.comboctl.main.NUM_COMBO_BASAL_PROFILE_FACTORS
 import info.nightscout.comboctl.main.Pump
 import javafx.beans.property.ObjectProperty
 import javafx.beans.property.SimpleObjectProperty
+import javafx.collections.FXCollections
 import javafx.geometry.Pos
 import javafx.scene.control.Alert
 import javafx.scene.control.ButtonBar
 import javafx.scene.control.ButtonType
+import javafx.scene.control.ComboBox
 import javafx.scene.control.Dialog
 import javafx.scene.control.Label
+import javafx.scene.control.ListCell
 import javafx.scene.control.Spinner
 import javafx.scene.image.Image
 import javafx.scene.image.PixelFormat
 import javafx.scene.image.WritableImage
 import javafx.scene.layout.BorderPane
+import javafx.scene.layout.GridPane
 import javafx.scene.layout.HBox
 import javafx.stage.Stage
+import javafx.util.StringConverter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -33,34 +38,85 @@ import kotlinx.coroutines.launch
 import java.io.File
 import kotlin.random.Random
 
-// Dialog for entering bolus dosage, in 0.1 IU steps.
-// If the return value is null, the user pressed the Cancel button.
-class BolusDialog(parentStage: Stage) : Dialog<Int?>() {
-    private var dosageProperty = SimpleObjectProperty<Int>(0)
+private enum class BolusType(val type: ApplicationLayer.CMDDeliverBolusType, val label: String) {
+    STANDARD(ApplicationLayer.CMDDeliverBolusType.STANDARD_BOLUS, "Standard bolus"),
+    EXTENDED(ApplicationLayer.CMDDeliverBolusType.EXTENDED_BOLUS, "Extended bolus"),
+    MULTIWAVE(ApplicationLayer.CMDDeliverBolusType.MULTIWAVE_BOLUS, "Multiwave bolus")
+}
 
+private data class BolusDosage(
+    val totalAmount: Int,
+    val immediateAmount: Int,
+    val durationInMinutes: Int,
+    val type: ApplicationLayer.CMDDeliverBolusType
+)
+
+// Dialog for entering bolus dosage, in 0.1 IU steps.
+// If the result is null, the user pressed the Cancel button.
+private class BolusDialog(parentStage: Stage) : Dialog<BolusDosage?>() {
     init {
         initOwner(parentStage)
 
         val rootPane = BorderPane()
-        rootPane.setTop(Label("Enter bolus dosage (in 0.1 IU steps)"))
+        rootPane.top = Label("Enter bolus dosage (in 0.1 IU steps)")
 
-        // Set the dosage spinner to use a range of 1-250, with
+        // Set the dosage spinners to use a range of 1-250, with
         // an initial value of 1 and a step size of 1. These
         // use 0.1 IU as unit, so "250" actually means 25.0 IU.
-        val dosageSpinner = Spinner<Int>(1, 250, 1, 1)
+        val totalAmountSpinner = Spinner<Int>(1, 250, 1, 1)
+        val immediateAmountSpinner = Spinner<Int>(1, 250, 1, 1)
+        val durationSpinner = Spinner<Int>(15, 12 * 60, 15, 15)
+        val typeComboBox = ComboBox<BolusType>()
 
-        dosageSpinner.getValueFactory().valueProperty().bindBidirectional(dosageProperty)
+        // We need the converter for the text in the combox' drop-down list view.
+        typeComboBox.setCellFactory {
+            object : ListCell<BolusType>() {
+                override fun updateItem(item: BolusType?, empty: Boolean) {
+                    super.updateItem(item, empty)
+                    text = if (empty || item == null) null else item.label
+                }
+            }
+        }
+        // We need the converter for the text inside the combobox itself.
+        typeComboBox.converter = object : StringConverter<BolusType>() {
+            override fun toString(obj: BolusType?): String =
+                obj?.label ?: ""
 
-        val hbox = HBox(dosageSpinner)
-        hbox.setAlignment(Pos.CENTER)
-        rootPane.setCenter(hbox)
+            override fun fromString(str: String?): BolusType {
+                return when (str) {
+                    BolusType.STANDARD.label -> BolusType.STANDARD
+                    BolusType.EXTENDED.label -> BolusType.EXTENDED
+                    BolusType.MULTIWAVE.label -> BolusType.MULTIWAVE
+                    else -> BolusType.STANDARD
+                }
+            }
+        }
+        typeComboBox.value = BolusType.STANDARD
+        typeComboBox.items = FXCollections.observableList(BolusType.values().toList())
 
-        getDialogPane().setContent(rootPane)
-        getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL)
+        val gridPane = GridPane()
+        gridPane.add(Label("Total amount"), 0, 0)
+        gridPane.add(Label("Immediate amount"), 0, 1)
+        gridPane.add(Label("Duration"), 0, 2)
+        gridPane.add(Label("Type"), 0, 3)
+        gridPane.add(totalAmountSpinner, 1, 0)
+        gridPane.add(immediateAmountSpinner, 1, 1)
+        gridPane.add(durationSpinner, 1, 2)
+        gridPane.add(typeComboBox, 1, 3)
+
+        rootPane.center = gridPane
+
+        dialogPane.content = rootPane
+        dialogPane.buttonTypes.addAll(ButtonType.OK, ButtonType.CANCEL)
 
         setResultConverter { buttonType ->
             when (buttonType) {
-                ButtonType.OK -> dosageProperty.getValue()
+                ButtonType.OK -> BolusDosage(
+                    totalAmount = totalAmountSpinner.value,
+                    immediateAmount = immediateAmountSpinner.value,
+                    durationInMinutes = durationSpinner.value,
+                    type = typeComboBox.value.type
+                )
                 else -> null
             }
         }
@@ -71,38 +127,32 @@ class BolusDialog(parentStage: Stage) : Dialog<Int?>() {
 // value being the TBR percentage, the second being the TBR duration in minutes.
 // If the return value is null, the user pressed the Cancel button.
 class TbrDialog(parentStage: Stage) : Dialog<Pair<Int, Int>?>() {
-    private var percentageProperty = SimpleObjectProperty<Int>(100)
-    private var durationProperty = SimpleObjectProperty<Int>(15)
-
     init {
         initOwner(parentStage)
 
         val rootPane = BorderPane()
-        rootPane.setTop(Label("Enter TBR"))
+        rootPane.top = Label("Enter TBR")
 
         // Set the percentage spinner to use a range of 0-500
-        // (500% is the maximum percentage the Combo suports), with
+        // (500% is the maximum percentage the Combo supports), with
         // an initial value of 100 and a step size of 10.
         val percentageSpinner = Spinner<Int>(0, 500, 100, 10)
         // Set the duration spinner to use a range of 0-1440
         // (1440 minutes or 24 hours is the maximum duration the
-        // Combo suports), with an initial value of 15 and
+        // Combo supports), with an initial value of 15 and
         // a step size of 15.
         val durationSpinner = Spinner<Int>(15, 24 * 60, 15, 15)
 
-        percentageSpinner.getValueFactory().valueProperty().bindBidirectional(percentageProperty)
-        durationSpinner.getValueFactory().valueProperty().bindBidirectional(durationProperty)
-
         val hbox = HBox(percentageSpinner, durationSpinner)
-        hbox.setAlignment(Pos.CENTER)
-        rootPane.setCenter(hbox)
+        hbox.alignment = Pos.CENTER
+        rootPane.center = hbox
 
-        getDialogPane().setContent(rootPane)
-        getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL)
+        dialogPane.content = rootPane
+        dialogPane.buttonTypes.addAll(ButtonType.OK, ButtonType.CANCEL)
 
         setResultConverter { buttonType ->
             when (buttonType) {
-                ButtonType.OK -> Pair(percentageProperty.getValue(), durationProperty.getValue())
+                ButtonType.OK -> Pair(percentageSpinner.value, durationSpinner.value)
                 else -> null
             }
         }
@@ -255,8 +305,8 @@ class PumpViewController {
         val result = dialog.showAndWait()
 
         if (result.isPresent) {
-            val bolusAmount = result.get()
-            println("Delivering bolus; amount: $bolusAmount")
+            val bolusDosage = result.get()
+            println("Delivering bolus; dosage: $bolusDosage")
 
             pump!!.bolusDeliveryProgressFlow
                 .onEach {
@@ -265,7 +315,13 @@ class PumpViewController {
                 }
                 .launchIn(mainScope!!)
 
-            pump!!.deliverBolus(bolusAmount, Pump.StandardBolusReason.NORMAL)
+            pump!!.deliverBolus(
+                bolusDosage.totalAmount,
+                bolusDosage.immediateAmount,
+                durationInMinutes = bolusDosage.durationInMinutes,
+                standardBolusReason = Pump.StandardBolusReason.NORMAL,
+                bolusType = bolusDosage.type
+            )
         }
     }
 
