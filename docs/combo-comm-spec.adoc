@@ -821,6 +821,25 @@ about the error codes are listed in the section below called
 "Error codes in reliable application layer command payloads".
 
 
+=== Caution about simulation a held-down RT button (= "long RT button press")
+
+`AL_RT_BUTTON_STATUS` commands can be used to simulate a held-down button.
+This is useful when adjusting a quantity in the RT mode if said quantity
+currently are far away from the target quantity because a held-down button
+causes the Combo to increment/decrement the quantity faster. However, it
+is important to keep in mind that the button status updates and the updates
+of the displayed quantity do not necessarily go hand in hand. It is actually
+possible for the quantity to "overshoot" because it gets in/decremented even
+after the "user" relesed the button. For this reason, it is important to
+observe the screen after releasing the button, and waiting until the quantity
+no longer changes (this is when the overshoot stops). Afterwards, to undo the
+overshoot, the code should short-press the button until the target quantity
+is visible on screen.
+
+Also, to minimize overshooting, it is recommended to ensure that at least 110
+ms pass in between button status packets sent to the Combo.
+
+
 
 == Application layer structures and protocols
 
@@ -907,6 +926,18 @@ the `AL_CTRL_ACTIVATE_SERVICE` command. They can be deactivated
 with the `AL_CTRL_DEACTIVATE_SERVICE` command. Only one service
 can be active at the same time; to switch to a different service,
 the currently active one must be deactivated first.
+
+IMPORTANT: There is what seems to be a bug in the Combo which occurs
+when switching between services. As mentioned above, the service is
+first deactivated by sending `AL_CTRL_DEACTIVATE_SERVICE`, which the
+Combo responds to with `AL_CTRL_DEACTIVATE_SERVICE_RESPONSE`. Then,
+`AL_CTRL_ACTIVATE_SERVICE` is sent, which the Combo normally responds
+to with `AL_CTRL_ACTIVATE_SERVICE_RESPONSE`. However, in a few cases,
+the response instead is `AL_CTRL_DEACTIVATE_SERVICE_RESPONSE` again.
+Following that, the actual `AL_CTRL_ACTIVATE_SERVICE_RESPONSE` packet
+arrives. It is unknown why an extra `AL_CTRL_DEACTIVATE_SERVICE_RESPONSE`
+is inserted like that, but clients must check for that, and drop this
+extra response packet.
 
 
 === Command and remote terminal (RT) modes
@@ -1127,7 +1158,8 @@ Years are an offset of the year 2000, so a year value 15 means
 Known valid event type IDs:
 
 When an event says "requested", it means that the associated event
-_started_. "Infused" means that it _ended_.
+_started_. "Infused" means that it _ended_. This is only used for
+quick and standard boluses.
 
 When a bolus was started "manually", it means the user started
 it by pressing buttons on the UI. This includes "pressing" buttons
@@ -1141,12 +1173,16 @@ but these are currently not understood.
 * 5: Quick bolus infused
 * 6: Standard bolus requested (manually = yes)
 * 7: Standard bolus infused (manually = yes)
-* 8: Extended bolus started
-* 9: Extended bolus ended
-* 10: Multiwave bolus started
-* 11: Multiwave bolus ended
+* 8: Extended bolus started (manually = yes)
+* 9: Extended bolus ended (manually = yes)
+* 10: Multiwave bolus started (manually = yes)
+* 11: Multiwave bolus ended (manually = yes)
 * 14: Standard bolus requested (manually = no)
 * 15: Standard bolus infused (manually = no)
+* 16: Extended bolus requested (manually = no)
+* 17: Extended bolus infused (manually = no)
+* 18: Multiwave bolus requested (manually = no)
+* 19: Multiwave bolus infused (manually = no)
 * 24: New datetime set
 
 
@@ -1987,34 +2023,50 @@ a warning did occur.
 * Reliable: yes
 * Payload length: 22
 
-This administers a standard bolus (that is: neither extended nor multiwave bolus).
-The bolus amount is given in 0.1 IU units. For example, to administer 5.7 IU,
+This delivers a standard, extended, or multiwave bolus. Quick boluses are not
+supported. Bolus amounts are given in 0.1 IU units. For example, for 5.7 IU,
 the amount "57" is specified.
 
-The bolus amount is added twice to the payload, once as a 16-bit little-endian
+Bolus amounts are added twice to the payload, once as a 16-bit little-endian
 integer, once as a 32-bit little-endian floating point.
 
-The payload begins with two bytes 0x55 and 0x59. Their function is not understood,
-but without them, the command fails.
+There are two types of bolus quantities in this command: Total and immediate
+bolus amount. The total amount is used by all bolus types, and is the sum of
+the immediate and extended bolus portion. These are used in this manner:
 
-Next come the two bytes that make up the 16-bit little-endian integer with the bolus
-amount inside.
+* Standard and extended bolus only use the total amount. The immediate amount
+  is set to 0.
+* Multiwave bolus delivers the immediate portion just like a standard bolus
+  does, and the remaining portion (= total amount - immediate amount) is
+  delivered as an extended bolus. In essence, multiwave is a combination of
+  standard and extended bolus.
 
-Two bytes follow (these appear to be related  to multi-wave and extended
-bolus types), and again followed by two bytes (related to the multi-wave bolus type).
-All four of these bytes currently have to be zero since their exact function is not
-understood.
+This implies that the immediate amount must always be less than the total
+amount. It also must be at least 1 (= 0.1 IU).
 
-The four bytes of the 32-bit little-endian floating point with the bolus amount inside
-follow. Note that even though this is a floating-point value, the amount still is given
-in 0.1 IU units here, so in the example above, the floating-point value would still be
-57, and _not_ 5.7.
+Extended and multiwave boluses also have a duration in minutes. This duration
+must be at least 15 minutes and must be an integer multiple of 15. Just like
+bolus amounts, this is added twice to the payload, once as a 16-bit little-endian
+integer, once as a 32-bit little-endian floating point.
 
-2x4 bytes follow, which fulfill the same function as the 2x2 bytes before (that is:
-multi-wave and extended bolus functionality). All of these eight bytes are set to zero.
+The payload begins with two bytes. These two bytes identify the bolus type:
+
+* Standard bolus: 0x55 0x59
+* Extended bolus: 0x65 0x69
+* Multiwave bolus: 0xA5 0xA9
+
+Next come the total bolus amount, duration in minutes, and immediate bolus amount,
+in this order. All of them are added as 16-bit little-endian integers, resulting
+in a sum total of 2x3 = 6 more bytes.
+
+The total bolus amount, duration in minutes, and immediate bolus amount are then
+again added (in the same order as above), but as 32-bit little-endian floating point
+this time. Note that even though these are floating-point values, the amounts still
+are given in 0.1 IU units here. For example, the floating-point value would still be
+57, and _not_ 5.7. These added values amount to 4x3 = 12 more bytes.
 
 Finally, 2 bytes are added that contain a 16-bit unsigned little-endian integer with
-a CRC-16-MCRF4XX checksum of all payload bytes (except the 2 checksum bytes).
+a CRC-16-MCRF4XX checksum of all payload bytes (except the 2 checksum bytes themselves).
 
 The Combo responds to this with the `AL_CMD_DELIVER_BOLUS_RESPONSE` command.
 
@@ -2036,6 +2088,105 @@ section above for details.
 
 The last byte specifies whether or not the bolus actually started.
 If the byte is 0x48, bolus started. If it is 0xB7, it did not start.
+
+
+=== `AL_CMD_CANCEL_BOLUS` :
+
+* Sent by: Client
+* Service ID: 0xB7
+* Command ID: 0x9695
+* Reliable: yes
+* Payload length: 1
+
+This causes the Combo to cancel an ongoing bolus infusion. Only an ongoing
+standard bolus and an ongoing immediate portion of a multiwave bolus can be
+canceled with this command. An extended bolus cannot, and neither can the
+extended portion of a multiwave bolus - those can only be canceled by
+stopping and again starting the Combo.
+
+The single payload byte identifies the bolus type to cancel:
+
+* 0x48 : Standard bolus is to be canceled.
+* 0xB7 : Multiwave bolus is to be canceled.
+
+The Combo responds to this with the `AL_CMD_CANCEL_BOLUS_RESPONSE` command.
+
+
+=== `AL_CMD_CANCEL_BOLUS_RESPONSE` :
+
+* Sent by: Combo
+* Service ID: 0xB7
+* Command ID: 0xA695
+* Reliable: yes
+* Payload length: 3
+
+This is the Combo's response to the client's `AL_CMD_DELIVER_BOLUS` command.
+
+Like all the other reliable packets coming from the Combo, its
+first (and in this case, only) 2 bytes contain an error code.
+See the "Error codes in reliable application layer command payloads"
+section above for details.
+
+The last byte specifies whether or not the bolus was actually canceled.
+If the canceling was successful, the byte is 0x48, otherwise it is 0xB7.
+
+
+=== `AL_CMD_GET_BOLUS_STATUS` :
+
+* Sent by: Client
+* Service ID: 0xB7
+* Command ID: 0x966A
+* Reliable: yes
+* Payload length: 0
+
+Clients use this to request the current status of an immediate bolus delivery.
+This can either be the current status of a standard bolus, or the current status
+of the immediate portion of a multiwave bolus. The status of extended boluses
+and the extended portion of multiwave boluses cannot be queried this way.
+
+This is useful for driving a progress indicator. Clients then typically send
+this command regularly to the Combo, since the Combo does not inform about
+the progress on its own.
+
+The Combo sends the status as the `AL_CMD_GET_BOLUS_STATUS_RESPONSE` command.
+
+
+=== `AL_CMD_GET_BOLUS_STATUS_RESPONSE` :
+
+* Sent by: Combo
+* Service ID: 0xB7
+* Command ID: 0xA66A
+* Reliable: yes
+* Payload length: 8
+
+This is the Combo's response to the client's `AL_CMD_GET_BOLUS_STATUS` command.
+
+Like all the other reliable packets coming from the Combo, its
+first (and in this case, only) 2 bytes contain an error code.
+See the "Error codes in reliable application layer command payloads"
+section above for details.
+
+After these first 2 bytes, the next byte identifies the bolus type:
+
+* 0x48 : Standard bolus is currently being delivered.
+* 0xB7 : Immediate portion of multiwave bolus is currently being delivered.
+
+NOTE: These codes match the ones in `AL_CMD_CANCEL_BOLUS`.
+
+The next byte specifies the current state of the bolus delivery:
+
+* 0x55 : Combo is not delivering anything.
+* 0x66 : A bolus is currently being delivered.
+* 0x99 : Bolus delivery has been completed.
+* 0xA9 : Bolus was canceled by the user.
+* 0xAA : Bolus was canceled by an error.
+
+The next 2 bytes contain a 16-bit little endian integer that is the
+remaining undelivered bolus amount, in 0.1 IU units.
+
+The last 2 bytes contain a 16-bit unsigned little-endian integer with
+a CRC-16-MCRF4XX checksum of all payload bytes (except the 2 checksum
+bytes themselves).
 
 
 === `AL_CMD_READ_HISTORY_BLOCK` :
